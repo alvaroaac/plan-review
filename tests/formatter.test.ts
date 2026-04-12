@@ -1,0 +1,104 @@
+import { describe, it, expect } from 'vitest';
+import { formatReview } from '../src/formatter.js';
+import type { PlanDocument } from '../src/types.js';
+
+function makeDoc(overrides: Partial<PlanDocument> = {}): PlanDocument {
+  return {
+    title: 'Test Plan',
+    metadata: {},
+    mode: 'plan',
+    sections: [
+      {
+        id: '1.1',
+        heading: 'Create schema',
+        level: 3,
+        body: 'Add tables for feature X.',
+        parent: 'milestone-1',
+        dependencies: { dependsOn: [], blocks: ['1.2'] },
+      },
+      {
+        id: '1.2',
+        heading: 'Run migration',
+        level: 3,
+        body: 'Apply the migration.',
+        parent: 'milestone-1',
+        dependencies: { dependsOn: ['1.1'], blocks: [] },
+      },
+    ],
+    comments: [],
+    ...overrides,
+  };
+}
+
+describe('formatReview', () => {
+  it('includes review summary header', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.1', text: 'Add index', timestamp: new Date() }],
+    });
+    const output = formatReview(doc);
+
+    expect(output).toContain('# Plan Review: Test Plan');
+    expect(output).toContain('**Comments:** 1');
+  });
+
+  it('includes only commented sections', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.1', text: 'Add index', timestamp: new Date() }],
+    });
+    const output = formatReview(doc);
+
+    expect(output).toContain('Section 1.1');
+    expect(output).toContain('Create schema');
+    expect(output).not.toContain('Section 1.2');
+  });
+
+  it('blockquotes original content', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.1', text: 'Looks good', timestamp: new Date() }],
+    });
+    const output = formatReview(doc);
+
+    expect(output).toContain('> Add tables for feature X.');
+  });
+
+  it('includes reviewer comment text', () => {
+    const doc = makeDoc({
+      comments: [
+        { sectionId: '1.1', text: 'Need an index on this table', timestamp: new Date() },
+      ],
+    });
+    const output = formatReview(doc);
+
+    expect(output).toContain('Need an index on this table');
+  });
+
+  it('includes dependency info in plan mode', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.1', text: 'Comment', timestamp: new Date() }],
+    });
+    const output = formatReview(doc);
+
+    expect(output).toContain('Blocks: 1.2');
+  });
+
+  it('handles multiple comments on different sections', () => {
+    const doc = makeDoc({
+      comments: [
+        { sectionId: '1.1', text: 'First comment', timestamp: new Date() },
+        { sectionId: '1.2', text: 'Second comment', timestamp: new Date() },
+      ],
+    });
+    const output = formatReview(doc);
+
+    expect(output).toContain('Section 1.1');
+    expect(output).toContain('Section 1.2');
+    expect(output).toContain('**Comments:** 2');
+  });
+
+  it('returns empty review when no comments', () => {
+    const doc = makeDoc();
+    const output = formatReview(doc);
+
+    expect(output).toContain('**Comments:** 0');
+  });
+});
