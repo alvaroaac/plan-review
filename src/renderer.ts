@@ -51,7 +51,7 @@ function renderMetadataHeader(section: Section): string {
   const top = chalk.dim(`┌${'─'.repeat(innerWidth)}┐`);
   const bottom = chalk.dim(`└${'─'.repeat(innerWidth)}┘`);
   const content = lines.map(
-    (l) => chalk.dim('│') + ' ' + chalk.cyan(l.padEnd(innerWidth - 2)) + ' ' + chalk.dim('│'),
+    (l) => chalk.dim('│') + ' ' + chalk.cyan(l.slice(0, innerWidth - 2).padEnd(innerWidth - 2)) + ' ' + chalk.dim('│'),
   );
 
   return [top, ...content, bottom].join('\n');

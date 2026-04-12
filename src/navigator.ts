@@ -66,7 +66,7 @@ async function linearReview(
     if (input === 'toc') {
       return;
     } else if (input === 'back') {
-      if (i > 0) i -= 2; // -2 because loop will increment
+      i -= (i > 0) ? 2 : 1; // -2 to go back (loop increments), -1 to re-show current
       continue;
     } else if (input !== '') {
       doc.comments.push({

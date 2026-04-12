@@ -1,4 +1,4 @@
-import type { PlanDocument, Section } from './types.js';
+import type { PlanDocument } from './types.js';
 
 export function formatReview(doc: PlanDocument): string {
   const commentedSectionIds = new Set(doc.comments.map((c) => c.sectionId));
