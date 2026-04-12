@@ -101,4 +101,34 @@ describe('formatReview', () => {
 
     expect(output).toContain('**Comments:** 0');
   });
+
+  it('includes dependsOn when it has items (plan mode)', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.2', text: 'Note on migration', timestamp: new Date() }],
+    });
+    const output = formatReview(doc);
+
+    // section 1.2 has dependsOn: ['1.1']
+    expect(output).toContain('Depends on: 1.1');
+  });
+
+  it('handles generic mode (uses level >= 2 filter)', () => {
+    const genericDoc: PlanDocument = {
+      title: 'Generic Doc',
+      metadata: {},
+      mode: 'generic',
+      sections: [
+        { id: 'section-1', heading: 'Overview', level: 2, body: 'Intro content' },
+        { id: 'section-2', heading: 'Details', level: 2, body: 'Detail content' },
+      ],
+      comments: [{ sectionId: 'section-1', text: 'Looks good', timestamp: new Date() }],
+    };
+    const output = formatReview(genericDoc);
+
+    expect(output).toContain('# Plan Review: Generic Doc');
+    expect(output).toContain('Section section-1');
+    expect(output).toContain('Looks good');
+    // Generic mode sections have no plan-mode metadata
+    expect(output).not.toContain('Depends on');
+  });
 });

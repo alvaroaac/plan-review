@@ -159,3 +159,175 @@ describe('isPlanDocument', () => {
     expect(isPlanDocument(md)).toBe(false);
   });
 });
+
+describe('parse - explicit strategies', () => {
+  it("forces 'separator' splitting strategy", () => {
+    const md = '## Section A\n\nContent A\n\n---\n\n## Section B\n\nContent B';
+    const doc = parse(md, 'separator');
+    expect(doc.mode).toBe('generic');
+    expect(doc.sections).toHaveLength(2);
+    expect(doc.sections[0].body).toContain('Section A');
+    expect(doc.sections[1].body).toContain('Section B');
+  });
+
+  it("forces 'heading' splitting strategy", () => {
+    const md = '# Title\n\n## Section A\n\nContent A\n\n## Section B\n\nContent B';
+    const doc = parse(md, 'heading');
+    expect(doc.mode).toBe('generic');
+    expect(doc.sections).toHaveLength(2);
+    expect(doc.sections[0].heading).toBe('Section A');
+  });
+});
+
+describe('extractMetadata - edge cases', () => {
+  it('returns empty object when no metadata found', () => {
+    const md = '# Title\n\nJust plain content here with no metadata fields.';
+    const doc = parse(md);
+    expect(doc.metadata).toEqual({});
+  });
+});
+
+describe('extractTitle - edge cases', () => {
+  it("returns 'Untitled' when no H1 heading", () => {
+    const md = '## Section A\n\nContent without H1';
+    const doc = parse(md);
+    expect(doc.title).toBe('Untitled');
+  });
+});
+
+describe('parse - plan mode dependency edge cases', () => {
+  it('handles task with no Depends On or Blocks fields (both null branches)', () => {
+    const md = `# Test Plan
+
+**Created:** 2026-01-01
+
+## Milestone 1
+
+### Task 1.1
+
+Just a body with no dependency fields.
+
+**Verification:** \`npm test\`
+
+**Related Files:**
+- \`src/foo.ts\`
+`;
+    const doc = parse(md);
+    const task = doc.sections.find((s) => s.id === '1.1');
+    expect(task?.dependencies?.dependsOn).toEqual([]);
+    expect(task?.dependencies?.blocks).toEqual([]);
+  });
+
+  it('handles related files that end with a blank line (inRelatedFiles reset branch)', () => {
+    const md = `# Test Plan
+
+## Milestone 1
+
+### Task 1.1
+
+**Related Files:**
+- \`src/a.ts\`
+
+**Verification:** \`npm test\`
+`;
+    // The blank line after src/a.ts should stop collecting files
+    const doc = parse(md);
+    const task = doc.sections.find((s) => s.id === '1.1');
+    expect(task?.relatedFiles).toContain('src/a.ts');
+  });
+
+  it('handles related files that end with a ** field header (inRelatedFiles reset branch)', () => {
+    const md = `# Test Plan
+
+## Milestone 1
+
+### Task 1.1
+
+**Related Files:**
+- \`src/b.ts\`
+**Verification:** \`npm run check\`
+`;
+    const doc = parse(md);
+    const task = doc.sections.find((s) => s.id === '1.1');
+    expect(task?.relatedFiles).toContain('src/b.ts');
+    expect(task?.verification).toBe('npm run check');
+  });
+
+  it('returns undefined verification when no Verification field', () => {
+    const md = `# Test Plan
+
+## Milestone 1
+
+### Task 1.1
+
+No verification here.
+`;
+    const doc = parse(md);
+    const task = doc.sections.find((s) => s.id === '1.1');
+    expect(task?.verification).toBeUndefined();
+  });
+
+  it('handles Depends On and Blocks being (none)', () => {
+    const md = `# Test Plan
+
+## Milestone 1
+
+### Task 1.1
+
+**Depends On:** (none)
+**Blocks:** (none)
+`;
+    const doc = parse(md);
+    const task = doc.sections.find((s) => s.id === '1.1');
+    expect(task?.dependencies?.dependsOn).toEqual([]);
+    expect(task?.dependencies?.blocks).toEqual([]);
+  });
+
+  it('handles unrecognized line inside related files section', () => {
+    // A non-file, non-empty, non-** line inside **Related Files:** block
+    const md = `# Test Plan
+
+## Milestone 1
+
+### Task 1.1
+
+**Related Files:**
+- \`src/a.ts\`
+Some unrecognized line here
+- \`src/b.ts\`
+
+**Verification:** \`npm test\`
+`;
+    const doc = parse(md);
+    const task = doc.sections.find((s) => s.id === '1.1');
+    // Only backtick-formatted file entries should be captured
+    expect(task?.relatedFiles).toContain('src/a.ts');
+    expect(task?.relatedFiles).toContain('src/b.ts');
+    expect(task?.relatedFiles).not.toContain('Some unrecognized line here');
+    expect(task?.relatedFiles).toHaveLength(2);
+  });
+});
+
+describe('parseBySeparator - edge cases', () => {
+  it('uses fallback heading when separator part has empty heading text', () => {
+    // After stripping # prefix, firstLine is empty string → fallback to "Section N"
+    const md = '#\n\nsome content\nmore lines\nthird line\n\n---\n\nsecond part here\nwith more content\nthird line';
+    const doc = parse(md, 'separator');
+    expect(doc.sections).toHaveLength(2);
+    // First part starts with bare '#' which becomes '' after stripping → "Section 1"
+    expect(doc.sections[0].heading).toBe('Section 1');
+  });
+});
+
+describe('splitByHeadings - edge cases', () => {
+  it('falls back to single section when ## headings have no text', () => {
+    // '## ' alone — h2Count=1 so splitLevel=2
+    // but headingRegex `^## (.+)` requires text after ##, never matches
+    // splitByHeadings returns [] → parseBySeparator → single section fallback
+    const md = '## \n\nsome content here';
+    const doc = parse(md);
+    expect(doc.sections).toHaveLength(1);
+    expect(doc.mode).toBe('generic');
+    expect(doc.sections[0].body).toContain('some content here');
+  });
+});

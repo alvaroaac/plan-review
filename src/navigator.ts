@@ -78,7 +78,7 @@ async function linearReview(
   }
 }
 
-function findSection(doc: PlanDocument, input: string): Section | undefined {
+export function findSection(doc: PlanDocument, input: string): Section | undefined {
   // Try exact ID match first
   const byId = doc.sections.find((s) => s.id === input);
   if (byId) return byId;
@@ -95,13 +95,13 @@ function findSection(doc: PlanDocument, input: string): Section | undefined {
   return undefined;
 }
 
-function getReviewableSections(doc: PlanDocument): Section[] {
+export function getReviewableSections(doc: PlanDocument): Section[] {
   return doc.sections.filter((s) =>
     doc.mode === 'plan' ? s.level === 3 : s.level >= 2,
   );
 }
 
-function printSummary(doc: PlanDocument): void {
+export function printSummary(doc: PlanDocument): void {
   const reviewable = getReviewableSections(doc);
   const commentedIds = new Set(doc.comments.map((c) => c.sectionId));
 

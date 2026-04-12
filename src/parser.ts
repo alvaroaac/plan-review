@@ -199,20 +199,21 @@ function parsePlan(
         level: 2,
         body,
       });
-    } else if (currentLevel === 3) {
-      taskIndex++;
-      const id = `${milestoneIndex}.${taskIndex}`;
-      sections.push({
-        id,
-        heading: currentHeading,
-        level: 3,
-        body,
-        parent: currentMilestoneId,
-        dependencies: extractDependencies(body),
-        relatedFiles: extractRelatedFiles(body),
-        verification: extractVerification(body),
-      });
+      return;
     }
+
+    taskIndex++;
+    const id = `${milestoneIndex}.${taskIndex}`;
+    sections.push({
+      id,
+      heading: currentHeading,
+      level: 3,
+      body,
+      parent: currentMilestoneId,
+      dependencies: extractDependencies(body),
+      relatedFiles: extractRelatedFiles(body),
+      verification: extractVerification(body),
+    });
   }
 
   for (const line of lines) {
