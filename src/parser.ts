@@ -169,11 +169,122 @@ function parseBySeparator(
   };
 }
 
-// Stub for plan parsing — implemented in Task 4
 function parsePlan(
   input: string,
   title: string,
   metadata: Record<string, string>,
 ): PlanDocument {
-  return parseGeneric(input, title, metadata);
+  const lines = input.split('\n');
+  const sections: Section[] = [];
+
+  let milestoneIndex = 0;
+  let taskIndex = 0;
+  let currentMilestoneId = '';
+  let currentHeading = '';
+  let currentLevel = 0;
+  let currentBody: string[] = [];
+
+  function flushSection() {
+    if (!currentHeading) return;
+
+    const body = currentBody.join('\n').trim();
+
+    if (currentLevel === 2) {
+      milestoneIndex++;
+      taskIndex = 0;
+      currentMilestoneId = `milestone-${milestoneIndex}`;
+      sections.push({
+        id: currentMilestoneId,
+        heading: currentHeading,
+        level: 2,
+        body,
+      });
+    } else if (currentLevel === 3) {
+      taskIndex++;
+      const id = `${milestoneIndex}.${taskIndex}`;
+      sections.push({
+        id,
+        heading: currentHeading,
+        level: 3,
+        body,
+        parent: currentMilestoneId,
+        dependencies: extractDependencies(body),
+        relatedFiles: extractRelatedFiles(body),
+        verification: extractVerification(body),
+      });
+    }
+  }
+
+  for (const line of lines) {
+    const h2Match = line.match(/^## (.+)/);
+    const h3Match = line.match(/^### (.+)/);
+
+    if (h2Match) {
+      flushSection();
+      currentHeading = h2Match[1].trim();
+      currentLevel = 2;
+      currentBody = [];
+    } else if (h3Match) {
+      flushSection();
+      currentHeading = h3Match[1].trim();
+      currentLevel = 3;
+      currentBody = [];
+    } else {
+      currentBody.push(line);
+    }
+  }
+  flushSection();
+
+  return {
+    title,
+    metadata,
+    mode: 'plan',
+    sections,
+    comments: [],
+  };
+}
+
+function extractDependencies(body: string): { dependsOn: string[]; blocks: string[] } {
+  const dependsMatch = body.match(/\*\*Depends On:\*\*\s*(.+)/);
+  const blocksMatch = body.match(/\*\*Blocks:\*\*\s*(.+)/);
+
+  const parseList = (raw: string): string[] => {
+    const trimmed = raw.trim();
+    if (trimmed === '(none)' || trimmed === '') return [];
+    return trimmed.split(/,\s*/).map((s) => s.trim());
+  };
+
+  return {
+    dependsOn: dependsMatch ? parseList(dependsMatch[1]) : [],
+    blocks: blocksMatch ? parseList(blocksMatch[1]) : [],
+  };
+}
+
+function extractRelatedFiles(body: string): string[] {
+  const files: string[] = [];
+  const lines = body.split('\n');
+  let inRelatedFiles = false;
+
+  for (const line of lines) {
+    if (/\*\*Related Files:\*\*/.test(line)) {
+      inRelatedFiles = true;
+      continue;
+    }
+    if (inRelatedFiles) {
+      const fileMatch = line.match(/^- `(.+)`(.*)$/);
+      if (fileMatch) {
+        const suffix = fileMatch[2].trim();
+        files.push(suffix ? `${fileMatch[1]} ${suffix}` : fileMatch[1]);
+      } else if (line.trim() === '' || /^\*\*/.test(line.trim())) {
+        inRelatedFiles = false;
+      }
+    }
+  }
+
+  return files;
+}
+
+function extractVerification(body: string): string | undefined {
+  const match = body.match(/\*\*Verification:\*\*\s*`(.+?)`/);
+  return match ? match[1] : undefined;
 }

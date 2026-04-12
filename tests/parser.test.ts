@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parse } from '../src/parser.js';
+import { parse, isPlanDocument } from '../src/parser.js';
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -66,5 +66,96 @@ describe('parse - generic mode', () => {
     expect(doc.mode).toBe('generic');
     expect(doc.title).toBe('Design Document');
     expect(doc.sections.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
+describe('parse - plan mode', () => {
+  it('detects plan mode from fixture', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    expect(doc.mode).toBe('plan');
+  });
+
+  it('extracts milestones as parent sections', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    const milestones = doc.sections.filter((s) => s.level === 2);
+    expect(milestones).toHaveLength(2);
+    expect(milestones[0].heading).toContain('Foundation');
+    expect(milestones[1].heading).toContain('Core Logic');
+  });
+
+  it('extracts tasks with hierarchical IDs', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    const tasks = doc.sections.filter((s) => s.level === 3);
+    expect(tasks).toHaveLength(4);
+    expect(tasks[0].id).toBe('1.1');
+    expect(tasks[1].id).toBe('1.2');
+    expect(tasks[2].id).toBe('2.1');
+    expect(tasks[3].id).toBe('2.2');
+  });
+
+  it('extracts dependencies', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    const task11 = doc.sections.find((s) => s.id === '1.1');
+    expect(task11?.dependencies?.blocks).toEqual(['1.2', '2.1']);
+    expect(task11?.dependencies?.dependsOn).toEqual([]);
+
+    const task21 = doc.sections.find((s) => s.id === '2.1');
+    expect(task21?.dependencies?.dependsOn).toEqual(['1.1', '1.2']);
+    expect(task21?.dependencies?.blocks).toEqual(['2.2']);
+  });
+
+  it('extracts related files', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    const task21 = doc.sections.find((s) => s.id === '2.1');
+    expect(task21?.relatedFiles).toEqual([
+      'src/processor.ts (new)',
+      'src/processor.test.ts (new)',
+    ]);
+  });
+
+  it('extracts verification command', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    const task11 = doc.sections.find((s) => s.id === '1.1');
+    expect(task11?.verification).toBe('npx prisma validate');
+  });
+
+  it('sets parent reference on tasks', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    const task11 = doc.sections.find((s) => s.id === '1.1');
+    expect(task11?.parent).toBe('milestone-1');
+  });
+
+  it('extracts document metadata', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    const doc = parse(md);
+
+    expect(doc.metadata['Created']).toBe('2026-04-01');
+    expect(doc.metadata['Source']).toBe('spec.md');
+  });
+});
+
+describe('isPlanDocument', () => {
+  it('returns true for plan-style markdown', () => {
+    const md = readFileSync(join(fixturesDir, 'plan-document.md'), 'utf-8');
+    expect(isPlanDocument(md)).toBe(true);
+  });
+
+  it('returns false for generic markdown', () => {
+    const md = readFileSync(join(fixturesDir, 'generic-document.md'), 'utf-8');
+    expect(isPlanDocument(md)).toBe(false);
   });
 });
