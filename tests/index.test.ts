@@ -23,6 +23,15 @@ describe('index.ts CLI', () => {
     expect(result.stdout + result.stderr).toContain('plan-review');
   });
 
+  it('--help shows -o option without a default value', () => {
+    const result = runCli(['--help']);
+    expect(result.status).toBe(0);
+    const helpText = result.stdout + result.stderr;
+    expect(helpText).toContain('-o, --output <target>');
+    // No "(default: stdout)" should appear since we removed the default
+    expect(helpText).not.toContain('default: stdout');
+  });
+
   it('--version outputs 0.1.0', () => {
     const result = runCli(['--version']);
     expect(result.status).toBe(0);
