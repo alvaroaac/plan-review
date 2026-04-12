@@ -331,3 +331,27 @@ describe('splitByHeadings - edge cases', () => {
     expect(doc.sections[0].body).toContain('some content here');
   });
 });
+
+describe('fenced code block handling', () => {
+  it('ignores ## headings inside fenced code blocks', () => {
+    const md = '# Title\n\n## Real Section\n\nContent\n\n```markdown\n## Fake Section\n\nFake content\n```\n\n## Another Real\n\nMore content';
+    const doc = parse(md);
+    const headings = doc.sections.map(s => s.heading);
+    expect(headings).toContain('Real Section');
+    expect(headings).toContain('Another Real');
+    expect(headings).not.toContain('Fake Section');
+  });
+
+  it('ignores ### task headings inside fenced code blocks in plan mode', () => {
+    const md = `# Plan\n\n## Milestone 1\n\nSetup\n\n### Task 1.1: Real task\n\n**Summary:** Do the thing\n\n**Depends On:** (none)\n**Blocks:** (none)\n\n\`\`\`markdown\n### Task 1.2: Fake task\n\n**Depends On:** 1.1\n**Blocks:** (none)\n\`\`\``;
+    const doc = parse(md);
+    const tasks = doc.sections.filter(s => s.level === 3);
+    expect(tasks).toHaveLength(1);
+    expect(tasks[0].heading).toContain('Real task');
+  });
+
+  it('does not detect plan mode from fields inside code fences', () => {
+    const md = '# Doc\n\n## Section A\n\nContent\n\n```\n## Milestone\n### Task\n**Depends On:** 1.1\n**Blocks:** 2.1\n```';
+    expect(isPlanDocument(md)).toBe(false);
+  });
+});

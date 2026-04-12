@@ -38,13 +38,14 @@ function extractMetadata(lines: string[]): Record<string, string> {
 }
 
 export function isPlanDocument(input: string): boolean {
+  const stripped = input.replace(/```[\s\S]*?```/g, '');
   const hasH2H3Hierarchy =
-    /^## /m.test(input) && /^### /m.test(input);
+    /^## /m.test(stripped) && /^### /m.test(stripped);
   const hasPlanFields =
-    /\*\*Depends On:\*\*/m.test(input) ||
-    /\*\*Blocks:\*\*/m.test(input) ||
-    /\*\*Verification:\*\*/m.test(input) ||
-    /\*\*Related Files:\*\*/m.test(input);
+    /\*\*Depends On:\*\*/m.test(stripped) ||
+    /\*\*Blocks:\*\*/m.test(stripped) ||
+    /\*\*Verification:\*\*/m.test(stripped) ||
+    /\*\*Related Files:\*\*/m.test(stripped);
 
   return hasH2H3Hierarchy && hasPlanFields;
 }
@@ -95,8 +96,24 @@ function splitByHeadings(input: string): RawSection[] {
   if (splitLevel === 0) return [];
 
   const headingRegex = new RegExp(`^${'#'.repeat(splitLevel)} (.+)`);
+  let inCodeBlock = false;
 
   for (const line of lines) {
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      if (currentHeading) {
+        currentBody.push(line);
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      if (currentHeading) {
+        currentBody.push(line);
+      }
+      continue;
+    }
+
     const match = line.match(headingRegex);
     if (match) {
       if (currentHeading) {
@@ -183,6 +200,7 @@ function parsePlan(
   let currentHeading = '';
   let currentLevel = 0;
   let currentBody: string[] = [];
+  let inCodeBlock = false;
 
   function flushSection() {
     if (!currentHeading) return;
@@ -217,6 +235,17 @@ function parsePlan(
   }
 
   for (const line of lines) {
+    if (line.startsWith('```')) {
+      inCodeBlock = !inCodeBlock;
+      currentBody.push(line);
+      continue;
+    }
+
+    if (inCodeBlock) {
+      currentBody.push(line);
+      continue;
+    }
+
     const h2Match = line.match(/^## (.+)/);
     const h3Match = line.match(/^### (.+)/);
 
