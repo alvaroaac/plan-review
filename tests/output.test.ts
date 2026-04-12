@@ -175,12 +175,35 @@ describe('writeOutput - claude', () => {
     execSync.mockImplementationOnce(() => undefined);
 
     const fakeStdin = { write: vi.fn(), end: vi.fn() };
-    spawnMock.mockReturnValueOnce({ stdin: fakeStdin });
+    spawnMock.mockReturnValueOnce({ stdin: fakeStdin, on: vi.fn() });
 
     writeOutput('send to claude', 'claude');
     expect(spawnMock).toHaveBeenCalledWith('claude', [], expect.objectContaining({ stdio: ['pipe', 'inherit', 'inherit'] }));
     expect(fakeStdin.write).toHaveBeenCalledWith('send to claude');
     expect(fakeStdin.end).toHaveBeenCalled();
+  });
+
+  it('falls back to stdout when claude spawn emits error', async () => {
+    const execSync = await getExecSync();
+    const spawnMock = await getSpawn();
+
+    // Make `which claude` succeed
+    execSync.mockImplementationOnce(() => undefined);
+
+    // Create a mock child that emits error
+    const fakeStdin = { write: vi.fn(), end: vi.fn() };
+    const errorHandlers: Record<string, Function> = {};
+    const fakeChild = {
+      stdin: fakeStdin,
+      on: vi.fn((event: string, handler: Function) => { errorHandlers[event] = handler; }),
+    };
+    spawnMock.mockReturnValueOnce(fakeChild);
+
+    writeOutput('error content', 'claude');
+
+    // Trigger the error handler
+    errorHandlers['error'](new Error('spawn failed'));
+    expect(stdoutWriteSpy).toHaveBeenCalledWith('error content\n');
   });
 });
 

@@ -69,6 +69,10 @@ function sendToClaude(content: string): void {
   });
   child.stdin.write(content);
   child.stdin.end();
+  child.on('error', (err) => {
+    console.error(chalk.yellow(`Failed to pipe to claude: ${err.message}. Falling back to stdout.`));
+    process.stdout.write(content + '\n');
+  });
 }
 
 export function getClipboardCommand(platform: string): string | null {
