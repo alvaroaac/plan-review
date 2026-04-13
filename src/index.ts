@@ -9,7 +9,9 @@ import { parse } from './parser.js';
 import { navigate } from './navigator.js';
 import { formatReview } from './formatter.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
-import type { OutputTarget } from './types.js';
+import type { OutputTarget, ReviewComment } from './types.js';
+import { HttpTransport } from './transport.js';
+import { execSync as execSyncCmd } from 'node:child_process';
 
 const program = new Command();
 
@@ -21,7 +23,8 @@ program
   .option('-o, --output <target>', 'Output target: stdout, clipboard, file, claude')
   .option('--output-file <path>', 'Custom output file path (with --output file)')
   .option('--split-by <strategy>', 'Force split strategy: heading, separator')
-  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string }) => {
+  .option('--browser', 'Open browser-based review UI')
+  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean }) => {
     try {
       await run(file, opts);
     } catch (err) {
@@ -36,7 +39,7 @@ program.parse();
 
 async function run(
   file: string | undefined,
-  opts: { output?: string; outputFile?: string; splitBy?: string },
+  opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean },
 ): Promise<void> {
   // Validate explicit output target early, before the review starts
   const validTargets: OutputTarget[] = ['stdout', 'clipboard', 'file', 'claude'];
@@ -69,9 +72,31 @@ async function run(
 
   console.error(chalk.dim(`Detected mode: ${doc.mode} | ${doc.sections.length} sections`));
 
-  // Navigate (interactive review)
-  // When input came from stdin, navigator opens /dev/tty for prompts
-  const reviewed = await navigate(doc, inputFromStdin);
+  // Navigate (interactive review or browser)
+  let reviewed;
+  if (opts.browser) {
+    const transport = new HttpTransport();
+    transport.sendDocument(doc);
+
+    const reviewPromise = new Promise<ReviewComment[]>((resolve) => {
+      transport.onReviewSubmit(resolve);
+    });
+
+    const { url } = await transport.start(0);
+    process.stderr.write(`Review server running at ${url}\n`);
+
+    try {
+      execSyncCmd(`open ${url}`, { stdio: 'ignore' });
+    } catch {
+      process.stderr.write(`Open ${url} in your browser\n`);
+    }
+
+    doc.comments = await reviewPromise;
+    await transport.stop();
+    reviewed = doc;
+  } else {
+    reviewed = await navigate(doc, inputFromStdin);
+  }
 
   // Determine output target after review is complete
   let outputTarget: OutputTarget;
