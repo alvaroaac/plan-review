@@ -7,12 +7,16 @@
   "bin": {
     "plan-review": "dist/index.js"
   },
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "markdown",
