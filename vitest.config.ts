@@ -3,12 +3,12 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'],
-    environmentMatchGlobs: [
-      ['tests/browser/**', 'jsdom'],
-    ],
+    globals: true,
   },
-  esbuild: {
-    jsx: 'automatic',
-    jsxImportSource: 'preact',
+  oxc: {
+    jsx: {
+      runtime: 'automatic',
+      importSource: 'preact',
+    },
   },
 });
