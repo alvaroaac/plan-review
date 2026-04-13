@@ -21,6 +21,12 @@ export interface ReviewComment {
   sectionId: string;
   text: string;
   timestamp: Date;
+  anchor?: {
+    type: 'section' | 'range';
+    startOffset?: number;
+    endOffset?: number;
+    selectedText?: string;
+  };
 }
 
 export type OutputTarget = 'stdout' | 'clipboard' | 'file' | 'claude';
