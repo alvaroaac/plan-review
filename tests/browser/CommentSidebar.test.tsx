@@ -64,7 +64,7 @@ describe('CommentSidebar', () => {
     const textarea = screen.getByPlaceholderText('Add a comment...');
     fireEvent.input(textarea, { target: { value: 'New comment' } });
     fireEvent.click(screen.getByText('Add'));
-    expect(onAdd).toHaveBeenCalledWith('1.1', 'New comment');
+    expect(onAdd).toHaveBeenCalledWith('1.1', 'New comment', undefined);
   });
 
   it('calls onCancelComment when Cancel clicked', () => {

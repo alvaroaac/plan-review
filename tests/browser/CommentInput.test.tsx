@@ -19,7 +19,7 @@ describe('CommentInput', () => {
     fireEvent.input(textarea, { target: { value: 'Looks good' } });
     fireEvent.click(screen.getByText('Add'));
 
-    expect(onSubmit).toHaveBeenCalledWith('1.1', 'Looks good');
+    expect(onSubmit).toHaveBeenCalledWith('1.1', 'Looks good', undefined);
   });
 
   it('calls onCancel when Cancel clicked', () => {

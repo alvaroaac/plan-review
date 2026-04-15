@@ -1,5 +1,5 @@
 import { Marked } from 'marked';
-import type { Tokens, Renderer } from 'marked';
+import type { Tokens } from 'marked';
 
 export interface LineBlock {
   index: number;     // 0-based, sequential within the section
@@ -18,7 +18,8 @@ function stripHtml(html: string): string {
 const _plainMarked = new Marked();
 
 // Internal type for the renderer context that marked injects via use().
-interface RendererThis extends Renderer {
+// Does NOT extend Renderer — that would conflict with _Renderer's stricter parser type.
+interface RendererThis {
   parser: {
     parse(tokens: Tokens.Generic[], top?: boolean): string;
     parseInline(tokens: Tokens.Generic[]): string;
