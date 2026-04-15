@@ -1,4 +1,12 @@
-import type { PlanDocument } from './types.js';
+import type { PlanDocument, ReviewComment } from './types.js';
+
+function sortComments(comments: ReviewComment[]): ReviewComment[] {
+  return [...comments].sort((a, b) => {
+    const aLine = a.anchor?.startLine ?? Infinity;
+    const bLine = b.anchor?.startLine ?? Infinity;
+    return aLine - bLine;
+  });
+}
 
 export function formatReview(doc: PlanDocument): string {
   const commentedSectionIds = new Set(doc.comments.map((c) => c.sectionId));
@@ -21,7 +29,9 @@ export function formatReview(doc: PlanDocument): string {
   parts.push('---');
 
   for (const section of commentedSections) {
-    const sectionComments = doc.comments.filter((c) => c.sectionId === section.id);
+    const sectionComments = sortComments(
+      doc.comments.filter((c) => c.sectionId === section.id),
+    );
 
     parts.push('');
     parts.push(`## Section ${section.id}: ${section.heading}`);
@@ -38,21 +48,23 @@ export function formatReview(doc: PlanDocument): string {
       parts.push('');
     }
 
-    parts.push('### Original Content');
-    const blockquoted = section.body
-      .split('\n')
-      .map((line) => `> ${line}`)
-      .join('\n');
-    parts.push(blockquoted);
-    parts.push('');
-
     for (const comment of sectionComments) {
-      parts.push('### Reviewer Comment');
-      parts.push(comment.text);
+      if (comment.anchor) {
+        parts.push('### Reviewer Comment');
+        parts.push('');
+        for (const line of comment.anchor.lineTexts) {
+          parts.push(`> ${line}`);
+        }
+        parts.push('');
+        parts.push(comment.text);
+      } else {
+        parts.push('### Reviewer Comment (entire section)');
+        parts.push('');
+        parts.push(comment.text);
+      }
       parts.push('');
+      parts.push('---');
     }
-
-    parts.push('---');
   }
 
   return parts.join('\n');

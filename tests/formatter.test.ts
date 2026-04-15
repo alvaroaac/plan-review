@@ -52,13 +52,60 @@ describe('formatReview', () => {
     expect(output).not.toContain('Section 1.2');
   });
 
-  it('blockquotes original content', () => {
+  it('does not include ### Original Content header', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.1', text: 'Looks good', timestamp: new Date() }],
     });
     const output = formatReview(doc);
+    expect(output).not.toContain('### Original Content');
+  });
 
-    expect(output).toContain('> Add tables for feature X.');
+  it('labels section-level comments with (entire section)', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.1', text: 'Section comment', timestamp: new Date() }],
+    });
+    const output = formatReview(doc);
+    expect(output).toContain('### Reviewer Comment (entire section)');
+    expect(output).not.toContain('### Reviewer Comment\n');
+  });
+
+  it('blockquotes lineTexts for line-anchored comments', () => {
+    const doc = makeDoc({
+      comments: [{
+        sectionId: '1.1',
+        text: 'Check this line',
+        timestamp: new Date(),
+        anchor: {
+          type: 'lines',
+          startLine: 0,
+          endLine: 1,
+          lineTexts: ['First selected line.', 'Second selected line.'],
+        },
+      }],
+    });
+    const output = formatReview(doc);
+    expect(output).toContain('> First selected line.');
+    expect(output).toContain('> Second selected line.');
+    expect(output).toContain('Check this line');
+    expect(output).not.toContain('### Reviewer Comment (entire section)');
+  });
+
+  it('outputs anchored comments before section-level within the same section', () => {
+    const doc = makeDoc({
+      comments: [
+        { sectionId: '1.1', text: 'Section-level comment', timestamp: new Date() },
+        {
+          sectionId: '1.1',
+          text: 'Line comment',
+          timestamp: new Date(),
+          anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['A line.'] },
+        },
+      ],
+    });
+    const output = formatReview(doc);
+    const anchoredPos = output.indexOf('Line comment');
+    const sectionPos = output.indexOf('Section-level comment');
+    expect(anchoredPos).toBeLessThan(sectionPos);
   });
 
   it('includes reviewer comment text', () => {
