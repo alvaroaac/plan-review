@@ -102,6 +102,10 @@ body {
 }
 
 .section-view.active { border-color: var(--accent); }
+.section-view.being-commented {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 4%, transparent);
+}
 .section-view h2 { font-size: 16px; margin-bottom: 12px; }
 
 .section-meta {

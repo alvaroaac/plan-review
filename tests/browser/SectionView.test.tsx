@@ -30,6 +30,7 @@ const genericSection: Section = {
 };
 
 const defaultProps = {
+  isBeingCommented: false,
   commentedLines: new Set<number>(),
   onLineComment: vi.fn(),
   onSectionComment: vi.fn(),
@@ -89,6 +90,7 @@ describe('SectionView', () => {
         section={planTask}
         mode="plan"
         isActive={false}
+        isBeingCommented={false}
         commentedLines={new Set()}
         onLineComment={vi.fn()}
         onSectionComment={onSectionComment}
@@ -114,6 +116,7 @@ describe('SectionView', () => {
         section={planTask}
         mode="plan"
         isActive={false}
+        isBeingCommented={false}
         commentedLines={new Set()}
         onLineComment={onLineComment}
         onSectionComment={vi.fn()}
@@ -125,6 +128,20 @@ describe('SectionView', () => {
       fireEvent.click(gutters[0], { shiftKey: true });
       expect(onLineComment).toHaveBeenCalledOnce();
     }
+  });
+
+  it('applies being-commented class when isBeingCommented', () => {
+    const { container } = render(
+      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} isBeingCommented={true} />
+    );
+    expect(container.querySelector('.section-view.being-commented')).toBeTruthy();
+  });
+
+  it('does not apply being-commented class when false', () => {
+    const { container } = render(
+      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />
+    );
+    expect(container.querySelector('.section-view.being-commented')).toBeNull();
   });
 
   it('applies active class when isActive', () => {

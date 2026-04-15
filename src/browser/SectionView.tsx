@@ -7,13 +7,14 @@ interface SectionViewProps {
   section: Section;
   mode: 'plan' | 'generic';
   isActive: boolean;
+  isBeingCommented: boolean; // true while a comment is being composed for this section
   commentedLines: Set<number>; // line indices that already have a comment
   onLineComment: (sectionId: string, start: number, end: number, lineTexts: string[]) => void;
   onSectionComment: (sectionId: string) => void;
 }
 
 export function SectionView({
-  section, mode, isActive, commentedLines,
+  section, mode, isActive, isBeingCommented, commentedLines,
   onLineComment, onSectionComment,
 }: SectionViewProps) {
   const isReviewable = mode === 'plan' ? section.level === 3 : section.level >= 2;
@@ -41,7 +42,7 @@ export function SectionView({
   return (
     <div
       id={`section-${section.id}`}
-      class={`section-view${isActive ? ' active' : ''}`}
+      class={`section-view${isActive ? ' active' : ''}${isBeingCommented ? ' being-commented' : ''}`}
     >
       <h2>{section.heading}</h2>
 
