@@ -93,7 +93,11 @@ export function App() {
               section={section}
               mode={doc.mode}
               isActive={activeSection === section.id}
-              isBeingCommented={commentingTarget?.sectionId === section.id}
+              pendingAnchor={
+                commentingTarget?.sectionId === section.id
+                  ? (commentingTarget.anchor ?? null)
+                  : undefined
+              }
               commentedLines={commentedLinesBySection.get(section.id) ?? new Set()}
               onLineComment={(sectionId, start, end, lineTexts) =>
                 setCommentingTarget({

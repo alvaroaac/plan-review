@@ -268,6 +268,15 @@ body {
   color: #facc15;
 }
 
+.line-block.pending-comment {
+  background: color-mix(in srgb, #fde047 8%, transparent);
+  border-left-color: #fde047;
+}
+
+.line-block.pending-comment .line-gutter {
+  color: #fde047;
+}
+
 .line-inner {
   flex: 1;
   min-width: 0;

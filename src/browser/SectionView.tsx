@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'preact/hooks';
-import type { Section } from '../types.js';
+import type { Section, LineAnchor } from '../types.js';
 import { renderToLineBlocks } from './lineRenderer.js';
 import { LineBlock } from './LineBlock.js';
 
@@ -7,14 +7,15 @@ interface SectionViewProps {
   section: Section;
   mode: 'plan' | 'generic';
   isActive: boolean;
-  isBeingCommented: boolean; // true while a comment is being composed for this section
+  // null = section-level comment being composed; LineAnchor = line-level; undefined = not being commented
+  pendingAnchor?: LineAnchor | null;
   commentedLines: Set<number>; // line indices that already have a comment
   onLineComment: (sectionId: string, start: number, end: number, lineTexts: string[]) => void;
   onSectionComment: (sectionId: string) => void;
 }
 
 export function SectionView({
-  section, mode, isActive, isBeingCommented, commentedLines,
+  section, mode, isActive, pendingAnchor, commentedLines,
   onLineComment, onSectionComment,
 }: SectionViewProps) {
   const isReviewable = mode === 'plan' ? section.level === 3 : section.level >= 2;
@@ -42,7 +43,7 @@ export function SectionView({
   return (
     <div
       id={`section-${section.id}`}
-      class={`section-view${isActive ? ' active' : ''}${isBeingCommented ? ' being-commented' : ''}`}
+      class={`section-view${isActive ? ' active' : ''}${pendingAnchor === null ? ' being-commented' : ''}`}
     >
       <h2>{section.heading}</h2>
 
@@ -72,6 +73,9 @@ export function SectionView({
       <div class="section-body">
         {blocks.map((block) => {
           const isStart = rangeStart !== null && block.index === rangeStart;
+          const isPending = pendingAnchor != null &&
+            block.index >= pendingAnchor.startLine &&
+            block.index <= pendingAnchor.endLine;
           return (
             <LineBlock
               key={block.index}
@@ -80,6 +84,7 @@ export function SectionView({
               isRangeStart={isStart}
               isRangeEnd={isStart}
               hasComment={commentedLines.has(block.index)}
+              isPendingComment={isPending}
               isHovered={hoveredLine === block.index}
               onGutterClick={handleGutterClick}
               onMouseEnter={setHoveredLine}

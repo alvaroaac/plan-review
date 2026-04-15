@@ -12,6 +12,7 @@ const defaultProps = {
   isRangeStart: false,
   isRangeEnd: false,
   hasComment: false,
+  isPendingComment: false,
   isHovered: false,
   onGutterClick: vi.fn(),
   onMouseEnter: vi.fn(),
@@ -106,6 +107,26 @@ describe('LineBlock', () => {
     it('no extra classes in default state', () => {
       const { container } = render(<LineBlock {...defaultProps} />);
       expect(container.querySelector('.line-block')?.className).toBe('line-block');
+    });
+
+    it('adds pending-comment class when isPendingComment and not in range or has-comment', () => {
+      const { container } = render(<LineBlock {...defaultProps} isPendingComment={true} />);
+      expect(container.querySelector('.line-block')?.classList.contains('pending-comment')).toBe(true);
+    });
+
+    it('does not add pending-comment when also in range', () => {
+      const { container } = render(
+        <LineBlock {...defaultProps} isPendingComment={true} isInRange={true} />
+      );
+      expect(container.querySelector('.line-block')?.classList.contains('pending-comment')).toBe(false);
+    });
+
+    it('does not add pending-comment when also has-comment (committed takes priority)', () => {
+      const { container } = render(
+        <LineBlock {...defaultProps} isPendingComment={true} hasComment={true} />
+      );
+      expect(container.querySelector('.line-block')?.classList.contains('pending-comment')).toBe(false);
+      expect(container.querySelector('.line-block')?.classList.contains('has-comment')).toBe(true);
     });
   });
 

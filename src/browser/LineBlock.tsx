@@ -2,10 +2,11 @@ import type { LineBlock as LineBlockData } from './lineRenderer.js';
 
 interface LineBlockProps {
   block: LineBlockData;
-  isInRange: boolean;    // true for ALL lines within the selection (start, middle, end)
-  isRangeStart: boolean; // gutter shows ▶; also true for single-line selections
-  isRangeEnd: boolean;   // gutter shows ◀; also true for single-line selections
+  isInRange: boolean;       // true for ALL lines within the selection (start, middle, end)
+  isRangeStart: boolean;    // gutter shows ▶; also true for single-line selections
+  isRangeEnd: boolean;      // gutter shows ◀; also true for single-line selections
   hasComment: boolean;
+  isPendingComment: boolean; // true while this line is part of a comment being composed
   isHovered: boolean;
   onGutterClick: (index: number, shiftKey: boolean) => void;
   onMouseEnter: (index: number) => void;
@@ -26,7 +27,7 @@ function gutterChar(
 }
 
 export function LineBlock({
-  block, isInRange, isRangeStart, isRangeEnd, hasComment, isHovered,
+  block, isInRange, isRangeStart, isRangeEnd, hasComment, isPendingComment, isHovered,
   onGutterClick, onMouseEnter, onMouseLeave,
 }: LineBlockProps) {
   const classes = [
@@ -34,6 +35,7 @@ export function LineBlock({
     isHovered && !isInRange ? 'hovered' : '',
     isInRange ? 'in-range' : '',
     hasComment && !isInRange ? 'has-comment' : '',
+    isPendingComment && !isInRange && !hasComment ? 'pending-comment' : '',
   ].filter(Boolean).join(' ');
 
   return (

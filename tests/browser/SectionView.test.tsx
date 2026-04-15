@@ -30,7 +30,6 @@ const genericSection: Section = {
 };
 
 const defaultProps = {
-  isBeingCommented: false,
   commentedLines: new Set<number>(),
   onLineComment: vi.fn(),
   onSectionComment: vi.fn(),
@@ -90,7 +89,6 @@ describe('SectionView', () => {
         section={planTask}
         mode="plan"
         isActive={false}
-        isBeingCommented={false}
         commentedLines={new Set()}
         onLineComment={vi.fn()}
         onSectionComment={onSectionComment}
@@ -116,7 +114,6 @@ describe('SectionView', () => {
         section={planTask}
         mode="plan"
         isActive={false}
-        isBeingCommented={false}
         commentedLines={new Set()}
         onLineComment={onLineComment}
         onSectionComment={vi.fn()}
@@ -130,17 +127,27 @@ describe('SectionView', () => {
     }
   });
 
-  it('applies being-commented class when isBeingCommented', () => {
+  it('applies being-commented class when pendingAnchor is null (section-level)', () => {
     const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} isBeingCommented={true} />
+      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} pendingAnchor={null} />
     );
     expect(container.querySelector('.section-view.being-commented')).toBeTruthy();
   });
 
-  it('does not apply being-commented class when false', () => {
+  it('does not apply being-commented class when pendingAnchor is undefined', () => {
     const { container } = render(
       <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />
     );
+    expect(container.querySelector('.section-view.being-commented')).toBeNull();
+  });
+
+  it('marks pending lines with pending-comment class when pendingAnchor is set', () => {
+    const anchor = { type: 'lines' as const, startLine: 0, endLine: 0, lineTexts: ['Bold text and inline code'] };
+    const { container } = render(
+      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} pendingAnchor={anchor} />
+    );
+    expect(container.querySelector('.line-block.pending-comment')).toBeTruthy();
+    // section box itself should NOT have being-commented class
     expect(container.querySelector('.section-view.being-commented')).toBeNull();
   });
 
