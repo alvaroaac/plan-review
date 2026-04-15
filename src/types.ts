@@ -17,16 +17,18 @@ export interface Section {
   verification?: string;
 }
 
+export interface LineAnchor {
+  type: 'lines';
+  startLine: number;   // 0-indexed within section body
+  endLine: number;     // inclusive
+  lineTexts: string[]; // plain text of each selected line (HTML stripped)
+}
+
 export interface ReviewComment {
   sectionId: string;
   text: string;
   timestamp: Date;
-  anchor?: {
-    type: 'section' | 'range';
-    startOffset?: number;
-    endOffset?: number;
-    selectedText?: string;
-  };
+  anchor?: LineAnchor; // absent = section-level comment
 }
 
 export type OutputTarget = 'stdout' | 'clipboard' | 'file' | 'claude';
