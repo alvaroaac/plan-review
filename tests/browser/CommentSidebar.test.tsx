@@ -13,7 +13,7 @@ describe('CommentSidebar', () => {
       <CommentSidebar
         comments={[]}
         sections={sections}
-        commentingSection={null}
+        commentingTarget={null}
         onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
       />
     );
@@ -29,7 +29,7 @@ describe('CommentSidebar', () => {
       <CommentSidebar
         comments={comments}
         sections={sections}
-        commentingSection={null}
+        commentingTarget={null}
         onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
       />
     );
@@ -39,16 +39,29 @@ describe('CommentSidebar', () => {
     expect(screen.getByText('Task 2')).toBeTruthy();
   });
 
-  it('shows CommentInput when commentingSection is set', () => {
+  it('shows CommentInput when commentingTarget is set', () => {
     render(
       <CommentSidebar
         comments={[]}
         sections={sections}
-        commentingSection="1.1"
+        commentingTarget={{ sectionId: '1.1' }}
         onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
       />
     );
     expect(screen.getByPlaceholderText('Add a comment...')).toBeTruthy();
+  });
+
+  it('shows section heading (without prefix) when commentingTarget is set', () => {
+    render(
+      <CommentSidebar
+        comments={[]}
+        sections={sections}
+        commentingTarget={{ sectionId: '1.1' }}
+        onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
+      />
+    );
+    // Header should be just the section title, no "Commenting on:" prefix
+    expect(screen.getByText('Task 1')).toBeTruthy();
   });
 
   it('calls onAdd when comment submitted', () => {
@@ -57,7 +70,7 @@ describe('CommentSidebar', () => {
       <CommentSidebar
         comments={[]}
         sections={sections}
-        commentingSection="1.1"
+        commentingTarget={{ sectionId: '1.1' }}
         onAdd={onAdd} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
       />
     );
@@ -73,7 +86,7 @@ describe('CommentSidebar', () => {
       <CommentSidebar
         comments={[]}
         sections={sections}
-        commentingSection="1.1"
+        commentingTarget={{ sectionId: '1.1' }}
         onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={onCancel}
       />
     );
@@ -91,7 +104,7 @@ describe('CommentSidebar', () => {
       <CommentSidebar
         comments={comments}
         sections={sections}
-        commentingSection={null}
+        commentingTarget={null}
         onAdd={vi.fn()} onEdit={vi.fn()} onDelete={onDelete} onCancelComment={vi.fn()}
       />
     );
@@ -108,10 +121,39 @@ describe('CommentSidebar', () => {
       <CommentSidebar
         comments={comments}
         sections={sections}
-        commentingSection={null}
+        commentingTarget={null}
         onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
       />
     );
     expect(screen.getByText('Comments (1)')).toBeTruthy();
+  });
+
+  it('sorts anchored comments by line number within a section', () => {
+    const comments: ReviewComment[] = [
+      {
+        sectionId: '1.1',
+        text: 'Later comment',
+        timestamp: new Date(),
+        anchor: { type: 'lines', startLine: 5, endLine: 5, lineTexts: ['later'] },
+      },
+      {
+        sectionId: '1.1',
+        text: 'Earlier comment',
+        timestamp: new Date(),
+        anchor: { type: 'lines', startLine: 1, endLine: 1, lineTexts: ['earlier'] },
+      },
+    ];
+    render(
+      <CommentSidebar
+        comments={comments}
+        sections={sections}
+        commentingTarget={null}
+        onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
+      />
+    );
+    const cards = screen.getAllByText(/comment/i);
+    // "Earlier comment" should appear before "Later comment" in the DOM
+    const allText = document.body.textContent ?? '';
+    expect(allText.indexOf('Earlier comment')).toBeLessThan(allText.indexOf('Later comment'));
   });
 });

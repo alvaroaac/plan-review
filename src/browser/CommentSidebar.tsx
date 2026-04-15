@@ -1,26 +1,39 @@
-import type { ReviewComment, Section } from '../types.js';
+import type { ReviewComment, Section, LineAnchor } from '../types.js';
 import { CommentCard } from './CommentCard.js';
 import { CommentInput } from './CommentInput.js';
+
+interface CommentingTarget {
+  sectionId: string;
+  anchor?: LineAnchor;
+}
 
 interface CommentSidebarProps {
   comments: ReviewComment[];
   sections: Section[];
-  commentingSection: string | null;
-  onAdd: (sectionId: string, text: string) => void;
+  commentingTarget: CommentingTarget | null;
+  onAdd: (sectionId: string, text: string, anchor?: LineAnchor) => void;
   onEdit: (index: number, text: string) => void;
   onDelete: (index: number) => void;
   onCancelComment: () => void;
 }
 
+function sortComments(items: { comment: ReviewComment; index: number }[]) {
+  return [...items].sort((a, b) => {
+    const aLine = a.comment.anchor?.startLine ?? Infinity;
+    const bLine = b.comment.anchor?.startLine ?? Infinity;
+    return aLine - bLine;
+  });
+}
+
 export function CommentSidebar({
-  comments, sections, commentingSection, onAdd, onEdit, onDelete, onCancelComment,
+  comments, sections, commentingTarget, onAdd, onEdit, onDelete, onCancelComment,
 }: CommentSidebarProps) {
   const getSectionHeading = (sectionId: string) =>
     sections.find((s) => s.id === sectionId)?.heading ?? sectionId;
 
   const grouped = new Map<string, { comment: ReviewComment; index: number }[]>();
   comments.forEach((comment, index) => {
-    const group = grouped.get(comment.sectionId) || [];
+    const group = grouped.get(comment.sectionId) ?? [];
     group.push({ comment, index });
     grouped.set(comment.sectionId, group);
   });
@@ -29,11 +42,12 @@ export function CommentSidebar({
     <aside class="comment-sidebar">
       <h2>Comments ({comments.length})</h2>
 
-      {commentingSection && (
+      {commentingTarget && (
         <div class="commenting-for">
-          <h3>Commenting on: {getSectionHeading(commentingSection)}</h3>
+          <h3>{getSectionHeading(commentingTarget.sectionId)}</h3>
           <CommentInput
-            sectionId={commentingSection}
+            sectionId={commentingTarget.sectionId}
+            anchor={commentingTarget.anchor}
             onSubmit={onAdd}
             onCancel={onCancelComment}
           />
@@ -43,11 +57,10 @@ export function CommentSidebar({
       {Array.from(grouped.entries()).map(([sectionId, items]) => (
         <div key={sectionId} class="comment-group">
           <h3>{getSectionHeading(sectionId)}</h3>
-          {items.map(({ comment, index }) => (
+          {sortComments(items).map(({ comment, index }) => (
             <CommentCard
               key={index}
               comment={comment}
-              sectionHeading=""
               onEdit={(text) => onEdit(index, text)}
               onDelete={() => onDelete(index)}
             />
@@ -55,8 +68,8 @@ export function CommentSidebar({
         </div>
       ))}
 
-      {comments.length === 0 && !commentingSection && (
-        <p class="no-comments">No comments yet. Click "Add Comment" on a section to start.</p>
+      {comments.length === 0 && !commentingTarget && (
+        <p class="no-comments">No comments yet. Hover a line and click + to start.</p>
       )}
     </aside>
   );
