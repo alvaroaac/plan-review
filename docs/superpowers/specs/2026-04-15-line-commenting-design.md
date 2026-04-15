@@ -84,9 +84,9 @@ Single Preact component for one line. Renders gutter button + content side by si
 ```ts
 interface LineBlockProps {
   block: LineBlock;
-  isInRange: boolean;
-  isRangeStart: boolean;
-  isRangeEnd: boolean;
+  isInRange: boolean;    // true for ALL lines within the selection (start, middle, end)
+  isRangeStart: boolean; // controls gutter character: ▶ (also true on single-line selections)
+  isRangeEnd: boolean;   // controls gutter character: ◀ (also true on single-line selections)
   hasComment: boolean;
   isHovered: boolean;
   onGutterClick: (index: number, shiftKey: boolean) => void;
@@ -94,6 +94,8 @@ interface LineBlockProps {
   onMouseLeave: () => void;
 }
 ```
+
+`isInRange` drives background + border. `isRangeStart`/`isRangeEnd` drive only the gutter character. For middle lines: `isInRange=true`, both start/end false → gutter shows `—`. For a single-line selection: all three are true on the same line.
 
 **Visual states (using existing CSS variables):**
 
@@ -133,7 +135,7 @@ function handleGutterClick(index: number, shiftKey: boolean) {
 }
 ```
 
-Single-line comment: user shift-clicks the same line they already clicked (start === end). Section-level: triggered by the footer link, passes sentinel values.
+Single-line comment: user shift-clicks the same line they already clicked (start === end).
 
 ### Changes to `App.tsx`
 
@@ -194,11 +196,13 @@ Multiple comments in the same section each get their own `### Reviewer Comment` 
 
 1. User navigates to a section in the center panel
 2. User hovers a line → gutter `+` brightens
-3. User clicks `+` → line highlighted as range start (`▶`), sidebar shows "shift-click another line to extend, or shift-click this line for single-line comment"
-4. User shift-clicks another `+` (or same line) → range locked, `CommentInput` opens in sidebar with quoted lines
+3. User clicks `+` → line highlighted as range start (`▶`), sidebar shows hint: "Shift-click to select a range, or shift-click this line to comment on it alone"
+4. User shift-clicks another `+` (or the same line) → range is confirmed, `CommentInput` opens in sidebar with quoted lines; `rangeStart`/`rangeEnd` state is cleared at this point
 5. User types comment → clicks "Add" → comment saved, `CommentInput` closes, selected lines get `◆` gutter marker
-6. User clicks "Add comment to entire section" → `CommentInput` opens with no quote block, label "Commenting on entire section:"
-7. On "Submit Review" → all comments (line-anchored and section-level) POSTed to `/api/review`, formatter runs
+6. If user clicks "Cancel" on `CommentInput` → `rangeStart`/`rangeEnd` are reset, user can start a new selection
+7. If user clicks a new `+` before shift-clicking → previous `rangeStart` is replaced by the new click (no shift required to reset)
+8. User clicks "Add comment to entire section" → `CommentInput` opens with no quote block, label "Commenting on entire section:"
+9. On "Submit Review" → all comments (line-anchored and section-level) POSTed to `/api/review`, formatter runs
 
 ---
 
@@ -207,7 +211,7 @@ Multiple comments in the same section each get their own `### Reviewer Comment` 
 | Item | Priority | Notes |
 |---|---|---|
 | Click-and-hold drag selection | Medium | `mousedown`/`mousemove`/`mouseup` across `LineBlock` elements. Shift+click is MVP. |
-| Richer AI prompt for line-anchored comments | Medium | Current output is raw blockquotes. Future: include surrounding context lines, section metadata (depends-on, blocks), and structured framing so the AI understands the spatial location of the comment within the plan. |
+| Richer AI prompt for line-anchored comments | Medium | Current output duplicates line content as blockquotes. Future: reference `sectionId` + line range (`startLine`–`endLine`) and let the AI agent look up the content itself from the plan file — reducing prompt bloat and making comments more like structured annotations than embedded quotes. |
 | Highlight persistence across navigation | Low | ◆ markers only shown on active section. Future: show comment count per section in TOC for line-anchored comments. |
 
 ---
