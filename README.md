@@ -81,6 +81,23 @@ Any markdown with headings gets split into reviewable sections.
 - **file** — write to `<input>.review.md` or custom path
 - **claude** — pipe directly to Claude Code CLI
 
+## Saved sessions
+
+Review progress is auto-saved as you work. If you close the terminal or browser and re-run `plan-review` on the same file, you'll be prompted to resume where you left off.
+
+Sessions are stored in `~/.plan-review/sessions/`.
+
+### Commands
+
+```
+plan-review plan.md --fresh    Skip session resume, start clean
+plan-review sessions           List all saved sessions
+```
+
+### Manual cleanup
+
+Delete files in `~/.plan-review/sessions/` to remove old sessions.
+
 ## License
 
 MIT
