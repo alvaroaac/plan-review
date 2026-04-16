@@ -276,6 +276,28 @@ describe('navigate', () => {
     expect(result.comments[0].text).toBe('revisited 1.1');
   });
 
+  it('calls onCommentChange after a comment is added', async () => {
+    const rl = await getReadlineMock();
+    // all → comment on 1.1 → skip 1.2 → done
+    rl._reset(['all', 'a comment', '', 'done']);
+    const doc = makePlanDoc();
+    const onCommentChange = vi.fn();
+    await navigate(doc, false, onCommentChange);
+    expect(onCommentChange).toHaveBeenCalledTimes(1);
+    expect(doc.comments).toHaveLength(1);
+  });
+
+  it('does not call onCommentChange when sections are skipped', async () => {
+    const rl = await getReadlineMock();
+    // all → skip both → done
+    rl._reset(['all', '', '', 'done']);
+    const doc = makePlanDoc();
+    const onCommentChange = vi.fn();
+    await navigate(doc, false, onCommentChange);
+    expect(onCommentChange).not.toHaveBeenCalled();
+    expect(doc.comments).toHaveLength(0);
+  });
+
   it('opens /dev/tty when inputFromStdin is true', async () => {
     const rl = await getReadlineMock();
     rl._reset(['done']);

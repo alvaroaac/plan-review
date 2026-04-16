@@ -3,7 +3,7 @@ import chalk from 'chalk';
 import type { PlanDocument, ReviewComment, Section } from './types.js';
 import { renderSection, renderToc } from './renderer.js';
 
-export async function navigate(doc: PlanDocument, inputFromStdin: boolean = false): Promise<PlanDocument> {
+export async function navigate(doc: PlanDocument, inputFromStdin: boolean = false, onCommentChange?: () => void): Promise<PlanDocument> {
   // When input was read from stdin, stdin is exhausted.
   // Open /dev/tty directly for interactive prompts.
   const ttyInput = inputFromStdin
@@ -33,12 +33,12 @@ export async function navigate(doc: PlanDocument, inputFromStdin: boolean = fals
     if (input === 'done' || input === 'q') {
       running = false;
     } else if (input === 'all') {
-      await linearReview(doc, reviewableSections, ask);
+      await linearReview(doc, reviewableSections, ask, onCommentChange);
     } else {
       const section = findSection(doc, input);
       if (section) {
         const startIdx = reviewableSections.indexOf(section);
-        await linearReview(doc, reviewableSections.slice(startIdx), ask);
+        await linearReview(doc, reviewableSections.slice(startIdx), ask, onCommentChange);
       } else {
         console.error(chalk.red(`Section "${input}" not found. Try again.`));
       }
@@ -54,6 +54,7 @@ async function linearReview(
   doc: PlanDocument,
   sections: Section[],
   ask: (prompt: string) => Promise<string>,
+  onCommentChange?: () => void,
 ): Promise<void> {
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
@@ -74,6 +75,7 @@ async function linearReview(
         text: input,
         timestamp: new Date(),
       });
+      onCommentChange?.();
     }
   }
 }
