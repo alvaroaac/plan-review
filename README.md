@@ -31,6 +31,8 @@ plan-review path/to/plan.md --browser -o claude
 
 ## Browser mode (`--browser`)
 
+![Browser mode demo](examples/demo-browser.gif)
+
 The browser mode opens a three-panel review UI:
 
 ```
