@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'preact/hooks';
+import { useState, useEffect, useRef } from 'preact/hooks';
 import type { PlanDocument, ReviewComment, LineAnchor } from '../types.js';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
@@ -16,6 +16,23 @@ export function App() {
   const [commentingTarget, setCommentingTarget] = useState<CommentingTarget | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const initialLoadDone = useRef(false);
+
+  // Auto-save session on comment change
+  useEffect(() => {
+    if (!initialLoadDone.current) {
+      initialLoadDone.current = comments.length > 0 || doc !== null;
+      if (!initialLoadDone.current) return;
+    }
+    const timer = setTimeout(() => {
+      fetch('/api/session', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ comments, activeSection }),
+      }).catch(() => {}); // best-effort
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [comments, activeSection]);
 
   useEffect(() => {
     fetch('/api/doc')

@@ -247,4 +247,38 @@ describe('App', () => {
     // being-commented class removed
     expect(container.querySelector('.section-view.being-commented')).toBeNull();
   });
+
+  // ── Auto-save session on comment change ──────────────────────────────────
+
+  it('fires PUT /api/session after adding a comment', async () => {
+    const fetchCalls: Array<[string, RequestInit | undefined]> = [];
+    vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
+      fetchCalls.push([url, init]);
+      if (url === '/api/doc') {
+        return Promise.resolve({ json: () => Promise.resolve({ document: mockPlanDoc }) });
+      }
+      return Promise.resolve({ ok: true, json: () => Promise.resolve({ success: true }) });
+    }));
+
+    render(<App />);
+    await waitFor(() => screen.getByText('Test Plan'));
+
+    // Add a section-level comment
+    const links = screen.getAllByText('Add comment to entire section');
+    fireEvent.click(links[0]);
+    const textarea = screen.getByPlaceholderText('Add a comment...');
+    fireEvent.input(textarea, { target: { value: 'Test auto-save' } });
+    fireEvent.click(screen.getByText('Add'));
+    await waitFor(() => expect(screen.getByText('Test auto-save')).toBeTruthy());
+
+    // Wait for debounce (500ms) + margin
+    await new Promise(r => setTimeout(r, 600));
+
+    // Verify PUT /api/session was called
+    const sessionCall = fetchCalls.find(([url, init]) => url === '/api/session' && init?.method === 'PUT');
+    expect(sessionCall).toBeTruthy();
+    const body = JSON.parse(sessionCall![1]!.body as string);
+    expect(body.comments).toHaveLength(1);
+    expect(body.comments[0].text).toBe('Test auto-save');
+  });
 });
