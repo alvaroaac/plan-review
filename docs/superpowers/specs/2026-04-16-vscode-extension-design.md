@@ -27,7 +27,7 @@ plan-review/
 │   │       ├── parser.ts
 │   │       ├── session.ts
 │   │       ├── formatter.ts
-│   │       ├── transport.ts          # ReviewTransport interface
+│   │       ├── transport.ts          # ReviewClient interface
 │   │       └── types.ts
 │   ├── cli/                          # existing CLI (terminal + local HTTP server)
 │   │   └── src/
@@ -70,10 +70,12 @@ Each package owns its build. Root scripts orchestrate (`npm run build -ws`, `npm
 
 ### Transport abstraction
 
-Browser app is decoupled from the host via a single interface in `core`:
+**Note on naming.** The current `src/transport.ts` defines a `Transport` interface that is really a *server lifecycle* abstraction (`sendDocument`, `onReviewSubmit`, `start`, `stop`) — it shapes how the host serves the app, not how the app talks back. The existing Preact app still calls `fetch('/api/...')` directly inside `App.tsx`, so there is no client-side abstraction today.
+
+This design introduces a **new, client-side interface** named `ReviewClient` (to avoid colliding with the existing `Transport`). It lives in `core` and is consumed by the Preact app:
 
 ```ts
-export interface ReviewTransport {
+export interface ReviewClient {
   loadDocument(): Promise<{ document: PlanDocument }>;
   saveSession(state: {
     comments: ReviewComment[];
@@ -83,20 +85,22 @@ export interface ReviewTransport {
 }
 ```
 
-`browser-app` receives the transport at bootstrap:
+The existing `Transport` / `HttpTransport` (server lifecycle) stays on the CLI side and is not renamed.
+
+`browser-app` receives the client at bootstrap:
 
 ```tsx
 // packages/browser-app/src/index.tsx
-const transport: ReviewTransport = (window as any).__TRANSPORT__ ?? new HttpTransport();
-render(<App transport={transport} />, document.getElementById('app')!);
+const client: ReviewClient = (window as any).__REVIEW_CLIENT__ ?? new HttpReviewClient();
+render(<App client={client} />, document.getElementById('app')!);
 ```
 
-All existing `fetch('/api/...')` calls inside `App.tsx` (and children) become `props.transport.*` calls. This is the main invasive refactor.
+All existing `fetch('/api/...')` calls inside `App.tsx` (and children) become `props.client.*` calls. This is the main invasive refactor.
 
-**Two transport implementations:**
+**Two implementations:**
 
-- `HttpTransport` (in `cli/src/httpTransport.ts`) — current behavior. `loadDocument()` → `fetch('/api/doc')`; `saveSession()` → `fetch('/api/session', { method: 'PUT', ... })`; `submitReview()` → `fetch('/api/review', { method: 'POST', ... })`. Bundled into the CLI-served HTML as the default.
-- `PostMessageTransport` (in `vscode-extension/media/webview.js` entry shim) — wraps `acquireVsCodeApi()`. Each method call sends a request message with a correlation `id` and awaits the matching response. Timeout 30s.
+- `HttpReviewClient` (in `browser-app/src/httpClient.ts`, default) — current behavior. `loadDocument()` → `fetch('/api/doc')`; `saveSession()` → `fetch('/api/session', { method: 'PUT', ... })`; `submitReview()` → `fetch('/api/review', { method: 'POST', ... })`.
+- `PostMessageReviewClient` (in `vscode-extension/media/webview.js` entry shim) — wraps `acquireVsCodeApi()`. Each method call sends a request message with a correlation `id` and awaits the matching response. Timeout 30s. Installed on `window.__REVIEW_CLIENT__` before bundle loads.
 
 ### PostMessage protocol
 
@@ -132,8 +136,8 @@ Correlation by `id` (uuid). Webview keeps a `Map<id, { resolve, reject }>` and r
 2. Extension opens `vscode.window.createWebviewPanel(..., ViewColumn.Beside, { retainContextWhenHidden: true })` titled `Plan Review — <filename>`
 3. Webview HTML loaded from `media/` via `panel.webview.asWebviewUri()` with a nonce-based CSP
 4. Webview sends `loadDocument` request; extension reads URI via `vscode.workspace.fs.readFile`, calls `core.parse()`, returns the `PlanDocument`
-5. Extension checks for existing sidecar session file; if present, replies with `document` plus previously-saved `comments`/`activeSection`
-6. User reviews. Each comment mutation triggers a debounced (500ms) `saveSession` → extension writes sidecar file
+5. Extension calls `core.loadSession(planAbsPath, contentHash)`; if present, replies with `document` plus previously-saved `comments`/`activeSection` plus `stale` flag
+6. User reviews. Each comment mutation triggers a debounced (500ms) `saveSession` → extension writes to `~/.plan-review/sessions/<path-hash>.json`
 7. User submits → extension runs configured output targets in parallel → dispose panel
 
 ### Panel lifecycle
@@ -144,9 +148,11 @@ Correlation by `id` (uuid). Webview keeps a `Map<id, { resolve, reject }>` and r
 
 ## Session persistence
 
-Same sidecar file as the CLI: `<plan>.plan-review-session.json` next to the plan file. Schema reused from current `core/session.ts` (content-hash keyed). This gives free interop — start a review in the CLI, finish in the extension and vice versa.
+Reuses the existing CLI session store, `~/.plan-review/sessions/<path-hash>.json` (per `src/session.ts`: `getSessionDir()`, `saveSession()`, `loadSession()`, `computeContentHash()`). Keyed by a hash of the plan's absolute path and gated by a hash of the plan's content so stale sessions are detected. Reusing this store gives free interop — start a review in the CLI, continue in the extension and vice versa.
 
-Extension-side `saveSession` handler calls `core.session.save(uri, state)` which handles atomic write + hash. On `loadDocument`, handler also calls `core.session.load(uri, documentHash)` and includes restored comments in the reply.
+Extension-side `saveSession` handler calls `core.saveSession(planAbsPath, contentHash, comments, activeSection)`. On `loadDocument`, handler also calls `core.loadSession(planAbsPath, contentHash)` and includes any restored `comments` / `activeSection` in the reply, along with the `stale` flag (content changed since last review) so the webview can warn the user.
+
+**Watcher behavior:** `FileSystemWatcher` on the plan URI — if disk content hash changes while the panel is open, post a `planChanged` message with the new hash to the webview; user sees a banner "Plan changed on disk — reload or keep reviewing". This complements the load-time `stale` flag.
 
 ## Submit handlers
 
