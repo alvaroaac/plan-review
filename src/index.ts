@@ -1,8 +1,11 @@
 #!/usr/bin/env node
 
 import { Command } from 'commander';
-import { readFileSync } from 'node:fs';
+import { readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import * as readline from 'node:readline';
 import chalk from 'chalk';
 import { resolve as resolvePath } from 'node:path';
@@ -40,6 +43,23 @@ program
       }
       process.exit(1);
     }
+  });
+
+program
+  .command('install-skill')
+  .description('Install Claude Code skill to ~/.claude/skills/plan-review/')
+  .action(() => {
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const src = join(__dirname, '..', 'skills', 'plan-review', 'SKILL.md');
+    if (!existsSync(src)) {
+      console.error(chalk.red('Skill file not found in package. Expected at: ' + src));
+      process.exit(1);
+    }
+    const dest = join(homedir(), '.claude', 'skills', 'plan-review');
+    mkdirSync(dest, { recursive: true });
+    copyFileSync(src, join(dest, 'SKILL.md'));
+    console.error(chalk.green(`Skill installed to ${dest}/SKILL.md`));
+    console.error(chalk.dim('Claude Code will auto-discover it. Try: "I want to review this plan"'));
   });
 
 program

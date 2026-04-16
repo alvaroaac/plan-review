@@ -8,10 +8,11 @@
     "plan-review": "dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "skills"
   ],
   "scripts": {
-    "build": "tsc && node scripts/build-browser.js",
+    "build": "tsc && tsc --project tsconfig.browser.json --noEmit && node scripts/build-browser.js",
     "build:browser": "node scripts/build-browser.js",
     "dev:browser": "node scripts/build-browser.js --watch",
     "dev": "tsx src/index.ts",
