@@ -13,6 +13,7 @@ export interface Transport {
 export class HttpTransport implements Transport {
   private doc: PlanDocument | null = null;
   private submitHandler: ((comments: ReviewComment[]) => void) | null = null;
+  private sessionSaveHandler: ((comments: ReviewComment[], activeSection: string | null) => void) | null = null;
   private server: Server | null = null;
 
   sendDocument(doc: PlanDocument): void {
@@ -23,6 +24,10 @@ export class HttpTransport implements Transport {
     this.submitHandler = handler;
   }
 
+  onSessionSave(handler: (comments: ReviewComment[], activeSection: string | null) => void): void {
+    this.sessionSaveHandler = handler;
+  }
+
   async start(port: number): Promise<{ url: string }> {
     if (!this.doc) throw new Error('No document set');
 
@@ -30,6 +35,7 @@ export class HttpTransport implements Transport {
       getDocument: () => this.doc!,
       onSubmit: (comments) => this.submitHandler?.(comments),
       getAssetHtml: () => getAssetHtml(),
+      onSessionSave: (comments, activeSection) => this.sessionSaveHandler?.(comments, activeSection),
     });
 
     return startServer(this.server, port);
