@@ -2,9 +2,11 @@ import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readFileSync } from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
+const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf-8'));
 const entryPoint = join(projectRoot, 'src', 'index.ts');
 
 function runCli(args: string[], stdinData?: string) {
@@ -32,10 +34,10 @@ describe('index.ts CLI', () => {
     expect(helpText).not.toContain('default: stdout');
   });
 
-  it('--version outputs 0.1.0', () => {
+  it('--version outputs the version from package.json', () => {
     const result = runCli(['--version']);
     expect(result.status).toBe(0);
-    expect(result.stdout.trim()).toBe('0.1.0');
+    expect(result.stdout.trim()).toBe(pkg.version);
   });
 
   it('exits 1 with "File not found" when file does not exist', () => {
@@ -49,5 +51,23 @@ describe('index.ts CLI', () => {
     const result = runCli(['-o', 'invalid', fixtureFile]);
     expect(result.status).toBe(1);
     expect(result.stderr).toContain('Invalid output target');
+  });
+
+  it('--fresh flag is accepted without error', () => {
+    const fixtureFile = join(__dirname, 'fixtures', 'generic-document.md');
+    const result = spawnSync('npx', ['tsx', entryPoint, fixtureFile, '--fresh', '-o', 'stdout'], {
+      cwd: projectRoot,
+      encoding: 'utf-8',
+      timeout: 15000,
+      input: 'done\n',
+    });
+    expect(result.stderr).not.toContain('unknown option');
+  });
+
+  it('sessions subcommand runs without error', () => {
+    const result = runCli(['sessions']);
+    expect(result.status).toBe(0);
+    const output = result.stdout + result.stderr;
+    expect(output).toContain('.plan-review/sessions');
   });
 });

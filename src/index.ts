@@ -5,26 +5,33 @@ import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import * as readline from 'node:readline';
 import chalk from 'chalk';
+import { resolve as resolvePath } from 'node:path';
 import { parse } from './parser.js';
 import { navigate } from './navigator.js';
 import { formatReview } from './formatter.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
 import type { OutputTarget, ReviewComment } from './types.js';
 import { HttpTransport } from './transport.js';
-import { execSync as execSyncCmd } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { loadSession, saveSession, clearSession, computeContentHash, listSessions, getSessionDir } from './session.js';
+
+const require = createRequire(import.meta.url);
+const { version } = require('../package.json');
 
 const program = new Command();
 
 program
   .name('plan-review')
   .description('Interactive CLI for reviewing AI-generated markdown plans')
-  .version('0.1.0')
+  .version(version)
   .argument('[file]', 'Path to markdown file (omit to read stdin)')
   .option('-o, --output <target>', 'Output target: stdout, clipboard, file, claude')
   .option('--output-file <path>', 'Custom output file path (with --output file)')
   .option('--split-by <strategy>', 'Force split strategy: heading, separator')
+  .option('--fresh', 'Skip session resume, start clean review')
   .option('--browser', 'Open browser-based review UI')
-  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean }) => {
+  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean; fresh?: boolean }) => {
     try {
       await run(file, opts);
     } catch (err) {
@@ -35,11 +42,32 @@ program
     }
   });
 
+program
+  .command('sessions')
+  .description('List all saved review sessions')
+  .action(() => {
+    const sessions = listSessions();
+    const dir = getSessionDir();
+    if (sessions.length === 0) {
+      console.error(chalk.dim(`No saved sessions. (${dir})`));
+      process.exit(0);
+    }
+    console.error(chalk.bold(`Saved review sessions (${dir}):\n`));
+    for (const s of sessions) {
+      const age = formatRelativeTime(s.lastModified);
+      let status = '';
+      if (s.stale === true) status = chalk.yellow(' | plan file changed since last review');
+      else if (s.stale === null) status = chalk.red(' | plan file not found');
+      console.error(`  ${s.planPath}`);
+      console.error(chalk.dim(`    ${s.commentCount} comment${s.commentCount !== 1 ? 's' : ''} | last modified ${age}${status}\n`));
+    }
+  });
+
 program.parse();
 
 async function run(
   file: string | undefined,
-  opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean },
+  opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean; fresh?: boolean },
 ): Promise<void> {
   // Validate explicit output target early, before the review starts
   const validTargets: OutputTarget[] = ['stdout', 'clipboard', 'file', 'claude'];
@@ -72,31 +100,81 @@ async function run(
 
   console.error(chalk.dim(`Detected mode: ${doc.mode} | ${doc.sections.length} sections`));
 
+  // Session resume logic
+  const absPath = file ? resolvePath(file) : null;
+  const contentHash = computeContentHash(input);
+
+  if (absPath) {
+    if (opts.fresh) {
+      clearSession(absPath);
+    } else {
+      const session = loadSession(absPath, contentHash);
+      if (session && session.comments.length > 0) {
+        if (!session.stale) {
+          console.error(chalk.green(`Resuming review (${session.comments.length} comment${session.comments.length !== 1 ? 's' : ''}).`));
+          doc.comments = session.comments;
+        } else {
+          // Prompt user for stale session
+          const answer = await promptYesNo(
+            `Plan file changed since last review (${session.comments.length} comment${session.comments.length !== 1 ? 's' : ''}). Resume anyway?`,
+            inputFromStdin,
+          );
+          if (answer) {
+            console.error(chalk.yellow('Resuming with stale session.'));
+            doc.comments = session.comments;
+          } else {
+            clearSession(absPath);
+          }
+        }
+      }
+    }
+  }
+
   // Navigate (interactive review or browser)
   let reviewed;
   if (opts.browser) {
     const transport = new HttpTransport();
     transport.sendDocument(doc);
 
-    const reviewPromise = new Promise<ReviewComment[]>((resolve) => {
+    if (absPath) {
+      transport.onSessionSave((comments, activeSection) => {
+        saveSession(absPath, contentHash, comments, activeSection);
+      });
+    }
+
+    const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+    const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
       transport.onReviewSubmit(resolve);
+      setTimeout(() => reject(new Error('Browser review timed out after 30 minutes of inactivity')), IDLE_TIMEOUT_MS);
     });
 
     const { url } = await transport.start(0);
     process.stderr.write(`Review server running at ${url}\n`);
 
     try {
-      execSyncCmd(`open ${url}`, { stdio: 'ignore' });
+      const openCmd = process.platform === 'darwin' ? 'open'
+        : process.platform === 'win32' ? 'start'
+        : 'xdg-open';
+      spawnSync(openCmd, [url], { stdio: 'ignore' });
     } catch {
       process.stderr.write(`Open ${url} in your browser\n`);
     }
 
-    doc.comments = await reviewPromise;
-    await transport.stop();
+    try {
+      doc.comments = await reviewPromise;
+    } finally {
+      await transport.stop();
+    }
     reviewed = doc;
   } else {
-    reviewed = await navigate(doc, inputFromStdin);
+    const onCommentChange = absPath
+      ? () => saveSession(absPath, contentHash, doc.comments, null)
+      : undefined;
+    reviewed = await navigate(doc, inputFromStdin, onCommentChange);
   }
+
+  // Clear session after successful review completion
+  if (absPath) clearSession(absPath);
 
   // Determine output target after review is complete
   let outputTarget: OutputTarget;
@@ -145,6 +223,24 @@ async function promptOutputTarget(inputFromStdin: boolean): Promise<OutputTarget
   }
 }
 
+async function promptYesNo(message: string, inputFromStdin: boolean): Promise<boolean> {
+  const ttyInput = inputFromStdin
+    ? (await import('node:fs')).createReadStream('/dev/tty')
+    : process.stdin;
+
+  const rl = readline.createInterface({
+    input: ttyInput,
+    output: process.stderr,
+  });
+
+  const answer = await new Promise<string>((resolve) => {
+    rl.question(chalk.yellow(`${message} (y/n) `), (a) => resolve(a.trim().toLowerCase()));
+  });
+  rl.close();
+
+  return answer === 'y' || answer === 'yes';
+}
+
 function readInput(file: string | undefined): string {
   if (file) {
     if (!existsSync(file)) {
@@ -161,4 +257,18 @@ function readInput(file: string | undefined): string {
   // No file, no stdin pipe — show help
   program.help();
   return ''; // unreachable
+}
+
+function formatRelativeTime(iso: string): string {
+  const ms = Date.now() - new Date(iso).getTime();
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  const weeks = Math.floor(days / 7);
+  return `${weeks}w ago`;
 }
