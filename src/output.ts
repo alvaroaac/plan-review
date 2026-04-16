@@ -49,8 +49,15 @@ function writeToFile(content: string, outputFile?: string, inputFile?: string): 
       ? resolve(inputFile.replace(/\.md$/, '.review.md'))
       : resolve('review.md');
 
-  writeFileSync(filePath, content, 'utf-8');
-  console.error(chalk.green(`Review written to ${filePath}`));
+  try {
+    writeFileSync(filePath, content, 'utf-8');
+    console.error(chalk.green(`Review written to ${filePath}`));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error(chalk.red(`Failed to write file: ${msg}`));
+    console.error(chalk.yellow('Falling back to stdout.'));
+    process.stdout.write(content + '\n');
+  }
 }
 
 function sendToClaude(content: string): void {

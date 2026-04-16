@@ -159,6 +159,35 @@ describe('formatReview', () => {
     expect(output).toContain('Depends on: 1.1');
   });
 
+  it('escapes markdown characters in comment text', () => {
+    const doc = makeDoc({
+      comments: [{
+        sectionId: '1.1',
+        text: 'This has **bold** and [link](url) and `code`',
+        timestamp: new Date(),
+      }],
+    });
+    const output = formatReview(doc);
+    expect(output).not.toContain('**bold**');
+    expect(output).toContain('\\*\\*bold\\*\\*');
+    expect(output).toContain('\\[link\\]');
+    expect(output).toContain('\\`code\\`');
+  });
+
+  it('escapes markdown in line-anchored comment text too', () => {
+    const doc = makeDoc({
+      comments: [{
+        sectionId: '1.1',
+        text: 'Check this #heading and > quote',
+        timestamp: new Date(),
+        anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['A line.'] },
+      }],
+    });
+    const output = formatReview(doc);
+    expect(output).toContain('\\#heading');
+    expect(output).toContain('\\> quote');
+  });
+
   it('handles generic mode (uses level >= 2 filter)', () => {
     const genericDoc: PlanDocument = {
       title: 'Generic Doc',

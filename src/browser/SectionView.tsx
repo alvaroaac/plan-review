@@ -72,7 +72,13 @@ export function SectionView({
 
       <div class="section-body">
         {blocks.map((block) => {
-          const isStart = rangeStart !== null && block.index === rangeStart;
+          const inRange = rangeStart !== null && hoveredLine !== null &&
+            block.index >= Math.min(rangeStart, hoveredLine) &&
+            block.index <= Math.max(rangeStart, hoveredLine);
+          const isRangeStart = rangeStart !== null && hoveredLine !== null &&
+            block.index === Math.min(rangeStart, hoveredLine);
+          const isRangeEnd = rangeStart !== null && hoveredLine !== null &&
+            block.index === Math.max(rangeStart, hoveredLine);
           const isPending = pendingAnchor != null &&
             block.index >= pendingAnchor.startLine &&
             block.index <= pendingAnchor.endLine;
@@ -80,9 +86,9 @@ export function SectionView({
             <LineBlock
               key={block.index}
               block={block}
-              isInRange={isStart}
-              isRangeStart={isStart}
-              isRangeEnd={isStart}
+              isInRange={inRange}
+              isRangeStart={isRangeStart}
+              isRangeEnd={isRangeEnd}
               hasComment={commentedLines.has(block.index)}
               isPendingComment={isPending}
               isHovered={hoveredLine === block.index}

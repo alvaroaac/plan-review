@@ -29,6 +29,13 @@ const genericSection: Section = {
   body: 'Some introductory text.',
 };
 
+const multiLineSection: Section = {
+  id: 'section-2',
+  heading: 'Multi-line',
+  level: 2,
+  body: 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.',
+};
+
 const defaultProps = {
   commentedLines: new Set<number>(),
   onLineComment: vi.fn(),
@@ -179,5 +186,58 @@ describe('SectionView', () => {
     // First line block should have has-comment class
     const firstBlock = container.querySelector('.line-block');
     expect(firstBlock?.classList.contains('has-comment')).toBe(true);
+  });
+
+  it('shows in-range class on hovered line after gutter click (single-line preview)', () => {
+    const { container } = render(
+      <SectionView section={multiLineSection} mode="generic" isActive={false} {...defaultProps} />
+    );
+    const gutters = container.querySelectorAll('.line-gutter');
+    const blocks = container.querySelectorAll('.line-block');
+    // Click first gutter to set rangeStart
+    fireEvent.click(gutters[0]);
+    // Hover over same line — should show in-range
+    fireEvent.mouseEnter(blocks[0]);
+    expect(blocks[0].classList.contains('in-range')).toBe(true);
+  });
+
+  it('shows in-range on all lines between rangeStart and hovered line', () => {
+    const { container } = render(
+      <SectionView section={multiLineSection} mode="generic" isActive={false} {...defaultProps} />
+    );
+    const gutters = container.querySelectorAll('.line-gutter');
+    const blocks = container.querySelectorAll('.line-block');
+
+    // Click first gutter to set rangeStart=0
+    fireEvent.click(gutters[0]);
+    // Hover over third line — lines 0,1,2 should all be in-range
+    fireEvent.mouseEnter(blocks[2]);
+
+    expect(blocks[0].classList.contains('in-range')).toBe(true);
+    expect(blocks[1].classList.contains('in-range')).toBe(true);
+    expect(blocks[2].classList.contains('in-range')).toBe(true);
+  });
+
+  it('clears range state after shift-click confirms selection', () => {
+    const onLineComment = vi.fn();
+    const { container } = render(
+      <SectionView
+        section={multiLineSection}
+        mode="generic"
+        isActive={false}
+        commentedLines={new Set()}
+        onLineComment={onLineComment}
+        onSectionComment={vi.fn()}
+      />
+    );
+    const gutters = container.querySelectorAll('.line-gutter');
+
+    // Click first gutter, then shift-click third
+    fireEvent.click(gutters[0]);
+    fireEvent.click(gutters[2], { shiftKey: true });
+
+    expect(onLineComment).toHaveBeenCalledOnce();
+    // rangeStart should be cleared — no hint shown
+    expect(container.querySelector('.range-start-hint')).toBeNull();
   });
 });

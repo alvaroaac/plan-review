@@ -141,6 +141,19 @@ describe('writeOutput - file', () => {
     expect(callArg).toMatch(/\/review\.md$/);
     expect(callArg).not.toMatch(/\.review\.md$/);
   });
+
+  it('falls back to stdout when writeFileSync throws', async () => {
+    const writeFileSync = await getWriteFileSync();
+    const stdoutWriteSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
+
+    writeFileSync.mockImplementationOnce(() => { throw new Error('EACCES: permission denied'); });
+    writeOutput('permission denied content', 'file', { outputFile: '/nonexistent/dir/file.md' });
+
+    expect(consoleErrorSpy).toHaveBeenCalledWith(expect.stringContaining('Failed to write file'));
+    expect(stdoutWriteSpy).toHaveBeenCalledWith('permission denied content\n');
+
+    stdoutWriteSpy.mockRestore();
+  });
 });
 
 // ---------------------------------------------------------------------------

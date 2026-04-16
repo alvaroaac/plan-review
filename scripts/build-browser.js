@@ -12,17 +12,22 @@ async function build() {
 
   mkdirSync(join(root, 'dist/browser'), { recursive: true });
 
-  await esbuild.build({
-    entryPoints: [join(root, 'src/browser/index.tsx')],
-    bundle: true,
-    outfile: outJs,
-    format: 'iife',
-    jsx: 'automatic',
-    jsxImportSource: 'preact',
-    minify: !watch,
-    sourcemap: watch,
-    banner: { js: '/* bundled with preact */' },
-  });
+  try {
+    await esbuild.build({
+      entryPoints: [join(root, 'src/browser/index.tsx')],
+      bundle: true,
+      outfile: outJs,
+      format: 'iife',
+      jsx: 'automatic',
+      jsxImportSource: 'preact',
+      minify: !watch,
+      sourcemap: watch,
+      banner: { js: '/* bundled with preact */' },
+    });
+  } catch (err) {
+    console.error('Browser build failed:', err.message);
+    process.exit(1);
+  }
 
   const js = readFileSync(outJs, 'utf-8');
   const css = readFileSync(join(root, 'src/browser/styles.css'), 'utf-8');

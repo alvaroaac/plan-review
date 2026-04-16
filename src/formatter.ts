@@ -1,5 +1,9 @@
 import type { PlanDocument, ReviewComment } from './types.js';
 
+function escapeMarkdown(text: string): string {
+  return text.replace(/([\\*_`~\[\]#>|])/g, '\\$1');
+}
+
 function sortComments(comments: ReviewComment[]): ReviewComment[] {
   return [...comments].sort((a, b) => {
     const aLine = a.anchor?.startLine ?? Infinity;
@@ -56,11 +60,11 @@ export function formatReview(doc: PlanDocument): string {
           parts.push(`> ${line}`);
         }
         parts.push('');
-        parts.push(comment.text);
+        parts.push(escapeMarkdown(comment.text));
       } else {
         parts.push('### Reviewer Comment (entire section)');
         parts.push('');
-        parts.push(comment.text);
+        parts.push(escapeMarkdown(comment.text));
       }
       parts.push('');
       parts.push('---');
