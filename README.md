@@ -31,7 +31,7 @@ plan-review path/to/plan.md --browser -o claude
 
 ## Browser mode (`--browser`)
 
-![Browser mode demo](examples/demo-browser.gif)
+![Browser mode demo](https://raw.githubusercontent.com/alvaroaac/plan-review/main/examples/demo-browser.gif)
 
 The browser mode opens a three-panel review UI:
 
