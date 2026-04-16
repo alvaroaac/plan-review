@@ -88,4 +88,35 @@ describe('renderToLineBlocks', () => {
     expect(blocks).toHaveLength(1);
     expect(blocks[0].innerHtml).toContain('<blockquote>');
   });
+
+  it('renders a simple 2-column table as one LineBlock', () => {
+    const md = '| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].innerHtml).toContain('<table>');
+    expect(blocks[0].innerHtml).toContain('<thead>');
+    expect(blocks[0].innerHtml).toContain('<tbody>');
+    expect(blocks[0].innerHtml).toContain('<th>Name</th>');
+    expect(blocks[0].innerHtml).toContain('<th>Age</th>');
+    expect(blocks[0].innerHtml).toContain('<td>Alice</td>');
+    expect(blocks[0].innerHtml).toContain('<td>Bob</td>');
+  });
+
+  it('renders table with column alignment', () => {
+    const md = '| Left | Center | Right |\n| :--- | :---: | ---: |\n| a | b | c |';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].innerHtml).toContain('align="left"');
+    expect(blocks[0].innerHtml).toContain('align="center"');
+    expect(blocks[0].innerHtml).toContain('align="right"');
+  });
+
+  it('table text field contains plain text without HTML tags', () => {
+    const md = '| Fruit | Count |\n| --- | --- |\n| Apple | 5 |\n| Banana | 3 |';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks[0].text).not.toContain('<');
+    expect(blocks[0].text).toContain('Fruit | Count');
+    expect(blocks[0].text).toContain('Apple | 5');
+    expect(blocks[0].text).toContain('Banana | 3');
+  });
 });

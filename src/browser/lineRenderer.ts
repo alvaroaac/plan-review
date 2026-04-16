@@ -84,6 +84,37 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
         blocks.push({ index: i++, innerHtml: html, text: stripHtml(html) });
         return '';
       },
+
+      table(this: RendererThis, token: Tokens.Table): string {
+        // Build <thead>
+        const thCells = token.header.map((cell) => {
+          const align = cell.align ? ` align="${cell.align}"` : '';
+          const inner = this.parser.parseInline(cell.tokens as Tokens.Generic[]);
+          return `<th${align}>${inner}</th>`;
+        });
+        const thead = `<thead><tr>${thCells.join('')}</tr></thead>`;
+
+        // Build <tbody>
+        const bodyRows = token.rows.map((row) => {
+          const cells = row.map((cell) => {
+            const align = cell.align ? ` align="${cell.align}"` : '';
+            const inner = this.parser.parseInline(cell.tokens as Tokens.Generic[]);
+            return `<td${align}>${inner}</td>`;
+          });
+          return `<tr>${cells.join('')}</tr>`;
+        });
+        const tbody = `<tbody>${bodyRows.join('')}</tbody>`;
+
+        const html = `<table>${thead}${tbody}</table>`;
+
+        // Build plain-text version: "Header1 | Header2\nVal1 | Val2"
+        const headerText = token.header.map((c) => c.text).join(' | ');
+        const rowTexts = token.rows.map((row) => row.map((c) => c.text).join(' | '));
+        const plainText = [headerText, ...rowTexts].join('\n');
+
+        blocks.push({ index: i++, innerHtml: html, text: plainText });
+        return '';
+      },
     },
   });
 
