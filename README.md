@@ -1,6 +1,6 @@
 # plan-review
 
-Interactive CLI for reviewing AI-generated markdown plans. Parses plans into sections, renders them in the terminal or browser, collects your comments, and outputs structured feedback.
+Interactive CLI for reviewing AI-generated markdown plans. Parses plans into sections, renders them in the terminal or browser, collects your comments, and outputs structured feedback — back to the AI or your team.
 
 ## Install
 
@@ -8,30 +8,63 @@ Interactive CLI for reviewing AI-generated markdown plans. Parses plans into sec
 npm install -g plan-review
 ```
 
-## Usage
+### Claude Code skill (optional)
+
+If you use Claude Code, install the companion skill so you can say *"review this plan"*:
 
 ```bash
-# Terminal mode (interactive)
-plan-review path/to/plan.md
+plan-review install-skill
+```
 
-# Browser mode (three-panel review UI)
+## Quick start
+
+```bash
+# Try the included demo plan
+plan-review --browser examples/demo-plan.md
+
+# Review your own plan
 plan-review path/to/plan.md --browser
+
+# Pipe feedback directly to Claude
+plan-review path/to/plan.md --browser -o claude
 ```
 
-### Options
+## Browser mode (`--browser`)
+
+The browser mode opens a three-panel review UI:
 
 ```
--o, --output <target>   Output target: stdout, clipboard, file, claude
---output-file <path>    Custom output file path (with --output file)
---split-by <strategy>   Force split strategy: heading, separator
---browser               Open browser-based review UI
--V, --version           Show version
--h, --help              Show help
++------------------+----------------------------+------------------+
+|                  |                            |                  |
+|   Table of       |   Rendered markdown        |   Comment        |
+|   Contents       |   with plan metadata       |   Sidebar        |
+|                  |                            |                  |
+|   - Milestone 1  |   ## Task 1.1              |   [Add comment]  |
+|     * Task 1.1 ✓ |                            |                  |
+|     * Task 1.2   |   **Depends on:** 1.0      |   > "Line 3-5"  |
+|   - Milestone 2  |   **Blocks:** 1.2          |   Fix the error  |
+|     * Task 2.1   |                            |   handling here  |
+|                  |   Content with line        |                  |
+|                  |   gutters for anchoring    |   [Submit Review] |
+|                  |   comments to ranges       |                  |
++------------------+----------------------------+------------------+
 ```
 
-If `-o` is omitted, you'll be prompted to choose after the review. Output targets work with both terminal and browser modes (e.g., `--browser -o clipboard`).
+**Line-anchored comments:** Click a line number in the gutter to start a selection. Shift-click another line to select a range. Your comment is anchored to those exact lines.
 
-### Interactive commands
+**Section-level comments:** Click "Add comment to entire section" below any section.
+
+**Auto-save:** Comments are saved as you work. Close the browser, come back later, resume where you left off.
+
+Click "Submit Review" when done — structured feedback is sent back to the CLI.
+
+## Terminal mode (default)
+
+```bash
+plan-review path/to/plan.md
+```
+
+Interactive terminal UI with table of contents, section navigation, and inline commenting. Works over SSH, in CI, anywhere.
 
 | Command | Action |
 |---------|--------|
@@ -43,21 +76,32 @@ If `-o` is omitted, you'll be prompted to choose after the review. Output target
 | *(enter)* | Skip section |
 | *(any text)* | Add comment on current section |
 
-## Review modes
+## Options
 
-### Terminal mode (default)
+```
+-o, --output <target>   Output target: stdout, clipboard, file, claude
+--output-file <path>    Custom output file path (with --output file)
+--split-by <strategy>   Force split strategy: heading, separator
+--fresh                 Skip session resume, start clean review
+--browser               Open browser-based review UI
+-V, --version           Show version
+-h, --help              Show help
+```
 
-Interactive terminal UI with table of contents, section navigation, and inline commenting.
+## The AI feedback loop
 
-### Browser mode (`--browser`)
+The real power is closing the loop between AI-generated plans and human review:
 
-Opens a three-panel review UI in your browser:
+```
+AI writes plan  →  You review with plan-review  →  Feedback pipes to Claude  →  AI revises
+```
 
-- **Left** — Table of contents with section tree and comment indicators
-- **Center** — Rendered markdown content with dependency metadata (plan mode)
-- **Right** — Comment sidebar with add, edit, and delete
+```bash
+# Review in browser, send feedback straight to Claude
+plan-review plan.md --browser -o claude
+```
 
-Add comments on any section, then click "Submit Review" to send your feedback back to the CLI. The server shuts down automatically after submission.
+Your anchored, section-by-section comments become structured input the AI can act on — not a wall of text in a chat message.
 
 ## How it works
 
@@ -87,16 +131,12 @@ Review progress is auto-saved as you work. If you close the terminal or browser 
 
 Sessions are stored in `~/.plan-review/sessions/`.
 
-### Commands
-
 ```
 plan-review plan.md --fresh    Skip session resume, start clean
 plan-review sessions           List all saved sessions
 ```
 
-### Manual cleanup
-
-Delete files in `~/.plan-review/sessions/` to remove old sessions.
+Manual cleanup: delete files in `~/.plan-review/sessions/`.
 
 ## License
 

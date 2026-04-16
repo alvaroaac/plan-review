@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "skills"
+    "skills",
+    "examples"
   ],
   "scripts": {
     "build": "tsc && tsc --project tsconfig.browser.json --noEmit && node scripts/build-browser.js",
