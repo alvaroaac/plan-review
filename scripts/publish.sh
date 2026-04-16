@@ -34,8 +34,10 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
   exit 0
 fi
 
-# 5. Git tag
-git tag -a "v${VERSION}" -m "v${VERSION}"
+# 5. Git tag (skip if already created by npm version)
+if ! git tag -l "v${VERSION}" | grep -q .; then
+  git tag -a "v${VERSION}" -m "v${VERSION}"
+fi
 git push origin "v${VERSION}"
 
 # 6. Publish
