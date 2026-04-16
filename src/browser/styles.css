@@ -291,6 +291,11 @@ body {
 .line-inner ol { list-style: decimal; }
 .line-inner blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--text-secondary); margin: 0; }
 .line-inner h3, .line-inner h4 { font-size: 14px; margin: 4px 0; }
+.line-inner table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 13px; }
+.line-inner th, .line-inner td { border: 1px solid var(--border); padding: 6px 10px; text-align: left; }
+.line-inner th { background: var(--bg-secondary); font-weight: 600; color: var(--text-primary); }
+.line-inner td { color: var(--text-secondary); }
+.line-inner tr:hover td { background: rgba(0, 173, 181, 0.05); }
 
 .add-section-comment-link {
   display: inline-block;
