@@ -62,6 +62,31 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByText(/Error:/)).toBeTruthy());
   });
 
+  it('hydrates sidebar from persisted comments on /api/doc response', async () => {
+    const docWithComments = {
+      ...mockPlanDoc,
+      comments: [
+        { sectionId: '1.1', text: 'persisted one', timestamp: new Date('2026-04-15').toISOString() },
+        { sectionId: '1.2', text: 'persisted two', timestamp: new Date('2026-04-15').toISOString() },
+      ],
+    };
+    vi.stubGlobal('fetch', vi.fn((url: string) => {
+      if (url === '/api/doc') {
+        return Promise.resolve({
+          json: () => Promise.resolve({ document: docWithComments, initialState: { activeSection: null } }),
+        });
+      }
+      return Promise.resolve({ ok: true, status: 204 });
+    }));
+
+    render(<App />);
+
+    // Comments sidebar shows both rehydrated entries.
+    await waitFor(() => expect(screen.getByText('persisted one')).toBeTruthy());
+    expect(screen.getByText('persisted two')).toBeTruthy();
+    expect(screen.getByText('Comments (2)')).toBeTruthy();
+  });
+
   it('disables submit button when no comments', async () => {
     vi.stubGlobal('fetch', mockFetchDoc());
     render(<App />);

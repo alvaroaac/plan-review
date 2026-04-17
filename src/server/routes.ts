@@ -5,6 +5,7 @@ const MAX_BODY_SIZE = 1024 * 1024; // 1MB
 
 export interface RouteContext {
   getDocument: () => PlanDocument;
+  getInitialActiveSection?: () => string | null;
   onSubmit: (comments: ReviewComment[]) => void;
   getAssetHtml: () => string;
   onSessionSave?: (comments: ReviewComment[], activeSection: string | null) => void;
@@ -32,8 +33,9 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
 
     if (method === 'GET' && url === '/api/doc') {
       const doc = ctx.getDocument();
+      const initialState = { activeSection: ctx.getInitialActiveSection?.() ?? null };
       res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ document: doc }));
+      res.end(JSON.stringify({ document: doc, initialState }));
       return;
     }
 

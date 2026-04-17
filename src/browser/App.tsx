@@ -42,7 +42,16 @@ export function App() {
   useEffect(() => {
     fetch('/api/doc')
       .then((r) => r.json())
-      .then((data) => setDoc(data.document))
+      .then((data) => {
+        // Set doc, comments, and activeSection in the same synchronous block so
+        // Preact batches them into one render. That way the autosave effect's
+        // first run sees the fully-restored state and doesn't overwrite the
+        // persisted session with an empty comments array.
+        setDoc(data.document);
+        setComments(data.document.comments ?? []);
+        const restoredActiveSection = data.initialState?.activeSection ?? null;
+        if (restoredActiveSection) setActiveSection(restoredActiveSection);
+      })
       .catch((err) => setError(err.message));
   }, []);
 

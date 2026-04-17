@@ -12,6 +12,7 @@ export interface Transport {
 
 export class HttpTransport implements Transport {
   private doc: PlanDocument | null = null;
+  private initialActiveSection: string | null = null;
   private submitHandler: ((comments: ReviewComment[]) => void) | null = null;
   private sessionSaveHandler: ((comments: ReviewComment[], activeSection: string | null) => void) | null = null;
   private heartbeatHandler: (() => void) | null = null;
@@ -21,6 +22,10 @@ export class HttpTransport implements Transport {
 
   sendDocument(doc: PlanDocument): void {
     this.doc = doc;
+  }
+
+  setInitialActiveSection(section: string | null): void {
+    this.initialActiveSection = section;
   }
 
   onReviewSubmit(handler: (comments: ReviewComment[]) => void): void {
@@ -48,6 +53,7 @@ export class HttpTransport implements Transport {
 
     this.server = createReviewServer({
       getDocument: () => this.doc!,
+      getInitialActiveSection: () => this.initialActiveSection,
       onSubmit: (comments) => this.submitHandler?.(comments),
       getAssetHtml: () => getAssetHtml(),
       onSessionSave: (comments, activeSection) => this.sessionSaveHandler?.(comments, activeSection),

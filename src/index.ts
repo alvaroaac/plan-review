@@ -125,6 +125,7 @@ async function run(
   const absPath = file ? resolvePath(file) : null;
   const contentHash = computeContentHash(input);
 
+  let restoredActiveSection: string | null = null;
   if (absPath) {
     if (opts.fresh) {
       clearSession(absPath);
@@ -134,6 +135,7 @@ async function run(
         if (!session.stale) {
           console.error(chalk.green(`Resuming review (${session.comments.length} comment${session.comments.length !== 1 ? 's' : ''}).`));
           doc.comments = session.comments;
+          restoredActiveSection = session.activeSection;
         } else {
           // Prompt user for stale session
           const answer = await promptYesNo(
@@ -143,6 +145,7 @@ async function run(
           if (answer) {
             console.error(chalk.yellow('Resuming with stale session.'));
             doc.comments = session.comments;
+            restoredActiveSection = session.activeSection;
           } else {
             clearSession(absPath);
           }
@@ -156,6 +159,7 @@ async function run(
   if (opts.browser) {
     const transport = new HttpTransport();
     transport.sendDocument(doc);
+    transport.setInitialActiveSection(restoredActiveSection);
 
     if (absPath) {
       transport.onSessionSave((comments, activeSection) => {

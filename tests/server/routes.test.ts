@@ -47,6 +47,37 @@ describe('server routes', () => {
     await stopTestServer(server);
   });
 
+  it('GET /api/doc includes initialState.activeSection for session resume', async () => {
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      getInitialActiveSection: () => '1.1',
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/doc`);
+    const data = await res.json();
+
+    expect(data.initialState).toEqual({ activeSection: '1.1' });
+
+    await stopTestServer(server);
+  });
+
+  it('GET /api/doc defaults initialState.activeSection to null when no session', async () => {
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/doc`);
+    const data = await res.json();
+
+    expect(data.initialState).toEqual({ activeSection: null });
+
+    await stopTestServer(server);
+  });
+
   it('POST /api/review calls onSubmit with parsed comments', async () => {
     const onSubmit = vi.fn();
     const { server, port } = await startTestServer({
