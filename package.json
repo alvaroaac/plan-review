@@ -1,6 +1,6 @@
 {
   "name": "plan-review",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "Interactive CLI for reviewing AI-generated markdown plans",
   "type": "module",
   "main": "dist/index.js",
