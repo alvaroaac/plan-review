@@ -14,6 +14,9 @@ export class HttpTransport implements Transport {
   private doc: PlanDocument | null = null;
   private submitHandler: ((comments: ReviewComment[]) => void) | null = null;
   private sessionSaveHandler: ((comments: ReviewComment[], activeSection: string | null) => void) | null = null;
+  private heartbeatHandler: (() => void) | null = null;
+  private pauseHandler: (() => void) | null = null;
+  private cancelHandler: (() => void) | null = null;
   private server: Server | null = null;
 
   sendDocument(doc: PlanDocument): void {
@@ -28,6 +31,18 @@ export class HttpTransport implements Transport {
     this.sessionSaveHandler = handler;
   }
 
+  onHeartbeat(handler: () => void): void {
+    this.heartbeatHandler = handler;
+  }
+
+  onPause(handler: () => void): void {
+    this.pauseHandler = handler;
+  }
+
+  onCancel(handler: () => void): void {
+    this.cancelHandler = handler;
+  }
+
   async start(port: number): Promise<{ url: string }> {
     if (!this.doc) throw new Error('No document set');
 
@@ -36,6 +51,9 @@ export class HttpTransport implements Transport {
       onSubmit: (comments) => this.submitHandler?.(comments),
       getAssetHtml: () => getAssetHtml(),
       onSessionSave: (comments, activeSection) => this.sessionSaveHandler?.(comments, activeSection),
+      onHeartbeat: () => this.heartbeatHandler?.(),
+      onPause: () => this.pauseHandler?.(),
+      onCancel: () => this.cancelHandler?.(),
     });
 
     return startServer(this.server, port);

@@ -260,6 +260,77 @@ describe('server routes', () => {
     await stopTestServer(server);
   });
 
+  it('POST /api/heartbeat calls onHeartbeat and returns 204', async () => {
+    const onHeartbeat = vi.fn();
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+      onHeartbeat,
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/heartbeat`, { method: 'POST' });
+
+    expect(res.status).toBe(204);
+    expect(onHeartbeat).toHaveBeenCalledOnce();
+
+    await stopTestServer(server);
+  });
+
+  it('POST /api/pause calls onPause and returns 204', async () => {
+    const onPause = vi.fn();
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+      onPause,
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/pause`, { method: 'POST' });
+
+    expect(res.status).toBe(204);
+    expect(onPause).toHaveBeenCalledOnce();
+
+    await stopTestServer(server);
+  });
+
+  it('POST /api/cancel calls onCancel and returns 204', async () => {
+    const onCancel = vi.fn();
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+      onCancel,
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/cancel`, { method: 'POST' });
+
+    expect(res.status).toBe(204);
+    expect(onCancel).toHaveBeenCalledOnce();
+
+    await stopTestServer(server);
+  });
+
+  it('heartbeat/pause/cancel endpoints no-op when handlers are not provided', async () => {
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+    });
+
+    const [hb, pause, cancel] = await Promise.all([
+      fetch(`http://localhost:${port}/api/heartbeat`, { method: 'POST' }),
+      fetch(`http://localhost:${port}/api/pause`, { method: 'POST' }),
+      fetch(`http://localhost:${port}/api/cancel`, { method: 'POST' }),
+    ]);
+
+    expect(hb.status).toBe(204);
+    expect(pause.status).toBe(204);
+    expect(cancel.status).toBe(204);
+
+    await stopTestServer(server);
+  });
+
   it('POST /api/review returns 413 for oversized body', async () => {
     const { server, port } = await startTestServer({
       getDocument: () => mockDoc,

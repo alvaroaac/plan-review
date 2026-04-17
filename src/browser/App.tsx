@@ -25,11 +25,16 @@ export function App() {
       if (!initialLoadDone.current) return;
     }
     const timer = setTimeout(() => {
-      fetch('/api/session', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ comments, activeSection }),
-      }).catch(() => {}); // best-effort
+      try {
+        const p = fetch('/api/session', {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ comments, activeSection }),
+        });
+        if (p && typeof p.catch === 'function') p.catch(() => {}); // best-effort
+      } catch {
+        // swallow — autosave is best-effort
+      }
     }, 500);
     return () => clearTimeout(timer);
   }, [comments, activeSection]);
@@ -40,6 +45,51 @@ export function App() {
       .then((data) => setDoc(data.document))
       .catch((err) => setError(err.message));
   }, []);
+
+  // Heartbeat + tab-close detection.
+  // - While the tab is visible, POST /api/heartbeat every 5s so the server knows we're alive.
+  // - On visibilitychange → hidden, POST /api/pause so the server stops its 30s watchdog (Chrome
+  //   throttles background-tab timers and would otherwise trigger a false cancel).
+  // - On visibilitychange → visible, fire an immediate heartbeat to re-arm the watchdog.
+  // - On beforeunload, sendBeacon('/api/cancel') so the server exits quickly on a clean tab close.
+  // After submit, all of this is disabled — the server is already shutting down.
+  useEffect(() => {
+    if (submitted) return;
+
+    const post = (path: string): void => {
+      // Defensive against test envs where `fetch` may return undefined.
+      try {
+        const p = fetch(path, { method: 'POST', keepalive: true });
+        if (p && typeof p.catch === 'function') p.catch(() => {});
+      } catch {
+        // swallow — heartbeat is best-effort
+      }
+    };
+
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') post('/api/heartbeat');
+    }, 5_000);
+
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') post('/api/heartbeat');
+      else post('/api/pause');
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    const onBeforeUnload = (): void => {
+      navigator.sendBeacon?.('/api/cancel');
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+
+    // Arm the watchdog on mount so the server starts its 30s window immediately.
+    post('/api/heartbeat');
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('beforeunload', onBeforeUnload);
+    };
+  }, [submitted]);
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);

@@ -4,9 +4,15 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
 import { App } from '../../src/browser/App.js';
 import { mockPlanDoc } from './test-utils.js';
 
+// Route-aware fetch mock: returns the document for GET /api/doc, and a 204-ish
+// response for the heartbeat/pause/cancel/session POSTs the App fires passively.
+// Tests that care about /api/review provide their own mock on top.
 function mockFetchDoc() {
-  return vi.fn().mockResolvedValueOnce({
-    json: () => Promise.resolve({ document: mockPlanDoc }),
+  return vi.fn((url: string) => {
+    if (url === '/api/doc') {
+      return Promise.resolve({ json: () => Promise.resolve({ document: mockPlanDoc }) });
+    }
+    return Promise.resolve({ ok: true, status: 204 });
   });
 }
 
@@ -151,9 +157,13 @@ describe('App', () => {
   it('delete removes correct comment and submit POSTs remaining comments', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn()
-        .mockResolvedValueOnce({ json: () => Promise.resolve({ document: mockPlanDoc }) })
-        .mockResolvedValueOnce({ ok: true }),
+      vi.fn((url: string) => {
+        if (url === '/api/doc') {
+          return Promise.resolve({ json: () => Promise.resolve({ document: mockPlanDoc }) });
+        }
+        if (url === '/api/review') return Promise.resolve({ ok: true });
+        return Promise.resolve({ ok: true, status: 204 });
+      }),
     );
 
     render(<App />);

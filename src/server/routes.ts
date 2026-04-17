@@ -8,6 +8,9 @@ export interface RouteContext {
   onSubmit: (comments: ReviewComment[]) => void;
   getAssetHtml: () => string;
   onSessionSave?: (comments: ReviewComment[], activeSection: string | null) => void;
+  onHeartbeat?: () => void;
+  onPause?: () => void;
+  onCancel?: () => void;
 }
 
 function validateComment(obj: unknown): obj is ReviewComment {
@@ -114,6 +117,27 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
           res.end(JSON.stringify({ error: 'Invalid JSON' }));
         }
       });
+      return;
+    }
+
+    if (method === 'POST' && url === '/api/heartbeat') {
+      ctx.onHeartbeat?.();
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (method === 'POST' && url === '/api/pause') {
+      ctx.onPause?.();
+      res.writeHead(204);
+      res.end();
+      return;
+    }
+
+    if (method === 'POST' && url === '/api/cancel') {
+      ctx.onCancel?.();
+      res.writeHead(204);
+      res.end();
       return;
     }
 

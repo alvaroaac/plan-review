@@ -39,7 +39,8 @@ program
       await run(file, opts);
     } catch (err) {
       if (err instanceof Error) {
-        console.error(chalk.red(`Error: ${err.message}`));
+        const cancelled = err.message.startsWith('Review cancelled');
+        console.error(cancelled ? chalk.yellow(err.message) : chalk.red(`Error: ${err.message}`));
       }
       process.exit(1);
     }
@@ -162,14 +163,37 @@ async function run(
       });
     }
 
-    const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
+    const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — overall ceiling
+    const HEARTBEAT_TIMEOUT_MS = 30 * 1000;  // 30s without a heartbeat while visible = browser gone
     const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
-      const timeoutId = setTimeout(
+      const idleTimer = setTimeout(
         () => reject(new Error('Browser review timed out after 30 minutes of inactivity')),
         IDLE_TIMEOUT_MS,
       );
+      let heartbeatTimer: NodeJS.Timeout | null = null;
+      const armHeartbeat = (): void => {
+        if (heartbeatTimer) clearTimeout(heartbeatTimer);
+        heartbeatTimer = setTimeout(() => {
+          clearTimeout(idleTimer);
+          reject(new Error('Review cancelled: browser closed (heartbeat lost)'));
+        }, HEARTBEAT_TIMEOUT_MS);
+      };
+      const clearAll = (): void => {
+        clearTimeout(idleTimer);
+        if (heartbeatTimer) clearTimeout(heartbeatTimer);
+        heartbeatTimer = null;
+      };
+      transport.onHeartbeat(armHeartbeat);
+      transport.onPause(() => {
+        if (heartbeatTimer) clearTimeout(heartbeatTimer);
+        heartbeatTimer = null;
+      });
+      transport.onCancel(() => {
+        clearAll();
+        reject(new Error('Review cancelled: browser closed'));
+      });
       transport.onReviewSubmit((comments) => {
-        clearTimeout(timeoutId);
+        clearAll();
         resolve(comments);
       });
     });
