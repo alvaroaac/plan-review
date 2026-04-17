@@ -9,20 +9,28 @@ Launch the plan-review browser UI for interactive review of markdown plans, then
 
 ## Prerequisites
 
-The `plan-review` CLI must be installed or available at `~/desenv/personal/plan-review/`. If not built, run `npm run build` first.
+Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-review`) or a local dev checkout exists at `~/desenv/personal/plan-review/`.
 
 ## Process
 
 1. **Identify the plan file.** If the user specified a file, use it. If not, look for the most recent file matching `docs/superpowers/plans/*.md` in the current working directory. If multiple candidates exist, ask which one.
 
-2. **Build if needed.** Check if `dist/index.js` exists in the plan-review project. If not:
+2. **Pick the binary.** Prefer the installed CLI; fall back to the local dev build.
    ```bash
-   cd ~/desenv/personal/plan-review && npm run build
+   if command -v plan-review >/dev/null 2>&1; then
+     PLAN_REVIEW_CMD="plan-review"
+   else
+     # Dev fallback: build if dist missing
+     if [ ! -f ~/desenv/personal/plan-review/dist/index.js ]; then
+       (cd ~/desenv/personal/plan-review && npm run build)
+     fi
+     PLAN_REVIEW_CMD="node $HOME/desenv/personal/plan-review/dist/index.js"
+   fi
    ```
 
 3. **Run the review.** Launch in browser mode with stdout output:
    ```bash
-   node ~/desenv/personal/plan-review/dist/index.js <plan-file> --browser -o stdout
+   $PLAN_REVIEW_CMD <plan-file> --browser -o stdout
    ```
    This opens the browser review UI. The command blocks until the user submits their review, then prints structured review output to stdout.
 

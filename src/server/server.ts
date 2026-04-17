@@ -19,5 +19,7 @@ export function startServer(server: Server, port: number): Promise<{ url: string
 export function stopServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((err) => (err ? reject(err) : resolve()));
+    // Force-close keep-alive sockets so close() doesn't hang on an idle browser tab.
+    server.closeAllConnections();
   });
 }

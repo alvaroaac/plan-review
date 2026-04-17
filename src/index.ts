@@ -164,8 +164,14 @@ async function run(
 
     const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
     const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
-      transport.onReviewSubmit(resolve);
-      setTimeout(() => reject(new Error('Browser review timed out after 30 minutes of inactivity')), IDLE_TIMEOUT_MS);
+      const timeoutId = setTimeout(
+        () => reject(new Error('Browser review timed out after 30 minutes of inactivity')),
+        IDLE_TIMEOUT_MS,
+      );
+      transport.onReviewSubmit((comments) => {
+        clearTimeout(timeoutId);
+        resolve(comments);
+      });
     });
 
     const { url } = await transport.start(0);
