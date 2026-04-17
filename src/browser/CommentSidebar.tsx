@@ -28,6 +28,8 @@ function sortComments(items: { comment: ReviewComment; index: number }[]) {
 export function CommentSidebar({
   comments, sections, commentingTarget, onAdd, onEdit, onDelete, onCancelComment,
 }: CommentSidebarProps) {
+  const sectionIdSet = new Set(sections.map((s) => s.id));
+  const isOrphan = (sectionId: string): boolean => !sectionIdSet.has(sectionId);
   const getSectionHeading = (sectionId: string) =>
     sections.find((s) => s.id === sectionId)?.heading ?? sectionId;
 
@@ -54,19 +56,30 @@ export function CommentSidebar({
         </div>
       )}
 
-      {Array.from(grouped.entries()).map(([sectionId, items]) => (
-        <div key={sectionId} class="comment-group">
-          <h3>{getSectionHeading(sectionId)}</h3>
-          {sortComments(items).map(({ comment, index }) => (
-            <CommentCard
-              key={index}
-              comment={comment}
-              onEdit={(text) => onEdit(index, text)}
-              onDelete={() => onDelete(index)}
-            />
-          ))}
-        </div>
-      ))}
+      {Array.from(grouped.entries()).map(([sectionId, items]) => {
+        const orphan = isOrphan(sectionId);
+        return (
+          <div key={sectionId} class={orphan ? 'comment-group orphan' : 'comment-group'}>
+            <h3
+              title={orphan
+                ? 'This comment is anchored to a section that no longer exists in the plan. The plan may have changed since the comment was written.'
+                : undefined}
+            >
+              {orphan && <span class="orphan-badge" aria-label="orphan section">⚠</span>}
+              {getSectionHeading(sectionId)}
+              {orphan && <span class="orphan-suffix"> (orphan)</span>}
+            </h3>
+            {sortComments(items).map(({ comment, index }) => (
+              <CommentCard
+                key={index}
+                comment={comment}
+                onEdit={(text) => onEdit(index, text)}
+                onDelete={() => onDelete(index)}
+              />
+            ))}
+          </div>
+        );
+      })}
 
       {comments.length === 0 && !commentingTarget && (
         <p class="no-comments">No comments yet. Hover a line and click + to start.</p>

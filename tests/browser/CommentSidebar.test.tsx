@@ -156,4 +156,35 @@ describe('CommentSidebar', () => {
     const allText = document.body.textContent ?? '';
     expect(allText.indexOf('Earlier comment')).toBeLessThan(allText.indexOf('Later comment'));
   });
+
+  it('flags orphan comment groups whose sectionId is not in the document', () => {
+    const comments: ReviewComment[] = [
+      { sectionId: '1.1', text: 'Still anchored', timestamp: new Date() },
+      { sectionId: 'no-such-section', text: 'Orphaned one', timestamp: new Date() },
+    ];
+    const { container } = render(
+      <CommentSidebar
+        comments={comments}
+        sections={sections}
+        commentingTarget={null}
+        onAdd={vi.fn()} onEdit={vi.fn()} onDelete={vi.fn()} onCancelComment={vi.fn()}
+      />
+    );
+
+    const groups = container.querySelectorAll('.comment-group');
+    const orphanGroups = container.querySelectorAll('.comment-group.orphan');
+    expect(groups.length).toBe(2);
+    expect(orphanGroups.length).toBe(1);
+
+    const orphan = orphanGroups[0]!;
+    expect(orphan.querySelector('.orphan-badge')).toBeTruthy();
+    expect(orphan.textContent).toContain('(orphan)');
+    expect(orphan.textContent).toContain('no-such-section'); // falls back to raw id
+    expect(orphan.textContent).toContain('Orphaned one');
+
+    const healthy = Array.from(groups).find((g) => !g.classList.contains('orphan'))!;
+    expect(healthy.querySelector('.orphan-badge')).toBeFalsy();
+    expect(healthy.textContent).toContain('Task 1');
+    expect(healthy.textContent).toContain('Still anchored');
+  });
 });

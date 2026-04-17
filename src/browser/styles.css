@@ -149,6 +149,25 @@ body {
 .commenting-for h3,
 .comment-group h3 { font-size: 13px; color: var(--accent); margin: 12px 0 8px; }
 
+.comment-group.orphan h3 {
+  color: var(--text-secondary);
+  font-style: italic;
+  cursor: help;
+}
+.orphan-badge {
+  display: inline-block;
+  margin-right: 6px;
+  color: #e8a33b;
+  font-style: normal;
+}
+.orphan-suffix {
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
 .comment-card {
   padding: 10px;
   margin-bottom: 8px;
