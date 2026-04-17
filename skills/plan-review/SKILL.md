@@ -1,11 +1,15 @@
 ---
 name: plan-review
-description: Use when the user asks to review a plan, start plan review, or says "I want to review this plan". Triggers on plan review requests for markdown implementation plans, specs, or design docs. Builds and runs the plan-review browser UI, feeds review output back into the conversation.
+description: Use when the user asks to review a plan, start plan review, or says "I want to review this plan". Triggers on plan review requests for markdown implementation plans, specs, or design docs — including plans produced on-the-fly in this conversation. Builds and runs the plan-review browser UI, feeds review output back into the conversation.
 ---
 
 # Plan Review
 
 Launch the plan-review browser UI for interactive review of markdown plans, then feed the structured review output back into this session.
+
+Works with two input sources:
+- **A plan file on disk** (path given by the user, or the most recent plan file in the project).
+- **An on-the-fly plan** produced in this conversation (e.g. from plan mode, or markdown the user just pasted). The plan content is piped in via stdin — no temp file needed.
 
 ## Prerequisites
 
@@ -13,7 +17,9 @@ Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-r
 
 ## Process
 
-1. **Identify the plan file.** If the user specified a file, use it. If not, look for the most recent file matching `docs/superpowers/plans/*.md` in the current working directory. If multiple candidates exist, ask which one.
+1. **Identify the plan source.** Decide which branch you're in:
+   - **File branch** — the user named a file, or pointed at a path, or asked to review "the plan at X". Also the default when you find a single recent match in `docs/superpowers/plans/*.md`. If multiple candidates exist, ask which one.
+   - **Inline branch** — the user asks to review "this plan" / "the plan above" / "the plan you just wrote" / pastes markdown, or plan mode just produced a plan in the conversation. No file path exists.
 
 2. **Pick the binary.** Prefer the installed CLI; fall back to the local dev build.
    ```bash
@@ -28,11 +34,24 @@ Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-r
    fi
    ```
 
-3. **Run the review.** Launch in browser mode with stdout output:
+3. **Run the review.**
+
+   **File branch:**
    ```bash
    $PLAN_REVIEW_CMD <plan-file> --browser -o stdout
    ```
-   This opens the browser review UI. The command blocks until the user submits their review, then prints structured review output to stdout.
+
+   **Inline branch** — pipe the plan content via a quoted heredoc so markdown is passed through verbatim (no shell expansion, no escaping needed):
+   ```bash
+   $PLAN_REVIEW_CMD --browser -o stdout <<'PLAN_EOF'
+   # My Plan
+
+   ## Section 1
+   ...plan content from this conversation...
+   PLAN_EOF
+   ```
+
+   Both variants open the browser review UI and block until the user clicks "Submit Review", then print structured review output to stdout.
 
 4. **Read the output.** The review output is structured markdown with the user's comments anchored to specific sections. Read it and present a summary to the user.
 
@@ -46,5 +65,6 @@ Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-r
 - The `--browser` flag opens a three-panel review UI (TOC + content + comments).
 - The `-o stdout` flag ensures the review output comes back to this session.
 - The command will block until the user clicks "Submit Review" in the browser.
-- If the user has an existing session for this plan, they'll be prompted to resume.
-- Use `--fresh` flag if the user explicitly wants to start a clean review.
+- **File branch only:** if a session exists for this plan, the user is prompted to resume. Use `--fresh` to skip.
+- **Inline branch:** there is no file anchor, so no session resume — the review is ephemeral.
+- Always use a **quoted** heredoc delimiter (`<<'PLAN_EOF'`) so backticks, `$`, and other shell metacharacters in the plan are left alone.
