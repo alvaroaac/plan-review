@@ -168,6 +168,108 @@ body {
   letter-spacing: 0.5px;
 }
 
+/* Mermaid: before the runtime replaces the <pre> with SVG it still looks like a
+   code block; after rendering, mermaid injects an <svg> into the same element,
+   so we keep styles neutral on the container and just make sure it's centered
+   and readable on both states. */
+pre.mermaid {
+  background: transparent;
+  padding: 8px 0;
+  text-align: center;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+pre.mermaid[data-processed="true"] svg {
+  max-width: 100%;
+  height: auto;
+}
+
+/* Display math block — centered, breathing room. Inline math inherits paragraph flow. */
+.math-display {
+  text-align: center;
+  overflow-x: auto;
+  padding: 8px 0;
+}
+.math-inline {
+  /* KaTeX injects its own styles once loaded; pre-render we just keep it inline. */
+  font-family: 'Latin Modern Math', 'Times New Roman', serif;
+}
+
+/* GFM admonitions: > [!NOTE], [!TIP], [!IMPORTANT], [!WARNING], [!CAUTION].
+   Left border color and title label follow GitHub's palette. */
+.admonition {
+  border-left: 4px solid var(--accent);
+  padding: 8px 12px;
+  margin: 12px 0;
+  background: rgba(0, 173, 181, 0.08);
+  border-radius: 0 4px 4px 0;
+}
+.admonition .admonition-title {
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin: 0 0 6px;
+  color: var(--accent);
+}
+.admonition-note    { border-color: #3b82f6; background: rgba(59, 130, 246, 0.08); }
+.admonition-note    .admonition-title { color: #3b82f6; }
+.admonition-tip     { border-color: #22c55e; background: rgba(34, 197, 94, 0.08); }
+.admonition-tip     .admonition-title { color: #22c55e; }
+.admonition-important { border-color: #a855f7; background: rgba(168, 85, 247, 0.08); }
+.admonition-important .admonition-title { color: #a855f7; }
+.admonition-warning { border-color: #f59e0b; background: rgba(245, 158, 11, 0.08); }
+.admonition-warning .admonition-title { color: #f59e0b; }
+.admonition-caution { border-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
+.admonition-caution .admonition-title { color: #ef4444; }
+
+/* Inline HTML that browsers ship with light-theme defaults — rebase for dark. */
+kbd {
+  display: inline-block;
+  padding: 1px 6px;
+  font-family: 'Menlo', 'Monaco', monospace;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-primary);
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  vertical-align: middle;
+}
+sub, sup { font-size: 0.75em; line-height: 0; }
+
+/* <details>/<summary>: browsers handle open/close natively; just make it look on-theme. */
+details {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 10px;
+  margin: 8px 0;
+}
+details summary {
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--accent);
+}
+details[open] summary { margin-bottom: 6px; }
+
+/* GFM footnotes — marked-footnote emits <section class="footnotes">. */
+section.footnotes {
+  margin-top: 24px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+section.footnotes ol { padding-left: 20px; }
+section.footnotes li { margin-bottom: 4px; }
+sup[id^="fnref"] a {
+  color: var(--accent);
+  text-decoration: none;
+  font-size: 11px;
+  padding: 0 2px;
+}
+
 .comment-card {
   padding: 10px;
   margin-bottom: 8px;

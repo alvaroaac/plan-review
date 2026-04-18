@@ -60,6 +60,161 @@ describe('renderToLineBlocks', () => {
     expect(indices).toEqual([0, 1, 2, 3]);
   });
 
+  // ── Lists: nesting, mixed, task lists ────────────────────────────────────
+
+  it('keeps nested unordered lists inside their parent item (no flattening)', () => {
+    const md = '- one\n  - one-a\n    - one-a-i\n  - one-b\n- two';
+    const blocks = renderToLineBlocks(md);
+    // Outer list has two top-level items → two LineBlocks, nested lists stay INSIDE each.
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].innerHtml).toContain('one');
+    expect(blocks[0].innerHtml).toContain('<ul');
+    expect(blocks[0].innerHtml).toContain('one-a');
+    expect(blocks[0].innerHtml).toContain('one-a-i'); // deep nesting preserved
+    expect(blocks[0].innerHtml).toContain('one-b');
+    expect(blocks[1].innerHtml).toContain('two');
+    expect(blocks[1].innerHtml).not.toContain('one-a');
+  });
+
+  it('keeps nested ordered lists inside their parent item', () => {
+    const md = '1. first\n2. second\n   1. two-a\n   2. two-b\n3. third';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[1].innerHtml).toContain('<ol');
+    expect(blocks[1].innerHtml).toContain('two-a');
+    expect(blocks[1].innerHtml).toContain('two-b');
+  });
+
+  it('renders GFM task-list items with disabled checkboxes', () => {
+    const md = '- [ ] todo\n- [x] done\n- [ ] pending';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0].innerHtml).toContain('<input type="checkbox" disabled>');
+    expect(blocks[1].innerHtml).toContain('<input type="checkbox" disabled checked>');
+    expect(blocks[0].innerHtml).toContain('task-list-item');
+    expect(blocks[0].innerHtml).toContain('list-style:none');
+  });
+
+  // ── Footnotes ────────────────────────────────────────────────────────────
+
+  it('emits a footnotes section for GFM [^ref] markers', () => {
+    const md = 'Claim with a ref[^1].\n\n[^1]: The footnote body.';
+    const blocks = renderToLineBlocks(md);
+    // Somewhere in the block stream there should be the footnotes section + an inline link marker.
+    const all = blocks.map((b) => b.innerHtml).join('\n');
+    expect(all).toContain('footnotes');
+    expect(all).toContain('The footnote body');
+  });
+
+  // ── Inline HTML inside paragraphs ────────────────────────────────────────
+
+  it('preserves inline HTML tags like <kbd>, <sub>, <sup> inside paragraphs', () => {
+    const blocks = renderToLineBlocks('Press <kbd>Ctrl</kbd>+<kbd>C</kbd>. H<sub>2</sub>O and E=mc<sup>2</sup>.');
+    expect(blocks[0].innerHtml).toContain('<kbd>Ctrl</kbd>');
+    expect(blocks[0].innerHtml).toContain('<sub>2</sub>');
+    expect(blocks[0].innerHtml).toContain('<sup>2</sup>');
+  });
+
+  // ── Tables with inline formatting in cells ───────────────────────────────
+
+  it('renders inline formatting inside table cells', () => {
+    const md = [
+      '| term | meaning |',
+      '|------|---------|',
+      '| `cmd` | runs a **command** with [docs](https://example.com) |',
+    ].join('\n');
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].innerHtml).toContain('<table>');
+    expect(blocks[0].innerHtml).toContain('<code>cmd</code>');
+    expect(blocks[0].innerHtml).toContain('<strong>command</strong>');
+    expect(blocks[0].innerHtml).toContain('href="https://example.com"');
+  });
+
+  // ── Reference-style and auto links ───────────────────────────────────────
+
+  it('resolves reference-style links', () => {
+    const md = 'See the [docs][d].\n\n[d]: https://example.com "Example"';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks[0].innerHtml).toContain('href="https://example.com"');
+    expect(blocks[0].innerHtml).toContain('>docs</a>');
+  });
+
+  it('renders auto-links as anchors', () => {
+    const blocks = renderToLineBlocks('Visit <https://anthropic.com>.');
+    expect(blocks[0].innerHtml).toContain('href="https://anthropic.com"');
+  });
+
+  // ── Images ───────────────────────────────────────────────────────────────
+
+  it('renders images as <img> tags with alt text', () => {
+    const blocks = renderToLineBlocks('![local thing](demo.gif)');
+    expect(blocks[0].innerHtml).toContain('<img');
+    expect(blocks[0].innerHtml).toContain('src="demo.gif"');
+    expect(blocks[0].innerHtml).toContain('alt="local thing"');
+  });
+
+  // ── HR + raw HTML ────────────────────────────────────────────────────────
+
+  it('emits an <hr> block for horizontal rules', () => {
+    const blocks = renderToLineBlocks('before\n\n---\n\nafter');
+    const hrBlock = blocks.find((b) => b.innerHtml === '<hr>');
+    expect(hrBlock).toBeTruthy();
+    expect(hrBlock!.text).toBe('---');
+  });
+
+  it('emits raw HTML blocks (e.g. <details>)', () => {
+    const md = '<details>\n<summary>More</summary>\nhidden body\n</details>';
+    const blocks = renderToLineBlocks(md);
+    const htmlBlock = blocks.find((b) => b.innerHtml.includes('<details>'));
+    expect(htmlBlock).toBeTruthy();
+    expect(htmlBlock!.innerHtml).toContain('<summary>');
+  });
+
+  it('decorates GFM admonitions with a titled class', () => {
+    const md = '> [!WARNING]\n> watch out';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].innerHtml).toContain('admonition-warning');
+    expect(blocks[0].innerHtml).toContain('admonition-title');
+    expect(blocks[0].innerHtml).toContain('Warning');
+    expect(blocks[0].innerHtml).not.toContain('[!WARNING]'); // marker stripped
+  });
+
+  it('emits a math-display block for $$ ... $$ and math-inline spans in paragraphs', () => {
+    const md = 'before\n\n$$ x = 1 $$\n\nMiddle with $a=b$ inline.';
+    const blocks = renderToLineBlocks(md);
+    const displayBlock = blocks.find((b) => b.innerHtml.includes('math-display'));
+    expect(displayBlock).toBeTruthy();
+    const inlineBlock = blocks.find((b) => b.innerHtml.includes('math-inline'));
+    expect(inlineBlock).toBeTruthy();
+    expect(inlineBlock!.innerHtml).toContain('a=b');
+  });
+
+  it('expands known emoji shortcodes in paragraphs and headings', () => {
+    const blocks = renderToLineBlocks('Ship it :rocket:\n\n## :warning: Heads up');
+    expect(blocks[0].innerHtml).toContain('🚀');
+    expect(blocks[0].innerHtml).not.toContain(':rocket:');
+    const headingBlock = blocks.find((b) => b.innerHtml.startsWith('<h2'));
+    expect(headingBlock!.innerHtml).toContain('⚠️');
+  });
+
+  it('leaves unknown shortcodes intact', () => {
+    const blocks = renderToLineBlocks('Has :totally_fake_emoji: shortcode');
+    expect(blocks[0].innerHtml).toContain(':totally_fake_emoji:');
+  });
+
+  it('emits a <pre class="mermaid"> block for mermaid code fences', () => {
+    const md = '```mermaid\nflowchart LR\n  A --> B\n```';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].innerHtml).toContain('<pre class="mermaid">');
+    expect(blocks[0].innerHtml).not.toContain('<code'); // not wrapped as code block
+    // Raw source preserved so comments can anchor to specific lines of the diagram.
+    expect(blocks[0].text).toContain('flowchart LR');
+    expect(blocks[0].text).toContain('A --> B');
+  });
+
   it('text field for code block is the raw code string', () => {
     const blocks = renderToLineBlocks('```\nconst x = 1;\n```');
     expect(blocks[0].text).toContain('const x = 1;');

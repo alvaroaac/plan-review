@@ -6,3 +6,6 @@ coverage/
 thoughts/
 .superpowers/
 .worktrees/
+playwright-report/
+test-results/
+tests/visual/screenshots/

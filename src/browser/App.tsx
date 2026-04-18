@@ -3,6 +3,8 @@ import type { PlanDocument, ReviewComment, LineAnchor } from '../types.js';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
 import { CommentSidebar } from './CommentSidebar.js';
+import { renderMermaidBlocks } from './mermaid.js';
+import { renderMathBlocks } from './katex.js';
 
 interface CommentingTarget {
   sectionId: string;
@@ -54,6 +56,17 @@ export function App() {
       })
       .catch((err) => setError(err.message));
   }, []);
+
+  // After the document renders, lazily invoke the heavy renderers that each
+  // replace their own placeholder nodes: mermaid swaps <pre class="mermaid">
+  // for SVG diagrams, KaTeX replaces .math-inline / .math-display with typeset
+  // math. Both skip nodes they've already processed, so calling once per doc
+  // load is enough.
+  useEffect(() => {
+    if (!doc) return;
+    renderMermaidBlocks();
+    renderMathBlocks();
+  }, [doc]);
 
   // Heartbeat + tab-close detection.
   // - While the tab is visible, POST /api/heartbeat every 5s so the server knows we're alive.
