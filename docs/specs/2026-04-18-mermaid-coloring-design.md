@@ -9,8 +9,8 @@
 Color-code mermaid diagrams so readers can scan a flowchart or sequence diagram and parse structure at a glance:
 
 - Flowchart nodes colored by role (start/process/decision/end/error/io).
-- Flowchart decision branches colored by outcome (yes/no).
-- Sequence participants each colored distinctly.
+- Flowchart decision branches colored by outcome (yes/no) — both the edge **line** and its label chip carry the branch color, matching how role nodes and actor lifelines both carry their palette color.
+- Sequence participants each colored distinctly — participant box and its lifeline share the same hue.
 
 No new UI chrome, no toolbar, no node-level comments. Chrome/toolbar/fullscreen/click-to-comment are captured separately in tech debt.
 
