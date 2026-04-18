@@ -86,6 +86,31 @@ export function applyRoles(svg: SVGElement, roles: Record<string, MermaidRole>):
   }
 }
 
+// Add edge-yes / edge-no classes to the rendered SVG path + matching
+// edge-label <g>. Mermaid edge ids come in two forms depending on version:
+// "L_From_To_0" (underscore) and "L-From-To-0" (dash). Query both.
+// Label matching is by exact text content (lowercased), fragile but
+// the only path — a non-match just leaves the label uncolored.
+export function applyBranchEdges(svg: SVGElement, branches: BranchEdge[]): void {
+  for (const b of branches) {
+    if (!b.branch) continue;
+    const cls = `edge-${b.branch}`;
+    const labelCls = `edge-${b.branch}-label`;
+
+    // Path + any ancestor <g> wrapper: cover both forms of mermaid ids.
+    const sel = `[id*="_${b.from}_${b.to}_"], [id*="-${b.from}-${b.to}-"]`;
+    for (const el of svg.querySelectorAll(sel)) {
+      el.classList.add(cls);
+    }
+
+    const wantText = b.label.trim().toLowerCase();
+    for (const lbl of svg.querySelectorAll('g.edgeLabel, .edgeLabel')) {
+      const txt = (lbl.textContent ?? '').trim().toLowerCase();
+      if (txt === wantText) lbl.classList.add(labelCls);
+    }
+  }
+}
+
 let loadPromise: Promise<MermaidLike> | null = null;
 
 function loadMermaid(): Promise<MermaidLike> {

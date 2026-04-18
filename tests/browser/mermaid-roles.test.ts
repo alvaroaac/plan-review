@@ -170,3 +170,49 @@ describe('applyRoles', () => {
     }
   });
 });
+
+import { applyBranchEdges } from '../../src/browser/mermaid.js';
+
+describe('applyBranchEdges', () => {
+  it('adds edge-yes class to matching edge path', () => {
+    const svg = buildSvg('<path id="L_A_B_0" class="flowchart-link"/>');
+    applyBranchEdges(svg, [{ from: 'A', to: 'B', branch: 'yes', label: 'Yes' }]);
+    expect(svg.querySelector('path')!.classList.contains('edge-yes')).toBe(true);
+  });
+
+  it('adds edge-no class to matching edge path with dash ids', () => {
+    const svg = buildSvg('<path id="L-A-B-0" class="flowchart-link"/>');
+    applyBranchEdges(svg, [{ from: 'A', to: 'B', branch: 'no', label: 'No' }]);
+    expect(svg.querySelector('path')!.classList.contains('edge-no')).toBe(true);
+  });
+
+  it('skips edges with null branch', () => {
+    const svg = buildSvg('<path id="L_A_B_0" class="flowchart-link"/>');
+    applyBranchEdges(svg, [{ from: 'A', to: 'B', branch: null, label: 'maybe' }]);
+    expect(svg.querySelector('path')!.classList.contains('edge-yes')).toBe(false);
+    expect(svg.querySelector('path')!.classList.contains('edge-no')).toBe(false);
+  });
+
+  it('tags matching edge label by text content', () => {
+    const svg = buildSvg(`
+      <path id="L_A_B_0" class="flowchart-link"/>
+      <g class="edgeLabel"><foreignObject><span>Yes</span></foreignObject></g>
+    `);
+    applyBranchEdges(svg, [{ from: 'A', to: 'B', branch: 'yes', label: 'Yes' }]);
+    expect(svg.querySelector('g.edgeLabel')!.classList.contains('edge-yes-label')).toBe(true);
+  });
+
+  it('handles multiple branches in one pass', () => {
+    const svg = buildSvg(`
+      <path id="L_X_Y_0" class="flowchart-link"/>
+      <path id="L_X_Z_0" class="flowchart-link"/>
+    `);
+    applyBranchEdges(svg, [
+      { from: 'X', to: 'Y', branch: 'yes', label: 'Yes' },
+      { from: 'X', to: 'Z', branch: 'no',  label: 'No' },
+    ]);
+    const paths = svg.querySelectorAll('path');
+    expect(paths[0].classList.contains('edge-yes')).toBe(true);
+    expect(paths[1].classList.contains('edge-no')).toBe(true);
+  });
+});
