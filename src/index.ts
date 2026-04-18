@@ -33,7 +33,7 @@ program
   .option('--output-file <path>', 'Custom output file path (with --output file)')
   .option('--split-by <strategy>', 'Force split strategy: heading, separator')
   .option('--fresh', 'Skip session resume, start clean review')
-  .option('--browser', 'Open browser-based review UI')
+  .option('--no-browser', 'Use the terminal review UI instead of the browser (SSH/CI/headless)')
   .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean; fresh?: boolean }) => {
     try {
       await run(file, opts);

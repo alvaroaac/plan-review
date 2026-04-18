@@ -1,6 +1,8 @@
 # plan-review
 
-Interactive CLI for reviewing AI-generated markdown plans. Parses plans into sections, renders them in the terminal or browser, collects your comments, and outputs structured feedback — back to the AI or your team.
+Interactive CLI for reviewing AI-generated markdown plans. Parses a plan into sections, opens a three-panel browser review UI, collects line-anchored comments, and pipes structured feedback back — to the AI that wrote the plan, your clipboard, or a file.
+
+![Browser mode demo](https://raw.githubusercontent.com/alvaroaac/plan-review/main/examples/demo-browser.gif)
 
 ## Install
 
@@ -19,21 +21,21 @@ plan-review install-skill
 ## Quick start
 
 ```bash
-# Try the included demo plan
-plan-review --browser examples/demo-plan.md
+# Review a plan — opens the browser UI (default)
+plan-review path/to/plan.md
 
-# Review your own plan
-plan-review path/to/plan.md --browser
+# Try the included fixture
+plan-review examples/renderer-fixture.md
 
-# Pipe feedback directly to Claude
-plan-review path/to/plan.md --browser -o claude
+# Pipe feedback directly back to Claude
+plan-review path/to/plan.md -o claude
 ```
 
-## Browser mode (`--browser`)
+That's it. The browser mode is the default and the recommended way to review plans — line-anchored comments, auto-save, full markdown rendering including mermaid, math, footnotes, and admonitions.
 
-![Browser mode demo](https://raw.githubusercontent.com/alvaroaac/plan-review/main/examples/demo-browser.gif)
+## Browser mode (default)
 
-The browser mode opens a three-panel review UI:
+Three panels:
 
 ```
 +------------------+----------------------------+------------------+
@@ -43,30 +45,32 @@ The browser mode opens a three-panel review UI:
 |                  |                            |                  |
 |   - Milestone 1  |   ## Task 1.1              |   [Add comment]  |
 |     * Task 1.1 ✓ |                            |                  |
-|     * Task 1.2   |   **Depends on:** 1.0      |   > "Line 3-5"  |
+|     * Task 1.2   |   **Depends on:** 1.0      |   > "Line 3-5"   |
 |   - Milestone 2  |   **Blocks:** 1.2          |   Fix the error  |
 |     * Task 2.1   |                            |   handling here  |
 |                  |   Content with line        |                  |
-|                  |   gutters for anchoring    |   [Submit Review] |
+|                  |   gutters for anchoring    |   [Submit Review]|
 |                  |   comments to ranges       |                  |
 +------------------+----------------------------+------------------+
 ```
 
-**Line-anchored comments:** Click a line number in the gutter to start a selection. Shift-click another line to select a range. Your comment is anchored to those exact lines.
+**Line-anchored comments.** Click a gutter marker to start a selection, shift-click another line to extend the range. Comments anchor to the exact lines and travel back in the output.
 
-**Section-level comments:** Click "Add comment to entire section" below any section.
+**Section-level comments.** "Add comment to entire section" under any section header when line-level granularity isn't needed.
 
-**Auto-save:** Comments are saved as you work. Close the browser, come back later, resume where you left off.
+**Auto-save.** Your progress writes to `~/.plan-review/sessions/` as you work. Close the tab, come back later, pick up where you left off. Closing the tab mid-review exits the CLI cleanly with the session preserved.
 
-Click "Submit Review" when done — structured feedback is sent back to the CLI.
+**Full markdown rendering.** Paragraphs, nested lists, task lists, tables, code fences, blockquotes, GFM admonitions (`> [!NOTE]`), footnotes, inline HTML (`<kbd>`, `<sub>`, `<sup>`, `<details>`), emoji shortcodes, horizontal rules, images, reference-style links — plus mermaid diagrams and KaTeX math, both lazy-loaded from CDN only when the plan contains them.
 
-## Terminal mode (default)
+## Terminal mode (`--no-browser`)
+
+For SSH sessions, CI, or headless environments where launching a browser isn't an option:
 
 ```bash
-plan-review path/to/plan.md
+plan-review path/to/plan.md --no-browser
 ```
 
-Interactive terminal UI with table of contents, section navigation, and inline commenting. Works over SSH, in CI, anywhere.
+Interactive terminal UI with a table of contents, section navigation, and inline commenting.
 
 | Command | Action |
 |---------|--------|
@@ -78,6 +82,8 @@ Interactive terminal UI with table of contents, section navigation, and inline c
 | *(enter)* | Skip section |
 | *(any text)* | Add comment on current section |
 
+Terminal mode is a fallback — you get text rendering and section-level comments, but no line anchors, no mermaid, no math, no live markdown preview.
+
 ## Options
 
 ```
@@ -85,53 +91,51 @@ Interactive terminal UI with table of contents, section navigation, and inline c
 --output-file <path>    Custom output file path (with --output file)
 --split-by <strategy>   Force split strategy: heading, separator
 --fresh                 Skip session resume, start clean review
---browser               Open browser-based review UI
+--no-browser            Use the terminal review UI instead (SSH/CI/headless)
 -V, --version           Show version
 -h, --help              Show help
 ```
 
 ## The AI feedback loop
 
-The real power is closing the loop between AI-generated plans and human review:
+The point is closing the loop between AI-generated plans and human review:
 
 ```
 AI writes plan  →  You review with plan-review  →  Feedback pipes to Claude  →  AI revises
 ```
 
 ```bash
-# Review in browser, send feedback straight to Claude
-plan-review plan.md --browser -o claude
+# Review in browser, send structured feedback straight to Claude
+plan-review plan.md -o claude
 ```
 
-Your anchored, section-by-section comments become structured input the AI can act on — not a wall of text in a chat message.
+Line-anchored, section-scoped comments become input the AI can act on — not a wall of prose in a chat message.
 
 ## How it works
 
-1. **Parses** your markdown — auto-detects plan-style documents (milestones, tasks, dependencies) or falls back to generic heading-based splitting
-2. **Renders** in terminal or browser depending on mode
-3. **Collects** your comments as you review each section
-4. **Outputs** structured markdown with your comments alongside the original content
+1. **Parses** your markdown — auto-detects plan-style documents (milestones, tasks, dependencies) or falls back to generic heading-based splitting.
+2. **Renders** in the browser by default, or in the terminal via `--no-browser`.
+3. **Collects** your comments as you review each section.
+4. **Outputs** structured markdown with your comments alongside the original content.
 
 ### Plan mode
 
-Documents with `## Milestone` / `### Task` hierarchy and fields like `**Depends On:**`, `**Blocks:**`, `**Verification:**` are detected as plans. Sections show dependency metadata and task IDs.
+Documents with `## Milestone` / `### Task` hierarchy and fields like `**Depends On:**`, `**Blocks:**`, `**Verification:**` are detected as plans. Sections show dependency metadata and task IDs in the sidebar.
 
 ### Generic mode
 
-Any markdown with headings gets split into reviewable sections.
+Any markdown with headings gets split into reviewable sections. Non-plan docs still work — you just don't get the plan-specific chrome.
 
 ## Output targets
 
-- **stdout** — print to terminal (default)
+- **stdout** — print to terminal (default when not prompted otherwise)
 - **clipboard** — copy to clipboard (pbcopy/xclip)
-- **file** — write to `<input>.review.md` or custom path
-- **claude** — pipe directly to Claude Code CLI
+- **file** — write to `<input>.review.md` or a custom path via `--output-file`
+- **claude** — pipe directly to the Claude Code CLI
 
 ## Saved sessions
 
-Review progress is auto-saved as you work. If you close the terminal or browser and re-run `plan-review` on the same file, you'll be prompted to resume where you left off.
-
-Sessions are stored in `~/.plan-review/sessions/`.
+Review progress auto-saves as you work. Re-running `plan-review` on the same file prompts to resume. Stored in `~/.plan-review/sessions/`.
 
 ```
 plan-review plan.md --fresh    Skip session resume, start clean

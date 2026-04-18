@@ -34,16 +34,16 @@ Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-r
    fi
    ```
 
-3. **Run the review.**
+3. **Run the review.** Browser mode is the default — no flag needed.
 
    **File branch:**
    ```bash
-   $PLAN_REVIEW_CMD <plan-file> --browser -o stdout
+   $PLAN_REVIEW_CMD <plan-file> -o stdout
    ```
 
    **Inline branch** — pipe the plan content via a quoted heredoc so markdown is passed through verbatim (no shell expansion, no escaping needed):
    ```bash
-   $PLAN_REVIEW_CMD --browser -o stdout <<'PLAN_EOF'
+   $PLAN_REVIEW_CMD -o stdout <<'PLAN_EOF'
    # My Plan
 
    ## Section 1
@@ -62,7 +62,7 @@ Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-r
 
 ## Important
 
-- The `--browser` flag opens a three-panel review UI (TOC + content + comments).
+- Browser mode (three-panel TOC + content + comments UI) is the default — no flag needed. Pass `--no-browser` only for SSH/CI/headless environments.
 - The `-o stdout` flag ensures the review output comes back to this session.
 - The command will block until the user clicks "Submit Review" in the browser.
 - **File branch only:** if a session exists for this plan, the user is prompted to resume. Use `--fresh` to skip.
