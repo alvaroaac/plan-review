@@ -9,6 +9,32 @@
   --border: #2a2a4a;
   --danger: #e74c3c;
   --success: #2ecc71;
+
+  /* Mermaid node-role palette — same chroma, different hues */
+  --role-start:    oklch(0.72 0.12 200); /* teal */
+  --role-process:  oklch(0.72 0.05 260); /* slate */
+  --role-decision: oklch(0.78 0.14 75);  /* amber */
+  --role-end:      oklch(0.72 0.14 150); /* green */
+  --role-error:    oklch(0.68 0.17 25);  /* red */
+  --role-io:       oklch(0.72 0.12 290); /* violet */
+
+  /* Mermaid sequence-actor palette — 6-hue cycle */
+  --actor-0: oklch(0.72 0.12 200); /* teal */
+  --actor-1: oklch(0.74 0.14 75);  /* amber */
+  --actor-2: oklch(0.72 0.14 150); /* green */
+  --actor-3: oklch(0.72 0.12 290); /* violet */
+  --actor-4: oklch(0.68 0.17 25);  /* red */
+  --actor-5: oklch(0.74 0.10 320); /* magenta */
+
+  /* Yes/No branch palette — palette-aligned default (B).
+     Semantic variant (A) toggles via body.yesno-semantic. */
+  --edge-yes: var(--accent);
+  --edge-no:  #f59e0b;
+}
+
+body.yesno-semantic {
+  --edge-yes: var(--success); /* green */
+  --edge-no:  var(--danger);  /* red */
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -504,4 +530,87 @@ section.footnotes a[data-footnote-backref]:hover { text-decoration: underline; }
   text-transform: uppercase;
   letter-spacing: 0.03em;
   margin-bottom: 6px;
+}
+
+/* ── Mermaid node coloring ──────────────────────────────────
+   Mermaid renders each node as <g class="node"> with an inner
+   rect/polygon/path. We tag the <g> with data-role (set by
+   applyRoles in mermaid.ts) and paint via !important because
+   mermaid's theme system injects inline fill/stroke styles. */
+
+pre.mermaid[data-processed="true"] g.node[data-role="start"]    > * { fill: color-mix(in srgb, var(--role-start)    20%, var(--bg-primary)) !important; stroke: var(--role-start)    !important; }
+pre.mermaid[data-processed="true"] g.node[data-role="process"]  > * { fill: color-mix(in srgb, var(--role-process)  18%, var(--bg-primary)) !important; stroke: var(--role-process)  !important; }
+pre.mermaid[data-processed="true"] g.node[data-role="decision"] > * { fill: color-mix(in srgb, var(--role-decision) 22%, var(--bg-primary)) !important; stroke: var(--role-decision) !important; stroke-width: 2px !important; }
+pre.mermaid[data-processed="true"] g.node[data-role="end"]      > * { fill: color-mix(in srgb, var(--role-end)      20%, var(--bg-primary)) !important; stroke: var(--role-end)      !important; }
+pre.mermaid[data-processed="true"] g.node[data-role="error"]    > * { fill: color-mix(in srgb, var(--role-error)    20%, var(--bg-primary)) !important; stroke: var(--role-error)    !important; }
+pre.mermaid[data-processed="true"] g.node[data-role="io"]       > * { fill: color-mix(in srgb, var(--role-io)       20%, var(--bg-primary)) !important; stroke: var(--role-io)       !important; }
+
+/* Node labels — mermaid may inject white/black fills on foreignObject spans */
+pre.mermaid[data-processed="true"] g.node foreignObject span,
+pre.mermaid[data-processed="true"] g.node text { color: var(--text-primary) !important; fill: var(--text-primary) !important; font-weight: 500 !important; }
+pre.mermaid[data-processed="true"] g.node[data-role="decision"] foreignObject span,
+pre.mermaid[data-processed="true"] g.node[data-role="decision"] text { color: var(--role-decision) !important; fill: var(--role-decision) !important; font-weight: 600 !important; }
+
+/* Sequence actors — 6-hue cycle, lifeline matches actor hue */
+pre.mermaid[data-processed="true"] rect.actor[data-actor-idx="0"], pre.mermaid[data-processed="true"] g.actor[data-actor-idx="0"] rect { fill: color-mix(in srgb, var(--actor-0) 22%, var(--bg-primary)) !important; stroke: var(--actor-0) !important; stroke-width: 2px !important; }
+pre.mermaid[data-processed="true"] rect.actor[data-actor-idx="1"], pre.mermaid[data-processed="true"] g.actor[data-actor-idx="1"] rect { fill: color-mix(in srgb, var(--actor-1) 22%, var(--bg-primary)) !important; stroke: var(--actor-1) !important; stroke-width: 2px !important; }
+pre.mermaid[data-processed="true"] rect.actor[data-actor-idx="2"], pre.mermaid[data-processed="true"] g.actor[data-actor-idx="2"] rect { fill: color-mix(in srgb, var(--actor-2) 22%, var(--bg-primary)) !important; stroke: var(--actor-2) !important; stroke-width: 2px !important; }
+pre.mermaid[data-processed="true"] rect.actor[data-actor-idx="3"], pre.mermaid[data-processed="true"] g.actor[data-actor-idx="3"] rect { fill: color-mix(in srgb, var(--actor-3) 22%, var(--bg-primary)) !important; stroke: var(--actor-3) !important; stroke-width: 2px !important; }
+pre.mermaid[data-processed="true"] rect.actor[data-actor-idx="4"], pre.mermaid[data-processed="true"] g.actor[data-actor-idx="4"] rect { fill: color-mix(in srgb, var(--actor-4) 22%, var(--bg-primary)) !important; stroke: var(--actor-4) !important; stroke-width: 2px !important; }
+pre.mermaid[data-processed="true"] rect.actor[data-actor-idx="5"], pre.mermaid[data-processed="true"] g.actor[data-actor-idx="5"] rect { fill: color-mix(in srgb, var(--actor-5) 22%, var(--bg-primary)) !important; stroke: var(--actor-5) !important; stroke-width: 2px !important; }
+
+pre.mermaid[data-processed="true"] line.actor-line[data-actor-idx="0"] { stroke: var(--actor-0) !important; stroke-opacity: 0.45; stroke-width: 1.5px !important; }
+pre.mermaid[data-processed="true"] line.actor-line[data-actor-idx="1"] { stroke: var(--actor-1) !important; stroke-opacity: 0.45; stroke-width: 1.5px !important; }
+pre.mermaid[data-processed="true"] line.actor-line[data-actor-idx="2"] { stroke: var(--actor-2) !important; stroke-opacity: 0.45; stroke-width: 1.5px !important; }
+pre.mermaid[data-processed="true"] line.actor-line[data-actor-idx="3"] { stroke: var(--actor-3) !important; stroke-opacity: 0.45; stroke-width: 1.5px !important; }
+pre.mermaid[data-processed="true"] line.actor-line[data-actor-idx="4"] { stroke: var(--actor-4) !important; stroke-opacity: 0.45; stroke-width: 1.5px !important; }
+pre.mermaid[data-processed="true"] line.actor-line[data-actor-idx="5"] { stroke: var(--actor-5) !important; stroke-opacity: 0.45; stroke-width: 1.5px !important; }
+
+pre.mermaid[data-processed="true"] text.actor,
+pre.mermaid[data-processed="true"] g.actor text,
+pre.mermaid[data-processed="true"] g.actor foreignObject span {
+  fill: var(--text-primary) !important;
+  color: var(--text-primary) !important;
+  font-weight: 600 !important;
+}
+
+/* Yes/No branch edges — lines + arrowheads + label chips */
+pre.mermaid[data-processed="true"] path.edge-yes,
+pre.mermaid[data-processed="true"] .edge-yes path.flowchart-link,
+pre.mermaid[data-processed="true"] .edge-yes .path,
+pre.mermaid[data-processed="true"] g.edge-yes > path {
+  stroke: var(--edge-yes) !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: none !important;
+  fill: none !important;
+}
+pre.mermaid[data-processed="true"] path.edge-no,
+pre.mermaid[data-processed="true"] .edge-no path.flowchart-link,
+pre.mermaid[data-processed="true"] .edge-no .path,
+pre.mermaid[data-processed="true"] g.edge-no > path {
+  stroke: var(--edge-no) !important;
+  stroke-width: 2.5px !important;
+  stroke-dasharray: none !important;
+  fill: none !important;
+}
+
+pre.mermaid[data-processed="true"] g.edge-yes marker path { fill: var(--edge-yes) !important; stroke: var(--edge-yes) !important; }
+pre.mermaid[data-processed="true"] g.edge-no  marker path { fill: var(--edge-no)  !important; stroke: var(--edge-no)  !important; }
+
+/* Branch-label chips */
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span,
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label rect { background: var(--edge-yes) !important; fill: var(--edge-yes) !important; }
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span {
+  color: var(--bg-primary) !important;
+  font-weight: 700 !important;
+  padding: 1px 8px !important;
+  border-radius: 10px !important;
+}
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span,
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label rect { background: var(--edge-no) !important; fill: var(--edge-no) !important; }
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span {
+  color: var(--bg-primary) !important;
+  font-weight: 700 !important;
+  padding: 1px 8px !important;
+  border-radius: 10px !important;
 }
