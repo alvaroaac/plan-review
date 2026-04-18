@@ -43,6 +43,28 @@ export function detectRoles(source: string): Record<string, MermaidRole> {
   return roles;
 }
 
+export interface BranchEdge {
+  from: string;
+  to: string;
+  branch: 'yes' | 'no' | null;
+  label: string;
+}
+
+const YES_RE = /^(?:yes|true|ok|success|pass|1)$/i;
+const NO_RE  = /^(?:no|false|fail|error|reject|0)$/i;
+
+export function parseBranchLabels(source: string): BranchEdge[] {
+  const re = /([A-Za-z_][A-Za-z0-9_]*)\s*(?:-->|---|==>|-\.->)\s*\|([^|]+)\|\s*([A-Za-z_][A-Za-z0-9_]*)/g;
+  const out: BranchEdge[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(source)) !== null) {
+    const label = m[2].trim();
+    const branch = YES_RE.test(label) ? 'yes' : NO_RE.test(label) ? 'no' : null;
+    out.push({ from: m[1], to: m[3], branch, label });
+  }
+  return out;
+}
+
 let loadPromise: Promise<MermaidLike> | null = null;
 
 function loadMermaid(): Promise<MermaidLike> {

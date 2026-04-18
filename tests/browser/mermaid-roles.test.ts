@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { detectRoles } from '../../src/browser/mermaid.js';
+import { detectRoles, parseBranchLabels } from '../../src/browser/mermaid.js';
 
 describe('detectRoles', () => {
   it('maps {label} nodes to decision', () => {
@@ -62,5 +62,59 @@ describe('detectRoles', () => {
     expect(r.A).toBeUndefined();
     expect(r.B).toBe('decision');
     expect(r.C).toBe('error');
+  });
+});
+
+describe('parseBranchLabels', () => {
+  it('maps "Yes" label to yes branch', () => {
+    const r = parseBranchLabels('flowchart TD\n  A -->|Yes| B');
+    expect(r).toEqual([{ from: 'A', to: 'B', branch: 'yes', label: 'Yes' }]);
+  });
+
+  it('maps "No" label to no branch', () => {
+    const r = parseBranchLabels('flowchart TD\n  A -->|No| B');
+    expect(r).toEqual([{ from: 'A', to: 'B', branch: 'no', label: 'No' }]);
+  });
+
+  it('accepts yes synonyms (true/ok/success/pass/1)', () => {
+    for (const syn of ['true', 'ok', 'success', 'pass', '1']) {
+      const r = parseBranchLabels(`flowchart TD\n  A -->|${syn}| B`);
+      expect(r[0].branch).toBe('yes');
+    }
+  });
+
+  it('accepts no synonyms (false/fail/error/reject/0)', () => {
+    for (const syn of ['false', 'fail', 'error', 'reject', '0']) {
+      const r = parseBranchLabels(`flowchart TD\n  A -->|${syn}| B`);
+      expect(r[0].branch).toBe('no');
+    }
+  });
+
+  it('leaves unknown labels with null branch', () => {
+    const r = parseBranchLabels('flowchart TD\n  A -->|maybe| B');
+    expect(r[0].branch).toBeNull();
+  });
+
+  it('ignores unlabeled edges', () => {
+    const r = parseBranchLabels('flowchart TD\n  A --> B');
+    expect(r).toEqual([]);
+  });
+
+  it('handles multiple edges across the source', () => {
+    const r = parseBranchLabels(`flowchart TD
+  A -->|Yes| B
+  A -->|No| C
+  C --> D`);
+    expect(r).toHaveLength(2);
+    expect(r.map(e => e.branch)).toEqual(['yes', 'no']);
+  });
+
+  it('handles mixed arrow styles', () => {
+    const r = parseBranchLabels(`flowchart TD
+  A -->|yes| B
+  B ==>|no| C
+  C -.->|pass| D`);
+    expect(r).toHaveLength(3);
+    expect(r.map(e => e.branch)).toEqual(['yes', 'no', 'yes']);
   });
 });
