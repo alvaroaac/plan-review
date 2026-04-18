@@ -216,3 +216,54 @@ describe('applyBranchEdges', () => {
     expect(paths[1].classList.contains('edge-no')).toBe(true);
   });
 });
+
+import { applyActorIndices } from '../../src/browser/mermaid.js';
+
+describe('applyActorIndices', () => {
+  it('assigns index 0 and 1 to two distinct-x actors', () => {
+    const svg = buildSvg(`
+      <rect class="actor" x="10"/>
+      <rect class="actor" x="200"/>
+    `);
+    applyActorIndices(svg);
+    const rects = svg.querySelectorAll('rect.actor');
+    expect(rects[0].getAttribute('data-actor-idx')).toBe('0');
+    expect(rects[1].getAttribute('data-actor-idx')).toBe('1');
+  });
+
+  it('dedupes actors sharing the same x-coordinate (top + bottom box)', () => {
+    const svg = buildSvg(`
+      <rect class="actor" x="10"/>
+      <rect class="actor" x="10"/>
+      <rect class="actor" x="200"/>
+      <rect class="actor" x="200"/>
+    `);
+    applyActorIndices(svg);
+    const rects = svg.querySelectorAll('rect.actor');
+    expect(rects[0].getAttribute('data-actor-idx')).toBe('0');
+    expect(rects[1].getAttribute('data-actor-idx')).toBe('0');
+    expect(rects[2].getAttribute('data-actor-idx')).toBe('1');
+    expect(rects[3].getAttribute('data-actor-idx')).toBe('1');
+  });
+
+  it('wraps at index 6 (modulo)', () => {
+    const xs = [10, 50, 100, 150, 200, 250, 300];
+    const svg = buildSvg(xs.map(x => `<rect class="actor" x="${x}"/>`).join(''));
+    applyActorIndices(svg);
+    const rects = svg.querySelectorAll('rect.actor');
+    expect(rects[6].getAttribute('data-actor-idx')).toBe('0');
+  });
+
+  it('tags lifelines in DOM order mod 6', () => {
+    const svg = buildSvg(`
+      <line class="actor-line"/>
+      <line class="actor-line"/>
+      <line class="actor-line"/>
+    `);
+    applyActorIndices(svg);
+    const lines = svg.querySelectorAll('line.actor-line');
+    expect(lines[0].getAttribute('data-actor-idx')).toBe('0');
+    expect(lines[1].getAttribute('data-actor-idx')).toBe('1');
+    expect(lines[2].getAttribute('data-actor-idx')).toBe('2');
+  });
+});

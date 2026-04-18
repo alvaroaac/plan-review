@@ -111,6 +111,27 @@ export function applyBranchEdges(svg: SVGElement, branches: BranchEdge[]): void 
   }
 }
 
+// Sequence diagrams: tag each actor rect + lifeline with data-actor-idx.
+// Mermaid renders two rect.actor per participant (top and bottom frame);
+// we dedupe by rounded x-coordinate so the same participant gets the same
+// index on both boxes. Index wraps at 6 to match the palette size.
+export function applyActorIndices(svg: SVGElement): void {
+  const xToIdx = new Map<number, number>();
+  let next = 0;
+  for (const r of svg.querySelectorAll('rect.actor')) {
+    const x = Math.round(parseFloat(r.getAttribute('x') ?? '0'));
+    if (!xToIdx.has(x)) xToIdx.set(x, next++);
+    const idx = (xToIdx.get(x) as number) % 6;
+    r.setAttribute('data-actor-idx', String(idx));
+    const parent = r.parentElement;
+    if (parent && parent.classList.contains('actor')) {
+      parent.setAttribute('data-actor-idx', String(idx));
+    }
+  }
+  const lines = svg.querySelectorAll('line.actor-line');
+  lines.forEach((l, i) => l.setAttribute('data-actor-idx', String(i % 6)));
+}
+
 let loadPromise: Promise<MermaidLike> | null = null;
 
 function loadMermaid(): Promise<MermaidLike> {
