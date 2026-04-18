@@ -118,3 +118,55 @@ describe('parseBranchLabels', () => {
     expect(r.map(e => e.branch)).toEqual(['yes', 'no', 'yes']);
   });
 });
+
+import { applyRoles } from '../../src/browser/mermaid.js';
+
+function buildSvg(inner: string): SVGElement {
+  const svgNS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(svgNS, 'svg');
+  svg.innerHTML = inner;
+  return svg as SVGElement;
+}
+
+describe('applyRoles', () => {
+  it('sets data-role on a <g class="node"> whose id matches a detected key', () => {
+    const svg = buildSvg('<g class="node" id="flowchart-A-0"><rect/></g>');
+    applyRoles(svg, { A: 'decision' });
+    expect(svg.querySelector('g.node')!.getAttribute('data-role')).toBe('decision');
+  });
+
+  it('matches id with dash or underscore separators', () => {
+    const svg = buildSvg(`
+      <g class="node" id="flowchart-X-0"><rect/></g>
+      <g class="node" id="graph_Y_1"><rect/></g>
+    `);
+    applyRoles(svg, { X: 'start', Y: 'end' });
+    const nodes = svg.querySelectorAll('g.node');
+    expect(nodes[0].getAttribute('data-role')).toBe('start');
+    expect(nodes[1].getAttribute('data-role')).toBe('end');
+  });
+
+  it('falls back to "decision" for a polygon node with no regex match', () => {
+    const svg = buildSvg('<g class="node" id="flowchart-Z-0"><polygon/></g>');
+    applyRoles(svg, {}); // Z not in roles
+    expect(svg.querySelector('g.node')!.getAttribute('data-role')).toBe('decision');
+  });
+
+  it('falls back to "process" for a non-polygon node with no regex match', () => {
+    const svg = buildSvg('<g class="node" id="flowchart-W-0"><rect/></g>');
+    applyRoles(svg, {});
+    expect(svg.querySelector('g.node')!.getAttribute('data-role')).toBe('process');
+  });
+
+  it('leaves no node untagged', () => {
+    const svg = buildSvg(`
+      <g class="node" id="flowchart-A-0"><rect/></g>
+      <g class="node" id="flowchart-B-0"><polygon/></g>
+      <g class="node" id="flowchart-C-0"><rect/></g>
+    `);
+    applyRoles(svg, { A: 'start' });
+    for (const g of svg.querySelectorAll('g.node')) {
+      expect(g.getAttribute('data-role')).toBeTruthy();
+    }
+  });
+});

@@ -65,6 +65,27 @@ export function parseBranchLabels(source: string): BranchEdge[] {
   return out;
 }
 
+// Walk each <g class="node"> in the rendered SVG and set data-role.
+// Mermaid emits ids like "flowchart-NodeId-0" or "graph_NodeId_1" — the
+// regex (^|-)NodeId(-|$) extracts the source id. If no detected role
+// matches, fall back to shape: polygon = decision, anything else = process.
+// Every node leaves this function with a data-role attribute.
+export function applyRoles(svg: SVGElement, roles: Record<string, MermaidRole>): void {
+  const keys = Object.keys(roles);
+  for (const g of svg.querySelectorAll('g.node')) {
+    const id = g.id ?? '';
+    let matched: string | null = null;
+    for (const k of keys) {
+      if (new RegExp(`(^|[-_])${k}([-_]|$)`).test(id)) { matched = k; break; }
+    }
+    if (matched) {
+      g.setAttribute('data-role', roles[matched]);
+    } else {
+      g.setAttribute('data-role', g.querySelector('polygon') ? 'decision' : 'process');
+    }
+  }
+}
+
 let loadPromise: Promise<MermaidLike> | null = null;
 
 function loadMermaid(): Promise<MermaidLike> {
