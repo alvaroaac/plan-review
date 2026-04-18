@@ -33,8 +33,8 @@ program
   .option('--output-file <path>', 'Custom output file path (with --output file)')
   .option('--split-by <strategy>', 'Force split strategy: heading, separator')
   .option('--fresh', 'Skip session resume, start clean review')
-  .option('--no-browser', 'Use the terminal review UI instead of the browser (SSH/CI/headless)')
-  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean; fresh?: boolean }) => {
+  .option('--cli', 'Use the terminal review UI instead of the browser (SSH/CI/headless)')
+  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; cli?: boolean; fresh?: boolean }) => {
     try {
       await run(file, opts);
     } catch (err) {
@@ -88,7 +88,7 @@ program.parse();
 
 async function run(
   file: string | undefined,
-  opts: { output?: string; outputFile?: string; splitBy?: string; browser?: boolean; fresh?: boolean },
+  opts: { output?: string; outputFile?: string; splitBy?: string; cli?: boolean; fresh?: boolean },
 ): Promise<void> {
   // Validate explicit output target early, before the review starts
   const validTargets: OutputTarget[] = ['stdout', 'clipboard', 'file', 'claude'];
@@ -156,7 +156,7 @@ async function run(
 
   // Navigate (interactive review or browser)
   let reviewed;
-  if (opts.browser) {
+  if (!opts.cli) {
     const transport = new HttpTransport();
     transport.sendDocument(doc);
     transport.setInitialActiveSection(restoredActiveSection);

@@ -62,12 +62,12 @@ Three panels:
 
 **Full markdown rendering.** Paragraphs, nested lists, task lists, tables, code fences, blockquotes, GFM admonitions (`> [!NOTE]`), footnotes, inline HTML (`<kbd>`, `<sub>`, `<sup>`, `<details>`), emoji shortcodes, horizontal rules, images, reference-style links — plus mermaid diagrams and KaTeX math, both lazy-loaded from CDN only when the plan contains them.
 
-## Terminal mode (`--no-browser`)
+## Terminal mode (`--cli`)
 
 For SSH sessions, CI, or headless environments where launching a browser isn't an option:
 
 ```bash
-plan-review path/to/plan.md --no-browser
+plan-review path/to/plan.md --cli
 ```
 
 Interactive terminal UI with a table of contents, section navigation, and inline commenting.
@@ -91,7 +91,7 @@ Terminal mode is a fallback — you get text rendering and section-level comment
 --output-file <path>    Custom output file path (with --output file)
 --split-by <strategy>   Force split strategy: heading, separator
 --fresh                 Skip session resume, start clean review
---no-browser            Use the terminal review UI instead (SSH/CI/headless)
+--cli                   Use the terminal review UI instead (SSH/CI/headless)
 -V, --version           Show version
 -h, --help              Show help
 ```
@@ -114,7 +114,7 @@ Line-anchored, section-scoped comments become input the AI can act on — not a 
 ## How it works
 
 1. **Parses** your markdown — auto-detects plan-style documents (milestones, tasks, dependencies) or falls back to generic heading-based splitting.
-2. **Renders** in the browser by default, or in the terminal via `--no-browser`.
+2. **Renders** in the browser by default, or in the terminal via `--cli`.
 3. **Collects** your comments as you review each section.
 4. **Outputs** structured markdown with your comments alongside the original content.
 

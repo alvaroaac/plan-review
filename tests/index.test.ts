@@ -57,7 +57,7 @@ describe('index.ts CLI', () => {
     // Force terminal mode here — the default browser mode would boot an HTTP
     // server and block this test waiting for a tab that never opens.
     const fixtureFile = join(__dirname, 'fixtures', 'generic-document.md');
-    const result = spawnSync('npx', ['tsx', entryPoint, fixtureFile, '--fresh', '--no-browser', '-o', 'stdout'], {
+    const result = spawnSync('npx', ['tsx', entryPoint, fixtureFile, '--fresh', '--cli', '-o', 'stdout'], {
       cwd: projectRoot,
       encoding: 'utf-8',
       timeout: 15000,
@@ -66,10 +66,10 @@ describe('index.ts CLI', () => {
     expect(result.stderr).not.toContain('unknown option');
   });
 
-  it('--no-browser opt-out is recognised (default is browser)', () => {
+  it('--cli opt-out is recognised (default is browser)', () => {
     const result = runCli(['--help']);
     const helpText = result.stdout + result.stderr;
-    expect(helpText).toContain('--no-browser');
+    expect(helpText).toContain('--cli');
     // The old --browser flag was opt-in; the new default is browser mode, so
     // the help should NOT advertise --browser as an option any more.
     expect(helpText).not.toMatch(/^\s*--browser\s/m);

@@ -62,7 +62,7 @@ Either the `plan-review` CLI is on `$PATH` (installed via `npm install -g plan-r
 
 ## Important
 
-- Browser mode (three-panel TOC + content + comments UI) is the default — no flag needed. Pass `--no-browser` only for SSH/CI/headless environments.
+- Browser mode (three-panel TOC + content + comments UI) is the default — no flag needed. Pass `--cli` only for SSH/CI/headless environments.
 - The `-o stdout` flag ensures the review output comes back to this session.
 - The command will block until the user clicks "Submit Review" in the browser.
 - **File branch only:** if a session exists for this plan, the user is prompted to resume. Use `--fresh` to skip.
