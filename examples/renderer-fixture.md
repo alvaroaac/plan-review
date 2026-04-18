@@ -95,15 +95,16 @@ this is a very long line in a code block that should handle horizontal overflow 
 
 ## Mermaid
 
-Flowchart:
+Flowchart (exercises all 6 roles + yes/no branches):
 
 ```mermaid
-flowchart LR
-  A[Start] --> B{Decision}
-  B -->|Yes| C[Do the thing]
-  B -->|No| D[Skip]
-  C --> E[End]
-  D --> E
+flowchart TD
+  Begin([Start request]) --> CheckAuth{Valid token?}
+  CheckAuth -->|Yes| Serve[Serve resource]
+  CheckAuth -->|No| Fail[Auth error log]
+  Serve --> Log[/Write audit/]
+  Log --> Done([End])
+  Fail --> Done
 ```
 
 Sequence diagram:
