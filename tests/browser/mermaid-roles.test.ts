@@ -219,11 +219,16 @@ describe('applyBranchEdges', () => {
 
 import { applyActorIndices } from '../../src/browser/mermaid.js';
 
+// Fixtures below mirror mermaid@11's real sequence-diagram output shape:
+// each participant renders a pair of <rect> — one `actor actor-top` and one
+// `actor actor-bottom` — plus a <line class="actor-line"> lifeline. The
+// `rect.actor` selector matches both because `actor` is one of the class
+// tokens. Captured from a headless render in the investigation for this test.
 describe('applyActorIndices', () => {
   it('assigns index 0 and 1 to two distinct-x actors', () => {
     const svg = buildSvg(`
-      <rect class="actor" x="10"/>
-      <rect class="actor" x="200"/>
+      <rect class="actor actor-top" x="10"/>
+      <rect class="actor actor-top" x="200"/>
     `);
     applyActorIndices(svg);
     const rects = svg.querySelectorAll('rect.actor');
@@ -233,10 +238,10 @@ describe('applyActorIndices', () => {
 
   it('dedupes actors sharing the same x-coordinate (top + bottom box)', () => {
     const svg = buildSvg(`
-      <rect class="actor" x="10"/>
-      <rect class="actor" x="10"/>
-      <rect class="actor" x="200"/>
-      <rect class="actor" x="200"/>
+      <rect class="actor actor-bottom" x="10"/>
+      <rect class="actor actor-top" x="10"/>
+      <rect class="actor actor-bottom" x="200"/>
+      <rect class="actor actor-top" x="200"/>
     `);
     applyActorIndices(svg);
     const rects = svg.querySelectorAll('rect.actor');
@@ -248,17 +253,19 @@ describe('applyActorIndices', () => {
 
   it('wraps at index 6 (modulo)', () => {
     const xs = [10, 50, 100, 150, 200, 250, 300];
-    const svg = buildSvg(xs.map(x => `<rect class="actor" x="${x}"/>`).join(''));
+    const svg = buildSvg(xs.map(x => `<rect class="actor actor-top" x="${x}"/>`).join(''));
     applyActorIndices(svg);
     const rects = svg.querySelectorAll('rect.actor');
     expect(rects[6].getAttribute('data-actor-idx')).toBe('0');
   });
 
   it('tags lifelines in DOM order mod 6', () => {
+    // Real mermaid emits `<line class="actor-line 200" id="actor0">` etc.
+    // — `actor-line` is one token among others, still matched by `line.actor-line`.
     const svg = buildSvg(`
-      <line class="actor-line"/>
-      <line class="actor-line"/>
-      <line class="actor-line"/>
+      <line class="actor-line 200" id="actor0"/>
+      <line class="actor-line 200" id="actor1"/>
+      <line class="actor-line 200" id="actor2"/>
     `);
     applyActorIndices(svg);
     const lines = svg.querySelectorAll('line.actor-line');

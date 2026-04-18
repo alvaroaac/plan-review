@@ -193,24 +193,30 @@ export async function renderMermaidBlocks(root: ParentNode = document): Promise<
     fontFamily: 'inherit',
   });
 
-  // Process each block independently. A single parse error must not prevent
-  // later blocks from rendering. We also capture each source before mermaid
-  // mutates the DOM, since after the run the <pre> is replaced by <svg>.
-  for (const pre of Array.from(nodes)) {
-    const source = pre.textContent ?? '';
-    const roles = detectRoles(source);
-    const branches = parseBranchLabels(source);
+  // Process blocks concurrently. Sequential `await mermaid.run` of one block
+  // at a time lets a slow first diagram starve later ones for seconds — long
+  // enough that a test asserting on a later diagram's DOM right after the
+  // first SVG appears sees an un-rendered <pre>. We capture each source
+  // before mermaid mutates the DOM (mermaid.run replaces <pre> content with
+  // <svg>), then let all runs proceed in parallel. A single parse error must
+  // not prevent other blocks from rendering, so each run is wrapped.
+  await Promise.all(
+    Array.from(nodes).map(async (pre) => {
+      const source = pre.textContent ?? '';
+      const roles = detectRoles(source);
+      const branches = parseBranchLabels(source);
 
-    try {
-      await mermaid.run({ nodes: [pre] });
-    } catch {
-      continue; // mermaid parse error on this block; move on
-    }
+      try {
+        await mermaid.run({ nodes: [pre] });
+      } catch {
+        return; // mermaid parse error on this block; move on
+      }
 
-    const svg = pre.querySelector('svg');
-    if (!svg) continue;
-    applyRoles(svg as unknown as SVGElement, roles);
-    applyBranchEdges(svg as unknown as SVGElement, branches);
-    applyActorIndices(svg as unknown as SVGElement);
-  }
+      const svg = pre.querySelector('svg');
+      if (!svg) return;
+      applyRoles(svg as unknown as SVGElement, roles);
+      applyBranchEdges(svg as unknown as SVGElement, branches);
+      applyActorIndices(svg as unknown as SVGElement);
+    }),
+  );
 }
