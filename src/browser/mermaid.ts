@@ -175,7 +175,7 @@ function loadMermaid(): Promise<MermaidLike> {
 // Render any un-processed <pre class="mermaid"> blocks currently in the DOM.
 // Safe to call many times — already-rendered blocks are skipped by mermaid itself.
 export async function renderMermaidBlocks(root: ParentNode = document): Promise<void> {
-  const nodes = root.querySelectorAll('pre.mermaid:not([data-processed])');
+  const nodes = root.querySelectorAll<HTMLElement>('pre.mermaid:not([data-processed])');
   if (nodes.length === 0) return;
 
   let mermaid: MermaidLike;
@@ -193,9 +193,24 @@ export async function renderMermaidBlocks(root: ParentNode = document): Promise<
     fontFamily: 'inherit',
   });
 
-  try {
-    await mermaid.run({ nodes: Array.from(nodes) });
-  } catch {
-    // A syntax error in a single diagram shouldn't break the rest of the page.
+  // Process each block independently. A single parse error must not prevent
+  // later blocks from rendering. We also capture each source before mermaid
+  // mutates the DOM, since after the run the <pre> is replaced by <svg>.
+  for (const pre of Array.from(nodes)) {
+    const source = pre.textContent ?? '';
+    const roles = detectRoles(source);
+    const branches = parseBranchLabels(source);
+
+    try {
+      await mermaid.run({ nodes: [pre] });
+    } catch {
+      continue; // mermaid parse error on this block; move on
+    }
+
+    const svg = pre.querySelector('svg');
+    if (!svg) continue;
+    applyRoles(svg as unknown as SVGElement, roles);
+    applyBranchEdges(svg as unknown as SVGElement, branches);
+    applyActorIndices(svg as unknown as SVGElement);
   }
 }
