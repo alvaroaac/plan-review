@@ -261,14 +261,21 @@ section.footnotes {
   font-size: 12px;
   color: var(--text-secondary);
 }
-section.footnotes ol { padding-left: 20px; }
+section.footnotes ol { padding-left: 20px; list-style: decimal; }
 section.footnotes li { margin-bottom: 4px; }
-sup[id^="fnref"] a {
+section.footnotes p { margin: 0; display: inline; }
+
+/* Inline footnote references: <sup><a data-footnote-ref ...>N</a></sup>.
+   Default <a> color is too dim on the dark bg — bump to accent so the
+   reference marker actually reads. */
+.line-inner sup > a[data-footnote-ref],
+section.footnotes a[data-footnote-backref] {
   color: var(--accent);
   text-decoration: none;
-  font-size: 11px;
   padding: 0 2px;
 }
+.line-inner sup > a[data-footnote-ref]:hover,
+section.footnotes a[data-footnote-backref]:hover { text-decoration: underline; }
 
 .comment-card {
   padding: 10px;
@@ -408,8 +415,29 @@ sup[id^="fnref"] a {
 .line-inner p { margin: 0; }
 .line-inner pre { background: var(--bg-secondary); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
 .line-inner code { background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
-.line-inner ul { list-style: disc; }
-.line-inner ol { list-style: decimal; }
+
+/* Lists: the `* { padding: 0 }` reset at the top of this file wipes the
+   browser default padding that gives bullets room to sit to the left of the
+   text, so we re-add padding explicitly. Nested lists need their own padding
+   too — otherwise sub-items render flush with the parent bullet and visually
+   "flatten" into a single column. */
+.line-inner ul { list-style: disc; padding-left: 1.5em; margin: 0; }
+.line-inner ol { list-style: decimal; padding-left: 1.5em; margin: 0; }
+.line-inner ul ul { list-style: circle; }
+.line-inner ul ul ul { list-style: square; }
+.line-inner li { margin: 2px 0; }
+
+/* GFM task-list items. marked's list tokenizer wraps loose items' bodies in
+   <p>, which default-displays block and stacks the checkbox above the label.
+   Pull the <p> back inline and strip the bullet. (The .task-list-item class
+   only lives on top-level items; nested task items come out of plain marked
+   with an <input> directly in the <li>, targeted via the second selector.) */
+.line-inner li.task-list-item,
+.line-inner li:has(> input[type="checkbox"]) {
+  list-style: none;
+}
+.line-inner li.task-list-item > p { display: inline; margin: 0; }
+.line-inner li input[type="checkbox"] { margin-right: 6px; vertical-align: middle; }
 .line-inner blockquote { border-left: 3px solid var(--border); padding-left: 12px; color: var(--text-secondary); margin: 0; }
 .line-inner h3, .line-inner h4 { font-size: 14px; margin: 4px 0; }
 .line-inner table { width: 100%; border-collapse: collapse; margin: 4px 0; font-size: 13px; }

@@ -80,43 +80,114 @@ test('KaTeX typesets inline and display math', async ({ page }) => {
   await expect(page.locator('.math-display .katex-display, .math-display .katex').first()).toBeVisible();
 });
 
-test('footnotes section appears under the Footnotes heading', async ({ page }) => {
+test('footnotes section has populated bodies and inline refs render as <sup>', async ({ page }) => {
   await gotoAndWait(page);
 
-  const footnotes = page.locator('section.footnotes');
-  await expect(footnotes).toHaveCount(1);
+  const footnoteSection = page.locator('section.footnotes');
+  await expect(footnoteSection).toHaveCount(1);
 
-  // Should live inside a section-view, not at document root (guards against
-  // the "footnotes floated to the top" regression the audit flagged). The
-  // parent section's H2 heading text should be "Footnotes".
-  const parentHeading = await footnotes.evaluate((el) => {
+  // Lives inside a section-view under the Footnotes heading, not at document root.
+  const parentHeading = await footnoteSection.evaluate((el) => {
     const parent = el.closest('div[id^="section-"]');
     return parent?.querySelector('h2')?.textContent?.trim() ?? null;
   });
   expect(parentHeading).toBe('Footnotes');
+
+  // Regression guard: marked-footnote recursively parses each body through our
+  // custom renderer; without the fix, the <li>s were empty and bodies showed
+  // as stray paragraphs above. Both body texts must live inside the section.
+  const sectionHtml = await footnoteSection.evaluate((el) => el.innerHTML);
+  expect(sectionHtml).toContain('The first footnote body');
+  expect(sectionHtml).toContain('The second one');
+
+  // And no stray duplicate body paragraph above the section.
+  const footnotesSection = page.locator('div[id^="section-"]').filter({ has: footnoteSection }).first();
+  const bodyDupes = await footnotesSection.locator('p', { hasText: 'The first footnote body' }).count();
+  // One copy inside the <section>'s <p>, none above it.
+  expect(bodyDupes).toBe(1);
+
+  // Inline refs — the paragraph with [^note1][^note2] should mount <sup><a> markers.
+  const refs = footnotesSection.locator('sup a[data-footnote-ref]');
+  await expect(refs).toHaveCount(2);
+
+  // The ref must be visible (non-zero size, non-transparent color).
+  const firstRefStyle = await refs.first().evaluate((a) => {
+    const s = getComputedStyle(a);
+    const rect = a.getBoundingClientRect();
+    return {
+      width: rect.width,
+      height: rect.height,
+      color: s.color,
+      text: a.textContent?.trim() ?? '',
+    };
+  });
+  expect(firstRefStyle.width).toBeGreaterThan(0);
+  expect(firstRefStyle.height).toBeGreaterThan(0);
+  expect(firstRefStyle.text).toMatch(/^\d+$/);
 });
 
 test('nested lists produce nested <ul>/<ol> DOM with visible markers', async ({ page }) => {
   await gotoAndWait(page);
 
-  // Unordered nested section: `- one / - one-a / - one-a-i`.
-  // The top-level list renderer emits one <ul> per top-level item with the
-  // nested list rendered inside the first item. So the OUTER ul should have a
-  // `ul ul` descendant for the one/one-a/one-a-i chain.
-  const nestedUl = page.locator('div[id^="section-"]').filter({ hasText: 'Unordered, nested' }).first()
-    .locator('ul ul');
-  await expect(nestedUl.first()).toBeVisible();
+  const listsSection = page.locator('div[id^="section-"]').filter({ hasText: 'Unordered, nested' }).first();
 
-  // And a 3-deep chain must exist.
-  const deepUl = page.locator('div[id^="section-"]').filter({ hasText: 'Unordered, nested' }).first()
-    .locator('ul ul ul');
-  await expect(deepUl.first()).toBeVisible();
+  // Each level of the one / one-a / one-a-i chain must mount as its own <ul>.
+  await expect(listsSection.locator('ul').first()).toBeVisible();
+  await expect(listsSection.locator('ul ul').first()).toBeVisible();
+  await expect(listsSection.locator('ul ul ul').first()).toBeVisible();
 
-  // Computed style: the nested <ul> must have a non-"none" list-style-type.
-  // Otherwise nested items lose their bullets — the visible "nesting broken"
-  // bug the user reported.
-  const listStyle = await nestedUl.first().evaluate((el) => getComputedStyle(el).listStyleType);
-  expect(listStyle).not.toBe('none');
+  // Computed style: each nested <ul> must have non-"none" list-style-type AND
+  // real padding-inline-start. Either missing = bullets flatten into a single
+  // visual column (the regression the audit flagged).
+  const nestedUlStyle = await listsSection.locator('ul ul').first().evaluate((el) => {
+    const s = getComputedStyle(el);
+    return {
+      listStyleType: s.listStyleType,
+      paddingInlineStart: parseFloat(s.paddingInlineStart),
+    };
+  });
+  expect(nestedUlStyle.listStyleType).not.toBe('none');
+  expect(nestedUlStyle.paddingInlineStart).toBeGreaterThan(0);
+});
+
+test('ordered list numbering continues across per-item LineBlocks', async ({ page }) => {
+  await gotoAndWait(page);
+
+  // The ## Lists section contains several subsections — target the
+  // "Ordered, nested" ones by their first-item text. Our renderer emits one
+  // <ol> per top-level item, so without `start=N` every item visually
+  // restarts at "1." — the bug the fixture surfaced.
+  const listsSection = page.locator('div[id^="section-"]').filter({ hasText: 'Ordered, nested' }).first();
+  const firstOrdered = listsSection.locator('.line-inner > ol', { hasText: 'first' });
+  const secondOrdered = listsSection.locator('.line-inner > ol', { hasText: 'second' });
+  const thirdOrdered = listsSection.locator('.line-inner > ol', { hasText: 'third' });
+
+  await expect(firstOrdered).toHaveAttribute('start', '1');
+  await expect(secondOrdered).toHaveAttribute('start', '2');
+  await expect(thirdOrdered).toHaveAttribute('start', '3');
+});
+
+test('GFM task-list checkbox sits inline with its label', async ({ page }) => {
+  await gotoAndWait(page);
+
+  const taskSection = page.locator('div[id^="section-"]').filter({ hasText: 'GitHub task list' }).first();
+  const firstTaskItem = taskSection.locator('li.task-list-item').first();
+  await expect(firstTaskItem).toBeVisible();
+
+  // The checkbox and the label ("unchecked") must share a line. Regression
+  // guard: marked wraps loose-item bodies in <p>, which default-displays block
+  // and stacks the checkbox above the label.
+  const layout = await firstTaskItem.evaluate((li) => {
+    const cb = li.querySelector('input[type="checkbox"]');
+    const txt = li.querySelector('p') ?? li;
+    const cbRect = cb!.getBoundingClientRect();
+    const txtRect = (txt as Element).getBoundingClientRect();
+    return {
+      // Same visual baseline within a small fuzz tolerance.
+      sameLine: Math.abs(cbRect.top - txtRect.top) < 10,
+    };
+  });
+  expect(layout.sameLine).toBe(true);
 });
 
 test('GFM admonitions render with chrome and title', async ({ page }) => {

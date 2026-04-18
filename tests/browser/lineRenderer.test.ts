@@ -92,7 +92,20 @@ describe('renderToLineBlocks', () => {
     expect(blocks[0].innerHtml).toContain('<input type="checkbox" disabled>');
     expect(blocks[1].innerHtml).toContain('<input type="checkbox" disabled checked>');
     expect(blocks[0].innerHtml).toContain('task-list-item');
-    expect(blocks[0].innerHtml).toContain('list-style:none');
+  });
+
+  it('preserves ordered-list numbering across per-item LineBlocks via `start`', () => {
+    const blocks = renderToLineBlocks('1. first\n2. second\n3. third');
+    expect(blocks).toHaveLength(3);
+    expect(blocks[0].innerHtml).toContain('<ol start="1">');
+    expect(blocks[1].innerHtml).toContain('<ol start="2">');
+    expect(blocks[2].innerHtml).toContain('<ol start="3">');
+  });
+
+  it('honours a non-default `start` on ordered lists', () => {
+    const blocks = renderToLineBlocks('5. five\n6. six');
+    expect(blocks[0].innerHtml).toContain('<ol start="5">');
+    expect(blocks[1].innerHtml).toContain('<ol start="6">');
   });
 
   // ── Footnotes ────────────────────────────────────────────────────────────
@@ -100,10 +113,25 @@ describe('renderToLineBlocks', () => {
   it('emits a footnotes section for GFM [^ref] markers', () => {
     const md = 'Claim with a ref[^1].\n\n[^1]: The footnote body.';
     const blocks = renderToLineBlocks(md);
-    // Somewhere in the block stream there should be the footnotes section + an inline link marker.
     const all = blocks.map((b) => b.innerHtml).join('\n');
-    expect(all).toContain('footnotes');
+    // The inline ref renders as a <sup>, the body lives inside <section class="footnotes">.
+    expect(all).toContain('<sup>');
+    expect(all).toContain('data-footnote-ref');
+    expect(all).toContain('class="footnotes"');
     expect(all).toContain('The footnote body');
+  });
+
+  it('does not duplicate footnote bodies as stray top-level paragraphs', () => {
+    const md = 'Body ref[^a].\n\n[^a]: This is the footnote body.';
+    const blocks = renderToLineBlocks(md);
+    // Body text should appear EXACTLY once — inside the footnotes <section>.
+    // Prior regression: marked-footnote re-parsed each body through our custom
+    // paragraph renderer, pushing a stray <p> before the section.
+    const bodyMatches = blocks.filter((b) =>
+      b.innerHtml.includes('This is the footnote body'),
+    );
+    expect(bodyMatches).toHaveLength(1);
+    expect(bodyMatches[0].innerHtml).toContain('class="footnotes"');
   });
 
   // ── Inline HTML inside paragraphs ────────────────────────────────────────

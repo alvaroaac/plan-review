@@ -77,6 +77,14 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
   const blocks: LineBlock[] = [];
   let i = 0;
 
+  // marked-footnote's `footnotes` renderer recursively calls
+  // this.parser.parse(body) for each definition, which hits our custom
+  // paragraph renderer and pushes the body into `blocks` as an extra
+  // top-level paragraph — so the body shows twice (once as a stray paragraph,
+  // once empty inside the <section class="footnotes">). Count the definitions
+  // up front so we can pop those polluted blocks off after the parse.
+  const footnoteDefCount = (markdown.match(/^\[\^[^\]\n]+\]:/gm) ?? []).length;
+
   // Block-level display math. Defined inside the closure so it can push a
   // LineBlock directly, matching the pattern used by the block renderers below.
   const mathBlockExt: TokenizerExtension & RendererExtension = {
@@ -115,21 +123,29 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
       // Top-level list: push one LineBlock per outer item so each item is
       // individually commentable. Nested sub-lists and paragraphs INSIDE an
       // item are rendered through a plain marked instance so they stay as
-      // nested HTML within the parent <li> instead of being flattened into
-      // more top-level blocks.
+      // nested HTML within the parent <li>.
+      //
+      // Each top-level item becomes its own <ol>/<ul> wrapper. For ordered
+      // lists we set `start` on each wrapper so "1. / 2. / 3." keeps rising
+      // across separate LineBlocks instead of every item restarting at 1.
+      // Presentation (padding, bullet style) is in CSS — nested lists need
+      // their own padding-left to stay indented and the `* { padding: 0 }`
+      // reset would otherwise kill browser defaults.
       list(token: Tokens.List): string {
         const tag = token.ordered ? 'ol' : 'ul';
-        const style = token.ordered ? 'list-style:decimal' : 'list-style:disc';
-        for (const item of token.items) {
+        const baseStart = typeof token.start === 'number' ? token.start : 1;
+        for (let idx = 0; idx < token.items.length; idx++) {
+          const item = token.items[idx];
           const inner = _plainMarked.parser(item.tokens as Tokens.Generic[]).trimEnd();
           // GFM task-list checkbox. marked sets `task: true` and `checked` on the item.
           const checkbox = item.task
             ? `<input type="checkbox" disabled${item.checked ? ' checked' : ''}> `
             : '';
-          const html = `<li${item.task ? ' class="task-list-item"' : ''}>${checkbox}${inner}</li>`;
-          const listStyle = item.task ? 'list-style:none' : style;
-          const wrapped = `<${tag} style="${listStyle};padding-left:1.5em">${html}</${tag}>`;
-          blocks.push({ index: i++, innerHtml: replaceEmojiShortcodes(wrapped), text: stripHtml(html) });
+          const li = `<li${item.task ? ' class="task-list-item"' : ''}>${checkbox}${inner}</li>`;
+          const wrapped = token.ordered
+            ? `<ol start="${baseStart + idx}">${li}</ol>`
+            : `<${tag}>${li}</${tag}>`;
+          blocks.push({ index: i++, innerHtml: replaceEmojiShortcodes(wrapped), text: stripHtml(li) });
         }
         return '';
       },
@@ -241,14 +257,22 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
     },
   });
 
-  // The extension renderers (marked-footnote in particular) return HTML that
-  // lands in the final parse() output string. Our block renderers return '' and
-  // push into `blocks` instead, so that string is usually just the footnote
-  // section at the bottom. Capture it as a final LineBlock.
-  const parsed = instance.parse(markdown) as string;
-  const footnoteMatch = /<section class="footnotes"[\s\S]*?<\/section>/.exec(parsed);
-  if (footnoteMatch) {
-    blocks.push({ index: i++, innerHtml: footnoteMatch[0], text: stripHtml(footnoteMatch[0]) });
+  instance.parse(markdown);
+
+  // Pop the footnote-body paragraphs the `footnotes` renderer recursively
+  // pushed into us. The parsed output still contains a <section
+  // class="footnotes"> but its <li>s have empty bodies (our paragraph renderer
+  // returned '' from each recursive parse), so we re-run through a plain
+  // Marked just for the section HTML and append that as the final LineBlock.
+  for (let k = 0; k < footnoteDefCount; k++) blocks.pop();
+  if (footnoteDefCount > 0) {
+    const plain = new Marked();
+    plain.use(markedFootnote());
+    const plainOutput = plain.parse(markdown) as string;
+    const sectionMatch = /<section class="footnotes"[\s\S]*?<\/section>/.exec(plainOutput);
+    if (sectionMatch) {
+      blocks.push({ index: i++, innerHtml: sectionMatch[0], text: stripHtml(sectionMatch[0]) });
+    }
   }
   return blocks;
 }
