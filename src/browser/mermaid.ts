@@ -11,6 +11,38 @@ interface MermaidLike {
   run: (opts: { nodes?: NodeListOf<Element> | Element[]; querySelector?: string }) => Promise<void>;
 }
 
+export type MermaidRole = 'start' | 'process' | 'decision' | 'end' | 'error' | 'io';
+
+// Regex rules matched first-wins. `decision` must come first because the
+// brace-shape test doesn't care about the label content, and we don't want
+// a "fail" inside a decision label to mis-map as an error node.
+const ROLE_RULES: Array<{ role: MermaidRole; re: RegExp }> = [
+  // Decision: NodeId{label} or NodeId{{label}}
+  { role: 'decision', re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\{\{?[^}]+\}\}?/g },
+  // Start/end circle: NodeId((start|begin|init))  /  ((end|done|finish|complete))
+  { role: 'start',    re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\(\s*(?:start|begin|init)[^)]*\)\)/gi },
+  { role: 'end',      re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\(\s*(?:end|done|finish|complete)[^)]*\)\)/gi },
+  // Start/end stadium: NodeId([start|begin])  /  ([end|done|finish])
+  { role: 'start',    re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\[\s*(?:start|begin)[^\]]*\]\)/gi },
+  { role: 'end',      re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\(\[\s*(?:end|done|finish)[^\]]*\]\)/gi },
+  // Error: NodeId[... error | fail | abort | reject | invalid ...]
+  { role: 'error',    re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\[[^\]]*\b(?:error|fail|abort|reject|invalid)[^\]]*\]/gi },
+  // I/O: NodeId[/label/] or NodeId[\label\]
+  { role: 'io',       re: /\b([A-Za-z_][A-Za-z0-9_]*)\s*\[[/\\][^\]]+[/\\]\]/g },
+];
+
+export function detectRoles(source: string): Record<string, MermaidRole> {
+  const roles: Record<string, MermaidRole> = {};
+  for (const { role, re } of ROLE_RULES) {
+    re.lastIndex = 0;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(source)) !== null) {
+      if (!roles[m[1]]) roles[m[1]] = role;
+    }
+  }
+  return roles;
+}
+
 let loadPromise: Promise<MermaidLike> | null = null;
 
 function loadMermaid(): Promise<MermaidLike> {
