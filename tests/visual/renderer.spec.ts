@@ -70,6 +70,59 @@ test('mermaid diagrams render as inline SVG', async ({ page }) => {
   await expect(page.locator('pre.mermaid:not([data-processed])')).toHaveCount(0);
 });
 
+test('mermaid flowchart nodes carry role colors', async ({ page }) => {
+  await gotoAndWait(page);
+
+  // Wait for mermaid to finish rendering + our post-processing to tag nodes.
+  await expect(page.locator('svg[id^="mermaid"]').first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('pre.mermaid[data-processed] g.node[data-role]').first()).toBeVisible({ timeout: 5_000 });
+
+  // Fixture's flowchart has every role represented.
+  const roles = await page.locator('pre.mermaid[data-processed] g.node[data-role]').evaluateAll(
+    (nodes) => Array.from(new Set(nodes.map(n => n.getAttribute('data-role'))))
+  );
+  // At minimum these must all appear in the extended fixture.
+  for (const expected of ['start', 'end', 'decision', 'process', 'error', 'io']) {
+    expect(roles).toContain(expected);
+  }
+});
+
+test('mermaid yes/no branches are tagged + colored', async ({ page }) => {
+  await gotoAndWait(page);
+  await expect(page.locator('svg[id^="mermaid"]').first()).toBeVisible({ timeout: 30_000 });
+
+  // Path tagging — both branches must exist.
+  await expect(page.locator('pre.mermaid[data-processed] .edge-yes').first()).toBeVisible();
+  await expect(page.locator('pre.mermaid[data-processed] .edge-no').first()).toBeVisible();
+
+  // Computed stroke must be a non-empty color (css vars resolve).
+  const yesStroke = await page.locator('pre.mermaid[data-processed] path.edge-yes, pre.mermaid[data-processed] .edge-yes path').first().evaluate(
+    (el) => getComputedStyle(el).stroke
+  );
+  expect(yesStroke).not.toBe('');
+  expect(yesStroke).not.toBe('none');
+});
+
+test('mermaid sequence actors carry distinct indices + colors', async ({ page }) => {
+  await gotoAndWait(page);
+  await expect(page.locator('svg[id^="mermaid"]').first()).toBeVisible({ timeout: 30_000 });
+
+  // Fixture's sequence has 3 participants — expect indices 0, 1, 2 present.
+  const indices = await page.locator('pre.mermaid[data-processed] rect.actor[data-actor-idx]').evaluateAll(
+    (rects) => Array.from(new Set(rects.map(r => r.getAttribute('data-actor-idx'))))
+  );
+  for (const idx of ['0', '1', '2']) {
+    expect(indices).toContain(idx);
+  }
+
+  // Computed stroke on index 0 must be non-empty.
+  const stroke = await page.locator('pre.mermaid[data-processed] rect.actor[data-actor-idx="0"]').first().evaluate(
+    (el) => getComputedStyle(el).stroke
+  );
+  expect(stroke).not.toBe('');
+  expect(stroke).not.toBe('none');
+});
+
 test('KaTeX typesets inline and display math', async ({ page }) => {
   await gotoAndWait(page);
 
