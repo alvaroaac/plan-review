@@ -159,7 +159,7 @@ Local path (may or may not resolve depending on how plan-review handles relative
 
 Remote URL:
 
-![remote placeholder](https://via.placeholder.com/240x80.png?text=plan-review)
+![remote placeholder](https://placehold.co/240x80/16213e/00adb5/png?text=plan-review)
 
 ## Links
 

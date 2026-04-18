@@ -217,6 +217,23 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
         return token.text;
       },
 
+      // Inline image: rewrite relative `src` to `/_assets/<rel>` so the server
+      // can serve the file from the plan's directory. Absolute URLs (http:,
+      // https:, data:, etc.) and root-relative paths (`/foo`) pass through.
+      image(token: Tokens.Image): string {
+        let href = token.href ?? '';
+        const isAbsoluteScheme = /^[a-z][a-z0-9+.-]*:/i.test(href);
+        const isRootRelative = href.startsWith('/') || href.startsWith('#');
+        if (href && !isAbsoluteScheme && !isRootRelative) {
+          href = '/_assets/' + href.split('/').map(encodeURIComponent).join('/');
+        }
+        const escAttr = (s: string): string =>
+          s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+        const altAttr = ` alt="${escAttr(token.text ?? '')}"`;
+        const titleAttr = token.title ? ` title="${escAttr(token.title)}"` : '';
+        return `<img src="${escAttr(href)}"${altAttr}${titleAttr}>`;
+      },
+
       heading(this: RendererThis, token: Tokens.Heading): string {
         const inner = this.parser.parseInline(token.tokens as Tokens.Generic[]);
         const html = replaceEmojiShortcodes(`<h${token.depth}>${inner}</h${token.depth}>`);
@@ -274,5 +291,43 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
       blocks.push({ index: i++, innerHtml: sectionMatch[0], text: stripHtml(sectionMatch[0]) });
     }
   }
-  return blocks;
+  return mergeOpenHtmlSpans(blocks);
+}
+
+// `<details>` (and similar block HTML wrappers) opened on one line and closed
+// after a blank line tokenize into separate marked blocks — each becomes its
+// own LineBlock and the body escapes the wrapper. Walk the block stream after
+// parsing and merge any block whose <details> tags don't balance with the
+// blocks that follow until the closer arrives.
+function mergeOpenHtmlSpans(blocks: LineBlock[]): LineBlock[] {
+  const countTags = (html: string, tag: string): { open: number; close: number } => ({
+    open: (html.match(new RegExp(`<${tag}\\b`, 'gi')) ?? []).length,
+    close: (html.match(new RegExp(`</${tag}>`, 'gi')) ?? []).length,
+  });
+  const result: LineBlock[] = [];
+  let k = 0;
+  while (k < blocks.length) {
+    const block = blocks[k];
+    const { open, close } = countTags(block.innerHtml, 'details');
+    if (open <= close) {
+      result.push({ ...block, index: result.length });
+      k++;
+      continue;
+    }
+    let mergedHtml = block.innerHtml;
+    let mergedText = block.text;
+    let depth = open - close;
+    let j = k + 1;
+    while (j < blocks.length && depth > 0) {
+      const next = blocks[j];
+      mergedHtml += next.innerHtml;
+      mergedText += '\n' + next.text;
+      const c = countTags(next.innerHtml, 'details');
+      depth += c.open - c.close;
+      j++;
+    }
+    result.push({ index: result.length, innerHtml: mergedHtml, text: mergedText });
+    k = j;
+  }
+  return result;
 }

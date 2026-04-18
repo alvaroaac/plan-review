@@ -8,7 +8,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as readline from 'node:readline';
 import chalk from 'chalk';
-import { resolve as resolvePath } from 'node:path';
+import { resolve as resolvePath, dirname as dirnamePath } from 'node:path';
 import { parse } from './parser.js';
 import { navigate } from './navigator.js';
 import { formatReview } from './formatter.js';
@@ -160,6 +160,8 @@ async function run(
     const transport = new HttpTransport();
     transport.sendDocument(doc);
     transport.setInitialActiveSection(restoredActiveSection);
+    // Plan-file directory anchors relative image paths via /_assets/<rel>.
+    transport.setAssetBaseDir(absPath ? dirnamePath(absPath) : null);
 
     if (absPath) {
       transport.onSessionSave((comments, activeSection) => {

@@ -416,6 +416,15 @@ section.footnotes a[data-footnote-backref]:hover { text-decoration: underline; }
 .line-inner pre { background: var(--bg-secondary); padding: 10px 12px; border-radius: 6px; overflow-x: auto; }
 .line-inner code { background: var(--bg-secondary); padding: 2px 6px; border-radius: 3px; font-size: 13px; }
 
+/* Inline links: browser default (rgb(0, 0, 238)) is too saturated on the dark
+   background. Use a muted teal in line with the rest of the palette. */
+.line-inner a {
+  color: #66c4ca;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.line-inner a:hover { color: var(--accent-hover); }
+
 /* Lists: the `* { padding: 0 }` reset at the top of this file wipes the
    browser default padding that gives bullets room to sit to the left of the
    text, so we re-add padding explicitly. Nested lists need their own padding

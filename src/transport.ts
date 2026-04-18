@@ -13,6 +13,7 @@ export interface Transport {
 export class HttpTransport implements Transport {
   private doc: PlanDocument | null = null;
   private initialActiveSection: string | null = null;
+  private assetBaseDir: string | null = null;
   private submitHandler: ((comments: ReviewComment[]) => void) | null = null;
   private sessionSaveHandler: ((comments: ReviewComment[], activeSection: string | null) => void) | null = null;
   private heartbeatHandler: (() => void) | null = null;
@@ -26,6 +27,12 @@ export class HttpTransport implements Transport {
 
   setInitialActiveSection(section: string | null): void {
     this.initialActiveSection = section;
+  }
+
+  // Plan-file directory used to serve relative images via /_assets/<rel>.
+  // Null for inline plans where there's no on-disk anchor.
+  setAssetBaseDir(dir: string | null): void {
+    this.assetBaseDir = dir;
   }
 
   onReviewSubmit(handler: (comments: ReviewComment[]) => void): void {
@@ -54,6 +61,7 @@ export class HttpTransport implements Transport {
     this.server = createReviewServer({
       getDocument: () => this.doc!,
       getInitialActiveSection: () => this.initialActiveSection,
+      getAssetBaseDir: () => this.assetBaseDir,
       onSubmit: (comments) => this.submitHandler?.(comments),
       getAssetHtml: () => getAssetHtml(),
       onSessionSave: (comments, activeSection) => this.sessionSaveHandler?.(comments, activeSection),

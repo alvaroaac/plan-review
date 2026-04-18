@@ -1,11 +1,25 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { readFile } from 'node:fs';
+import { join, normalize, resolve as resolvePath, sep, extname } from 'node:path';
 import type { PlanDocument, ReviewComment } from '../types.js';
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB
 
+const MIME_BY_EXT: Record<string, string> = {
+  '.gif': 'image/gif',
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.svg': 'image/svg+xml',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.ico': 'image/x-icon',
+};
+
 export interface RouteContext {
   getDocument: () => PlanDocument;
   getInitialActiveSection?: () => string | null;
+  getAssetBaseDir?: () => string | null;
   onSubmit: (comments: ReviewComment[]) => void;
   getAssetHtml: () => string;
   onSessionSave?: (comments: ReviewComment[], activeSection: string | null) => void;
@@ -140,6 +154,55 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
       ctx.onCancel?.();
       res.writeHead(204);
       res.end();
+      return;
+    }
+
+    // Static asset proxy: /_assets/<rel-path> serves files from the plan
+    // file's directory. Only image extensions are allowed; path traversal
+    // (e.g. ../etc/passwd) is rejected. Inline plans set baseDir to null and
+    // get a 404 — there is no on-disk anchor to resolve against.
+    if (method === 'GET' && url && url.startsWith('/_assets/')) {
+      const baseDir = ctx.getAssetBaseDir?.();
+      if (!baseDir) {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.end('No asset base directory');
+        return;
+      }
+      let rel: string;
+      try {
+        rel = decodeURIComponent(url.slice('/_assets/'.length).split('?')[0].split('#')[0]);
+      } catch {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.end('Bad request');
+        return;
+      }
+      const ext = extname(rel).toLowerCase();
+      if (!MIME_BY_EXT[ext]) {
+        res.writeHead(415, { 'Content-Type': 'text/plain' });
+        res.end('Unsupported media type');
+        return;
+      }
+      const normalized = normalize(rel);
+      const resolvedBase = resolvePath(baseDir);
+      const resolvedFile = resolvePath(join(resolvedBase, normalized));
+      if (!resolvedFile.startsWith(resolvedBase + sep) && resolvedFile !== resolvedBase) {
+        res.writeHead(403, { 'Content-Type': 'text/plain' });
+        res.end('Forbidden');
+        return;
+      }
+      readFile(resolvedFile, (err, buf) => {
+        if (err) {
+          res.writeHead(404, { 'Content-Type': 'text/plain' });
+          res.end('Not Found');
+          return;
+        }
+        res.writeHead(200, {
+          'Content-Type': MIME_BY_EXT[ext],
+          'Content-Length': buf.length,
+          'Cache-Control': 'no-store',
+        });
+        res.end(buf);
+      });
       return;
     }
 

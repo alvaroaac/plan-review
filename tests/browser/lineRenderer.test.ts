@@ -178,8 +178,17 @@ describe('renderToLineBlocks', () => {
   it('renders images as <img> tags with alt text', () => {
     const blocks = renderToLineBlocks('![local thing](demo.gif)');
     expect(blocks[0].innerHtml).toContain('<img');
-    expect(blocks[0].innerHtml).toContain('src="demo.gif"');
+    // Relative srcs get rewritten under /_assets/ so the server can resolve
+    // them against the plan file's directory.
+    expect(blocks[0].innerHtml).toContain('src="/_assets/demo.gif"');
     expect(blocks[0].innerHtml).toContain('alt="local thing"');
+  });
+
+  it('passes absolute image URLs (http/https/data) through unchanged', () => {
+    const remote = renderToLineBlocks('![pic](https://example.com/p.png)');
+    expect(remote[0].innerHtml).toContain('src="https://example.com/p.png"');
+    const data = renderToLineBlocks('![dot](data:image/gif;base64,R0lGODdh)');
+    expect(data[0].innerHtml).toContain('src="data:image/gif;base64,R0lGODdh"');
   });
 
   // ── HR + raw HTML ────────────────────────────────────────────────────────
@@ -197,6 +206,24 @@ describe('renderToLineBlocks', () => {
     const htmlBlock = blocks.find((b) => b.innerHtml.includes('<details>'));
     expect(htmlBlock).toBeTruthy();
     expect(htmlBlock!.innerHtml).toContain('<summary>');
+  });
+
+  it('merges <details> wrappers that span blank lines into one LineBlock', () => {
+    // Without merging, the blank-line-separated paragraph would become its
+    // own LineBlock and escape the <details>, so the body would render as a
+    // sibling and stay visible even when the details element is closed.
+    const md = '<details>\n<summary>More</summary>\n\nHidden body content.\n\n</details>';
+    const blocks = renderToLineBlocks(md);
+    const detailsBlock = blocks.find((b) => b.innerHtml.includes('<details>'));
+    expect(detailsBlock).toBeTruthy();
+    expect(detailsBlock!.innerHtml).toContain('<summary>');
+    expect(detailsBlock!.innerHtml).toContain('Hidden body content');
+    expect(detailsBlock!.innerHtml).toContain('</details>');
+    // No other block should hold the body — it must not have escaped.
+    const escapedBody = blocks.filter(
+      (b) => b !== detailsBlock && b.innerHtml.includes('Hidden body content'),
+    );
+    expect(escapedBody).toHaveLength(0);
   });
 
   it('decorates GFM admonitions with a titled class', () => {

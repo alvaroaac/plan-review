@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync, rmSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import { HttpTransport } from '../../src/transport.js';
 import { parse } from '../../src/parser.js';
 
@@ -25,6 +25,8 @@ test.beforeAll(async () => {
   const doc = parse(input);
   transport = new HttpTransport();
   transport.sendDocument(doc);
+  // Plan dir is needed so /_assets/<rel> can serve the fixture's local image.
+  transport.setAssetBaseDir(dirname(FIXTURE));
   const { url } = await transport.start(0);
   baseUrl = url;
 });
@@ -228,6 +230,63 @@ test('inline HTML (<kbd>, <sub>, <sup>) is visible on the dark background', asyn
 
   await expect(page.locator('sub').first()).toBeVisible();
   await expect(page.locator('sup').first()).toBeVisible();
+});
+
+test('local image with relative src loads (served from plan dir)', async ({ page }) => {
+  await gotoAndWait(page);
+
+  // Fixture: ![local gif](demo-browser.gif). Should resolve relative to the
+  // plan file's directory (examples/) and return a real GIF, not a 404.
+  const imagesSection = page.locator('div[id^="section-"]').filter({ hasText: 'Images' }).first();
+  const localImg = imagesSection.locator('img[alt="local gif"]');
+  await expect(localImg).toBeVisible();
+
+  const dims = await localImg.evaluate((img: HTMLImageElement) => ({
+    naturalWidth: img.naturalWidth,
+    naturalHeight: img.naturalHeight,
+    src: img.src,
+  }));
+  expect(dims.naturalWidth).toBeGreaterThan(0);
+  expect(dims.naturalHeight).toBeGreaterThan(0);
+  expect(dims.src).toMatch(/\/_assets\/demo-browser\.gif$/);
+});
+
+test('inline links use the dark-mode palette, not browser default blue', async ({ page }) => {
+  await gotoAndWait(page);
+
+  // Fixture has reference-style links pointing at https://example.com and a
+  // GitHub URL. Browser default is rgb(0, 0, 238) — too saturated on the dark
+  // background. Must be overridden in CSS.
+  const linksSection = page.locator('div[id^="section-"]').filter({ hasText: 'Reference-style' }).first();
+  const refLink = linksSection.locator('a[href="https://example.com"]').first();
+  await expect(refLink).toBeVisible();
+
+  const color = await refLink.evaluate((a) => getComputedStyle(a).color);
+  expect(color).not.toBe('rgb(0, 0, 238)');
+  expect(color).not.toBe('rgb(0, 0, 0)');
+});
+
+test('<details> wraps markdown content even across blank lines', async ({ page }) => {
+  await gotoAndWait(page);
+
+  const inlineHtmlSection = page.locator('div[id^="section-"]').filter({ hasText: 'Inline HTML' }).first();
+  const details = inlineHtmlSection.locator('details').first();
+  await expect(details).toBeAttached();
+
+  // The "Hidden content with formatting…" paragraph must be a DESCENDANT of
+  // <details>, not a sibling that escaped because the blank lines split it
+  // into a separate LineBlock.
+  const hiddenInside = details.locator('p', { hasText: 'Hidden content' });
+  await expect(hiddenInside).toHaveCount(1);
+
+  // <details> defaults to closed → its body is not rendered.
+  const initiallyCollapsed = await details.evaluate((d: HTMLDetailsElement) => !d.open);
+  expect(initiallyCollapsed).toBe(true);
+  await expect(hiddenInside).not.toBeVisible();
+
+  // Clicking the summary opens it.
+  await details.locator('summary').click();
+  await expect(hiddenInside).toBeVisible();
 });
 
 test('per-section screenshots — written to tests/visual/screenshots/', async ({ page }) => {
