@@ -207,7 +207,11 @@ Hidden content with **formatting** and a `code` sample.
 > GitHub-style warning admonition.
 
 :::note
-Docusaurus-style note (probably rendered as quote).
+Docusaurus-style note admonition.
+:::
+
+:::tip
+Docusaurus tip with **inline formatting** and `code`.
 :::
 
 ## Horizontal rules

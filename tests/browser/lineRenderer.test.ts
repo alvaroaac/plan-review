@@ -236,6 +236,26 @@ describe('renderToLineBlocks', () => {
     expect(blocks[0].innerHtml).not.toContain('[!WARNING]'); // marker stripped
   });
 
+  it('renders Docusaurus :::kind ... ::: as an admonition', () => {
+    const md = ':::note\nbody text here\n:::';
+    const blocks = renderToLineBlocks(md);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].innerHtml).toContain('admonition-note');
+    expect(blocks[0].innerHtml).toContain('admonition-title');
+    expect(blocks[0].innerHtml).toContain('Note');
+    expect(blocks[0].innerHtml).toContain('body text here');
+    expect(blocks[0].innerHtml).not.toContain(':::');
+  });
+
+  it('maps Docusaurus-only kinds (info → note, danger → caution)', () => {
+    const info = renderToLineBlocks(':::info\nan info note\n:::');
+    expect(info[0].innerHtml).toContain('admonition-note');
+    expect(info[0].innerHtml).toContain('Info');
+    const danger = renderToLineBlocks(':::danger\nwatch out\n:::');
+    expect(danger[0].innerHtml).toContain('admonition-caution');
+    expect(danger[0].innerHtml).toContain('Danger');
+  });
+
   it('emits a math-display block for $$ ... $$ and math-inline spans in paragraphs', () => {
     const md = 'before\n\n$$ x = 1 $$\n\nMiddle with $a=b$ inline.';
     const blocks = renderToLineBlocks(md);

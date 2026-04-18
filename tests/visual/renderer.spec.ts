@@ -204,6 +204,27 @@ test('GFM admonitions render with chrome and title', async ({ page }) => {
   await expect(warning.locator('.admonition-title')).toHaveText(/Warning/i);
 });
 
+test('Docusaurus :::note ... ::: renders as an admonition with chrome', async ({ page }) => {
+  await gotoAndWait(page);
+
+  const admSection = page.locator('div[id^="section-"]').filter({ hasText: 'Admonitions' }).first();
+  // The :::note fence in the fixture should land inside its own
+  // blockquote.admonition-note — same chrome as the GFM > [!NOTE] form.
+  const docusaurus = admSection.locator('blockquote.admonition-note', {
+    hasText: 'Docusaurus-style note',
+  });
+  await expect(docusaurus).toBeVisible();
+  await expect(docusaurus.locator('.admonition-title')).toHaveText(/Note/i);
+
+  // Regression guard: body must not also escape into a sibling paragraph
+  // (the failure mode would be the `:::` fences rendering as plain text).
+  const stray = admSection.locator(
+    'p:not(.admonition-title):not(blockquote.admonition-note p)',
+    { hasText: 'Docusaurus-style note' },
+  );
+  await expect(stray).toHaveCount(0);
+});
+
 test('inline HTML (<kbd>, <sub>, <sup>) is visible on the dark background', async ({ page }) => {
   await gotoAndWait(page);
 

@@ -107,9 +107,45 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
     },
   };
 
+  // Docusaurus-style admonitions: `:::kind [optional title]\n...\n:::`. Match
+  // the GFM admonition shape so the existing CSS handles styling. Body
+  // markdown is rendered through a plain Marked so it doesn't recurse into our
+  // custom paragraph renderer (which would push the body into top-level
+  // `blocks` instead of keeping it inside the blockquote).
+  const docusaurusAdmExt: TokenizerExtension & RendererExtension = {
+    name: 'docusaurusAdmonition',
+    level: 'block',
+    start(src: string) {
+      const idx = src.indexOf(':::');
+      return idx === -1 ? undefined : idx;
+    },
+    tokenizer(src: string) {
+      const m = /^:::(note|tip|info|warning|danger|caution|important)\b(?:[ \t]+(.+))?\n([\s\S]*?)\n:::(?=\n|$)/.exec(src);
+      if (!m) return undefined;
+      return {
+        type: 'docusaurusAdmonition',
+        raw: m[0],
+        kind: m[1].toLowerCase(),
+        title: m[2]?.trim() ?? '',
+        body: m[3],
+      };
+    },
+    renderer(token) {
+      const t = token as unknown as { kind: string; title: string; body: string };
+      // Map Docusaurus-only kinds to the closest GFM palette so existing CSS
+      // hits: info → note (blue), danger → caution (red).
+      const cssKind = t.kind === 'info' ? 'note' : t.kind === 'danger' ? 'caution' : t.kind;
+      const title = t.title || (t.kind.charAt(0).toUpperCase() + t.kind.slice(1));
+      const bodyHtml = (_plainMarked.parse(t.body) as string).trimEnd();
+      const html = `<blockquote class="admonition admonition-${cssKind}"><p class="admonition-title">${title}</p>${bodyHtml}</blockquote>`;
+      blocks.push({ index: i++, innerHtml: html, text: `${title}: ${stripHtml(bodyHtml)}` });
+      return '';
+    },
+  };
+
   const instance = new Marked();
   instance.use(markedFootnote());
-  instance.use({ extensions: [mathInlineExt, mathBlockExt] });
+  instance.use({ extensions: [mathInlineExt, mathBlockExt, docusaurusAdmExt] });
   instance.use({
     renderer: {
       // Regular functions (not arrows) so `this` is the renderer with parser attached.
