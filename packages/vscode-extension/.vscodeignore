@@ -1,0 +1,10 @@
+**/*.ts
+**/*.map
+tsconfig.json
+tsconfig.tsbuildinfo
+build.mjs
+test/**
+test/integration/out/**
+**/node_modules/**
+src/**
+vitest.config.ts

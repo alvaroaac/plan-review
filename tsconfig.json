@@ -1,17 +1,9 @@
 {
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "Node16",
-    "moduleResolution": "Node16",
-    "outDir": "dist",
-    "rootDir": "src",
-    "strict": true,
-    "esModuleInterop": true,
-    "declaration": true,
-    "sourceMap": true,
-    "skipLibCheck": true,
-    "types": ["node"]
-  },
-  "include": ["src"],
-  "exclude": ["node_modules", "dist", "tests", "src/browser"]
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/cli" },
+    { "path": "./packages/browser-app" },
+    { "path": "./packages/vscode-extension" }
+  ]
 }

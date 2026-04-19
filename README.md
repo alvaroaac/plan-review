@@ -144,6 +144,10 @@ plan-review sessions           List all saved sessions
 
 Manual cleanup: delete files in `~/.plan-review/sessions/`.
 
+## VS Code extension
+
+Review plans inside VS Code without leaving the editor. See [packages/vscode-extension/README.md](packages/vscode-extension/README.md) for install and usage.
+
 ## License
 
 MIT
