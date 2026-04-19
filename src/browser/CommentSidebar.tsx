@@ -1,11 +1,6 @@
-import type { ReviewComment, Section, LineAnchor } from '../types.js';
+import type { ReviewComment, Section, LineAnchor, CommentingTarget } from '../types.js';
 import { CommentCard } from './CommentCard.js';
 import { CommentInput } from './CommentInput.js';
-
-interface CommentingTarget {
-  sectionId: string;
-  anchor?: LineAnchor;
-}
 
 interface CommentSidebarProps {
   comments: ReviewComment[];

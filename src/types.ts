@@ -31,6 +31,11 @@ export interface ReviewComment {
   anchor?: LineAnchor; // absent = section-level comment
 }
 
+export interface CommentingTarget {
+  sectionId: string;
+  anchor?: LineAnchor;
+}
+
 export type OutputTarget = 'stdout' | 'clipboard' | 'file' | 'claude';
 
 export type SplitStrategy = 'heading' | 'separator' | 'auto';

@@ -1,15 +1,10 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import type { PlanDocument, ReviewComment, LineAnchor } from '../types.js';
+import type { PlanDocument, ReviewComment, LineAnchor, CommentingTarget } from '../types.js';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
 import { CommentSidebar } from './CommentSidebar.js';
 import { renderMermaidBlocks } from './mermaid.js';
 import { renderMathBlocks } from './katex.js';
-
-interface CommentingTarget {
-  sectionId: string;
-  anchor?: LineAnchor;
-}
 
 export function App() {
   const [doc, setDoc] = useState<PlanDocument | null>(null);
