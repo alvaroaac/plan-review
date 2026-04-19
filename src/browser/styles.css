@@ -597,26 +597,47 @@ pre.mermaid[data-processed="true"] g.edge-no > path {
 pre.mermaid[data-processed="true"] g.edge-yes marker path { fill: var(--edge-yes) !important; stroke: var(--edge-yes) !important; }
 pre.mermaid[data-processed="true"] g.edge-no  marker path { fill: var(--edge-no)  !important; stroke: var(--edge-no)  !important; }
 
-/* Branch-label chips */
+/* Branch-label chips — render as compact circular badges with just the
+   glyph. Original "Yes"/"No" text is hidden (font-size: 0); the icon is
+   restored at normal size via ::before. Background rect is transparent so
+   only the round span shows. */
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label rect,
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label rect {
+  fill: transparent !important;
+}
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject div,
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject div {
+  background: transparent !important;
+}
 pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span,
-pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label rect { background: var(--edge-yes) !important; fill: var(--edge-yes) !important; }
-pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span {
-  color: var(--bg-primary) !important;
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 50% !important;
+  padding: 0 !important;
+  font-size: 0 !important;
   font-weight: 700 !important;
-  padding: 1px 8px !important;
-  border-radius: 10px !important;
+  color: var(--bg-primary) !important;
+  line-height: 1 !important;
+  box-shadow: 0 0 0 2px var(--bg-primary) !important;
+}
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span {
+  background: var(--edge-yes) !important;
+}
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span {
+  background: var(--edge-no) !important;
+}
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span::before,
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span::before {
+  font-size: 12px !important;
+  line-height: 1 !important;
 }
 pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span::before {
-  content: "✓ ";
-}
-pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span,
-pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label rect { background: var(--edge-no) !important; fill: var(--edge-no) !important; }
-pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span {
-  color: var(--bg-primary) !important;
-  font-weight: 700 !important;
-  padding: 1px 8px !important;
-  border-radius: 10px !important;
+  content: "✓";
 }
 pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span::before {
-  content: "✗ ";
+  content: "✗";
 }
