@@ -11,6 +11,15 @@ interface MermaidLike {
   run: (opts: { nodes?: NodeListOf<Element> | Element[]; querySelector?: string }) => Promise<void>;
 }
 
+// The loader stashes the imported ESM module on `window.__mermaid` so the
+// resolver in loadMermaid() can read it back. Declare the shape here instead
+// of casting window at every access.
+declare global {
+  interface Window {
+    __mermaid?: MermaidLike;
+  }
+}
+
 export type MermaidRole = 'start' | 'process' | 'decision' | 'end' | 'error' | 'io';
 
 // Regex rules matched first-wins. `decision` must come first because the
@@ -138,16 +147,15 @@ function loadMermaid(): Promise<MermaidLike> {
   if (loadPromise) return loadPromise;
 
   loadPromise = new Promise<MermaidLike>((resolve, reject) => {
-    const win = window as unknown as { __mermaid?: MermaidLike };
-    if (win.__mermaid) {
-      resolve(win.__mermaid);
+    if (window.__mermaid) {
+      resolve(window.__mermaid);
       return;
     }
 
     // Unique event so multiple calls don't collide with unrelated listeners.
     const eventName = 'plan-review:mermaid-loaded';
     const onLoaded = (): void => {
-      if (win.__mermaid) resolve(win.__mermaid);
+      if (window.__mermaid) resolve(window.__mermaid);
       else reject(new Error('mermaid module missing after load'));
     };
     window.addEventListener(eventName, onLoaded, { once: true });
@@ -214,9 +222,9 @@ export async function renderMermaidBlocks(root: ParentNode = document): Promise<
 
       const svg = pre.querySelector('svg');
       if (!svg) return;
-      applyRoles(svg as unknown as SVGElement, roles);
-      applyBranchEdges(svg as unknown as SVGElement, branches);
-      applyActorIndices(svg as unknown as SVGElement);
+      applyRoles(svg, roles);
+      applyBranchEdges(svg, branches);
+      applyActorIndices(svg);
     }),
   );
 }

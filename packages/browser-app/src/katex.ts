@@ -10,6 +10,15 @@ interface KatexLike {
   render: (latex: string, element: HTMLElement, options?: Record<string, unknown>) => void;
 }
 
+// The loader stashes the imported ESM module on `window.__katex` so the
+// resolver in loadKatex() can read it back. Declare the shape here instead
+// of casting window at every access.
+declare global {
+  interface Window {
+    __katex?: KatexLike;
+  }
+}
+
 let loadPromise: Promise<KatexLike> | null = null;
 
 function ensureStylesheet(): void {
@@ -27,15 +36,14 @@ function loadKatex(): Promise<KatexLike> {
   ensureStylesheet();
 
   loadPromise = new Promise<KatexLike>((resolve, reject) => {
-    const win = window as unknown as { __katex?: KatexLike };
-    if (win.__katex) {
-      resolve(win.__katex);
+    if (window.__katex) {
+      resolve(window.__katex);
       return;
     }
 
     const eventName = 'plan-review:katex-loaded';
     const onLoaded = (): void => {
-      if (win.__katex) resolve(win.__katex);
+      if (window.__katex) resolve(window.__katex);
       else reject(new Error('katex module missing after load'));
     };
     window.addEventListener(eventName, onLoaded, { once: true });

@@ -2,6 +2,24 @@ import { Marked } from 'marked';
 import type { Tokens, TokenizerExtension, RendererExtension } from 'marked';
 import markedFootnote from 'marked-footnote';
 
+// Typed shapes for the custom marked extensions defined below. Each extends
+// Tokens.Generic (which has a string index signature), so a plain `as`
+// narrows from the generic `token` parameter without an `unknown` hop.
+interface MathInlineToken extends Tokens.Generic {
+  type: 'mathInline';
+  text: string;
+}
+interface MathBlockToken extends Tokens.Generic {
+  type: 'mathBlock';
+  text: string;
+}
+interface DocusaurusAdmonitionToken extends Tokens.Generic {
+  type: 'docusaurusAdmonition';
+  kind: string;
+  title: string;
+  body: string;
+}
+
 function escapeForKatex(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -44,7 +62,7 @@ const mathInlineExt: TokenizerExtension & RendererExtension = {
     return { type: 'mathInline', raw: match[0], text: match[1] };
   },
   renderer(token) {
-    return `<span class="math-inline">${escapeForKatex((token as unknown as { text: string }).text)}</span>`;
+    return `<span class="math-inline">${escapeForKatex((token as MathInlineToken).text)}</span>`;
   },
 };
 
@@ -100,7 +118,7 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
       return { type: 'mathBlock', raw: match[0], text: match[1].trim() };
     },
     renderer(token) {
-      const latex = (token as unknown as { text: string }).text;
+      const latex = (token as MathBlockToken).text;
       const html = `<div class="math-display">${escapeForKatex(latex)}</div>`;
       blocks.push({ index: i++, innerHtml: html, text: latex });
       return '';
@@ -131,7 +149,7 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
       };
     },
     renderer(token) {
-      const t = token as unknown as { kind: string; title: string; body: string };
+      const t = token as DocusaurusAdmonitionToken;
       // Map Docusaurus-only kinds to the closest GFM palette so existing CSS
       // hits: info → note (blue), danger → caution (red).
       const cssKind = t.kind === 'info' ? 'note' : t.kind === 'danger' ? 'caution' : t.kind;
