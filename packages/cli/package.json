@@ -1,0 +1,44 @@
+{
+  "name": "plan-review",
+  "version": "1.0.3",
+  "description": "Interactive CLI for reviewing AI-generated markdown plans",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "plan-review": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "skills",
+    "examples"
+  ],
+  "scripts": {
+    "build": "tsc && npm run build:browser",
+    "build:browser": "rm -rf ./dist/browser && cp -R ../browser-app/dist ./dist/browser",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "markdown",
+    "plan",
+    "review",
+    "cli"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@plan-review/core": "*",
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "marked": "^15.0.12",
+    "marked-terminal": "^7.3.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.0",
+    "@vitest/coverage-v8": "^4.1.4",
+    "tsx": "^4.21.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
+}

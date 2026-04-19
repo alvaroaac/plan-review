@@ -1,6 +1,7 @@
 node_modules/
 dist/
 *.js.map
+*.tsbuildinfo
 .DS_Store
 coverage/
 thoughts/
@@ -9,3 +10,7 @@ thoughts/
 playwright-report/
 test-results/
 tests/visual/screenshots/
+packages/vscode-extension/media/
+packages/vscode-extension/test/integration/out/
+packages/vscode-extension/.vscode-test/
+packages/vscode-extension/*.vsix

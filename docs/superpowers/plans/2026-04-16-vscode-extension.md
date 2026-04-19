@@ -26,9 +26,8 @@ plan-review/                                  (workspaces root)
 │   │       ├── parser.ts                     MOVE from src/parser.ts
 │   │       ├── session.ts                    MOVE from src/session.ts
 │   │       ├── formatter.ts                  MOVE from src/formatter.ts
-│   │       ├── transport.ts                  MOVE from src/transport.ts
 │   │       ├── types.ts                      MOVE from src/types.ts
-│   │       ├── reviewClient.ts               CREATE — ReviewClient interface
+│   │       ├── reviewClient.ts               CREATE — ReviewClient interface (new, client-side)
 │   │       └── index.ts                      CREATE — barrel export
 │   ├── cli/                                  CREATE
 │   │   ├── package.json                      CREATE
@@ -38,6 +37,7 @@ plan-review/                                  (workspaces root)
 │   │       ├── navigator.ts                  MOVE from src/navigator.ts
 │   │       ├── renderer.ts                   MOVE from src/renderer.ts
 │   │       ├── output.ts                     MOVE from src/output.ts
+│   │       ├── transport.ts                  MOVE from src/transport.ts (existing server-lifecycle HttpTransport — stays in CLI)
 │   │       ├── marked-terminal.d.ts          MOVE from src/marked-terminal.d.ts
 │   │       └── server/
 │   │           ├── server.ts                 MOVE from src/server/server.ts
@@ -259,7 +259,7 @@ git commit -m "chore: scaffold npm workspaces (core, cli, browser-app)"
 ### Task 2: Move `core` source files
 
 **Files:**
-- Move: `src/parser.ts`, `src/session.ts`, `src/formatter.ts`, `src/transport.ts`, `src/types.ts` → `packages/core/src/`
+- Move: `src/parser.ts`, `src/session.ts`, `src/formatter.ts`, `src/types.ts` → `packages/core/src/` (NOTE: `src/transport.ts` stays behind — it is CLI-server lifecycle and moves to `packages/cli/` in Task 3)
 - Create: `packages/core/src/index.ts`
 - Create: `packages/core/tsconfig.json`
 
@@ -269,7 +269,6 @@ git commit -m "chore: scaffold npm workspaces (core, cli, browser-app)"
 git mv src/parser.ts     packages/core/src/parser.ts
 git mv src/session.ts    packages/core/src/session.ts
 git mv src/formatter.ts  packages/core/src/formatter.ts
-git mv src/transport.ts  packages/core/src/transport.ts
 git mv src/types.ts      packages/core/src/types.ts
 ```
 
@@ -280,7 +279,6 @@ export * from './types.js';
 export * from './parser.js';
 export * from './session.js';
 export * from './formatter.js';
-export * from './transport.js';
 ```
 
 - [ ] **Step 3: Create `packages/core/tsconfig.json`**
@@ -306,14 +304,13 @@ export * from './transport.js';
 
 - [ ] **Step 4: Move core tests**
 
-Identify which files under `tests/` reference only `src/{parser,session,formatter,transport,types}.ts`. For each, move to `packages/core/tests/`.
+Identify which files under `tests/` reference only `src/{parser,session,formatter,types}.ts`. For each, move to `packages/core/tests/`. (`transport.test.ts` belongs in `packages/cli/tests/` — moved in Task 3.)
 
 ```bash
 mkdir -p packages/core/tests
 git mv tests/parser.test.ts      packages/core/tests/ 2>/dev/null || true
 git mv tests/session.test.ts     packages/core/tests/ 2>/dev/null || true
 git mv tests/formatter.test.ts   packages/core/tests/ 2>/dev/null || true
-git mv tests/transport.test.ts   packages/core/tests/ 2>/dev/null || true
 ```
 
 - [ ] **Step 5: Update import paths inside moved tests**
@@ -362,6 +359,7 @@ git mv src/index.ts             packages/cli/src/index.ts
 git mv src/navigator.ts         packages/cli/src/navigator.ts
 git mv src/renderer.ts          packages/cli/src/renderer.ts
 git mv src/output.ts            packages/cli/src/output.ts
+git mv src/transport.ts         packages/cli/src/transport.ts
 git mv src/marked-terminal.d.ts packages/cli/src/marked-terminal.d.ts
 git mv src/server/server.ts     packages/cli/src/server/server.ts
 git mv src/server/routes.ts     packages/cli/src/server/routes.ts
