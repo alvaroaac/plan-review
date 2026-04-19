@@ -4,18 +4,16 @@ import { Command } from 'commander';
 import { readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import * as readline from 'node:readline';
 import chalk from 'chalk';
-import { resolve as resolvePath, dirname as dirnamePath } from 'node:path';
 import { parse, formatReview, loadSession, saveSession, clearSession, computeContentHash, listSessions, getSessionDir } from '@plan-review/core';
-import type { OutputTarget, ReviewComment } from '@plan-review/core';
+import type { OutputTarget } from '@plan-review/core';
 import { navigate } from './navigator.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
-import { HttpTransport } from './transport.js';
-import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
+import { promptOutputTarget, promptYesNo } from './prompts.js';
+import { runBrowserReview } from './browser-review.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -155,70 +153,7 @@ async function run(
   // Navigate (interactive review or browser)
   let reviewed;
   if (!opts.cli) {
-    const transport = new HttpTransport();
-    transport.sendDocument(doc);
-    transport.setInitialActiveSection(restoredActiveSection);
-    // Plan-file directory anchors relative image paths via /_assets/<rel>.
-    transport.setAssetBaseDir(absPath ? dirnamePath(absPath) : null);
-
-    if (absPath) {
-      transport.onSessionSave((comments, activeSection) => {
-        saveSession(absPath, contentHash, comments, activeSection);
-      });
-    }
-
-    const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — overall ceiling
-    const HEARTBEAT_TIMEOUT_MS = 30 * 1000;  // 30s without a heartbeat while visible = browser gone
-    const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
-      const idleTimer = setTimeout(
-        () => reject(new Error('Browser review timed out after 30 minutes of inactivity')),
-        IDLE_TIMEOUT_MS,
-      );
-      let heartbeatTimer: NodeJS.Timeout | null = null;
-      const armHeartbeat = (): void => {
-        if (heartbeatTimer) clearTimeout(heartbeatTimer);
-        heartbeatTimer = setTimeout(() => {
-          clearTimeout(idleTimer);
-          reject(new Error('Review cancelled: browser closed (heartbeat lost)'));
-        }, HEARTBEAT_TIMEOUT_MS);
-      };
-      const clearAll = (): void => {
-        clearTimeout(idleTimer);
-        if (heartbeatTimer) clearTimeout(heartbeatTimer);
-        heartbeatTimer = null;
-      };
-      transport.onHeartbeat(armHeartbeat);
-      transport.onPause(() => {
-        if (heartbeatTimer) clearTimeout(heartbeatTimer);
-        heartbeatTimer = null;
-      });
-      transport.onCancel(() => {
-        clearAll();
-        reject(new Error('Review cancelled: browser closed'));
-      });
-      transport.onReviewSubmit((comments) => {
-        clearAll();
-        resolve(comments);
-      });
-    });
-
-    const { url } = await transport.start(0);
-    process.stderr.write(`Review server running at ${url}\n`);
-
-    try {
-      const openCmd = process.platform === 'darwin' ? 'open'
-        : process.platform === 'win32' ? 'start'
-        : 'xdg-open';
-      spawnSync(openCmd, [url], { stdio: 'ignore' });
-    } catch {
-      process.stderr.write(`Open ${url} in your browser\n`);
-    }
-
-    try {
-      doc.comments = await reviewPromise;
-    } finally {
-      await transport.stop();
-    }
+    doc.comments = await runBrowserReview({ doc, absPath, contentHash, restoredActiveSection });
     reviewed = doc;
   } else {
     const onCommentChange = absPath
@@ -248,51 +183,6 @@ async function run(
   // Format and output
   const output = formatReview(reviewed);
   writeOutput(output, outputTarget, { outputFile: opts.outputFile, inputFile: file });
-}
-
-async function promptOutputTarget(inputFromStdin: boolean): Promise<OutputTarget> {
-  const ttyInput = inputFromStdin
-    ? (await import('node:fs')).createReadStream('/dev/tty')
-    : process.stdin;
-
-  const rl = readline.createInterface({
-    input: ttyInput,
-    output: process.stderr,
-  });
-
-  const answer = await new Promise<string>((resolve) => {
-    rl.question(
-      chalk.cyan('> Output: (s)tdout, (c)lipboard, (f)ile, cl(a)ude? '),
-      (a) => resolve(a.trim().toLowerCase()),
-    );
-  });
-  rl.close();
-
-  switch (answer) {
-    case 's': case 'stdout': return 'stdout';
-    case 'c': case 'clipboard': return 'clipboard';
-    case 'f': case 'file': return 'file';
-    case 'a': case 'claude': return 'claude';
-    default: return 'stdout';
-  }
-}
-
-async function promptYesNo(message: string, inputFromStdin: boolean): Promise<boolean> {
-  const ttyInput = inputFromStdin
-    ? (await import('node:fs')).createReadStream('/dev/tty')
-    : process.stdin;
-
-  const rl = readline.createInterface({
-    input: ttyInput,
-    output: process.stderr,
-  });
-
-  const answer = await new Promise<string>((resolve) => {
-    rl.question(chalk.yellow(`${message} (y/n) `), (a) => resolve(a.trim().toLowerCase()));
-  });
-  rl.close();
-
-  return answer === 'y' || answer === 'yes';
 }
 
 function readInput(file: string | undefined): string {
