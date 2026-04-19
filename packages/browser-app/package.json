@@ -9,9 +9,11 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@plan-review/core": "*",
     "marked": "^15.0.12",
-    "preact": "^10.29.1",
-    "@plan-review/core": "*"
+    "marked-footnote": "^1.4.0",
+    "marked-terminal": "^7.3.0",
+    "preact": "^10.29.1"
   },
   "devDependencies": {
     "@testing-library/preact": "^3.2.4",

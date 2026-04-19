@@ -5,7 +5,7 @@
   "type": "module",
   "workspaces": ["packages/*"],
   "scripts": {
-    "build": "npm run build -ws --if-present",
+    "build": "npm run build -w @plan-review/core && npm run build -w @plan-review/browser-app && npm run build -w plan-review && npm run build -w plan-review-vscode",
     "test": "npm run test -ws --if-present",
     "typecheck": "npm run typecheck -ws --if-present",
     "dev": "npm run dev -w plan-review"
