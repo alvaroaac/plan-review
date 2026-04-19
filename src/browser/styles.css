@@ -590,7 +590,7 @@ pre.mermaid[data-processed="true"] .edge-no .path,
 pre.mermaid[data-processed="true"] g.edge-no > path {
   stroke: var(--edge-no) !important;
   stroke-width: 2.5px !important;
-  stroke-dasharray: none !important;
+  stroke-dasharray: 6 4 !important;
   fill: none !important;
 }
 
@@ -606,6 +606,9 @@ pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span
   padding: 1px 8px !important;
   border-radius: 10px !important;
 }
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-yes-label foreignObject span::before {
+  content: "✓ ";
+}
 pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span,
 pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label rect { background: var(--edge-no) !important; fill: var(--edge-no) !important; }
 pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span {
@@ -613,4 +616,7 @@ pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span 
   font-weight: 700 !important;
   padding: 1px 8px !important;
   border-radius: 10px !important;
+}
+pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span::before {
+  content: "✗ ";
 }
