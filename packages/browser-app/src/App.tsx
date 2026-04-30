@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef } from 'preact/hooks';
-import type { PlanDocument, ReviewComment, LineAnchor, ReviewClient } from '@plan-review/core';
+import type {
+  PlanDocument,
+  ReviewComment,
+  LineAnchor,
+  ReviewClient,
+  ReviewVerdict,
+} from '@plan-review/core';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
 import { CommentSidebar } from './CommentSidebar.js';
+import { SubmitReviewPanel } from './SubmitReviewPanel.js';
 import { renderMermaidBlocks } from './mermaid.js';
 import { renderMathBlocks } from './katex.js';
 
@@ -154,9 +161,9 @@ export function App({ client }: { client: ReviewClient }) {
     setComments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const submitReview = async () => {
+  const submitReview = async (verdict: ReviewVerdict, summary: string) => {
     try {
-      await client.submitReview(comments);
+      await client.submitReview({ comments, verdict, summary });
       setSubmitted(true);
     } catch {
       setError('Failed to submit review');
@@ -189,9 +196,7 @@ export function App({ client }: { client: ReviewClient }) {
         <h1>{doc.title}</h1>
         <span class="mode-badge">{doc.mode}</span>
         <span class="comment-count">{comments.length} comment{comments.length !== 1 ? 's' : ''}</span>
-        <button class="submit-btn" onClick={submitReview} disabled={comments.length === 0}>
-          Submit Review
-        </button>
+        <SubmitReviewPanel commentCount={comments.length} disabled={!doc} onSubmit={submitReview} />
       </header>
       <div class="panels">
         <TOCPanel

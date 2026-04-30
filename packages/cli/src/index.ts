@@ -8,7 +8,7 @@ import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import { parse, formatReview, loadSession, saveSession, clearSession, computeContentHash, listSessions, getSessionDir } from '@plan-review/core';
-import type { OutputTarget } from '@plan-review/core';
+import type { OutputTarget, PlanDocument, ReviewSubmission } from '@plan-review/core';
 import { navigate } from './navigator.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
 import { createRequire } from 'node:module';
@@ -151,9 +151,12 @@ async function run(
   }
 
   // Navigate (interactive review or browser)
-  let reviewed;
+  let reviewed: PlanDocument;
+  let reviewMeta: Pick<ReviewSubmission, 'verdict' | 'summary'> = { verdict: null, summary: '' };
   if (!opts.cli) {
-    doc.comments = await runBrowserReview({ doc, absPath, contentHash, restoredActiveSection });
+    const submission = await runBrowserReview({ doc, absPath, contentHash, restoredActiveSection });
+    doc.comments = submission.comments;
+    reviewMeta = { verdict: submission.verdict, summary: submission.summary };
     reviewed = doc;
   } else {
     const onCommentChange = absPath
@@ -181,7 +184,7 @@ async function run(
   }
 
   // Format and output
-  const output = formatReview(reviewed);
+  const output = formatReview(reviewed, reviewMeta);
   writeOutput(output, outputTarget, { outputFile: opts.outputFile, inputFile: file });
 }
 

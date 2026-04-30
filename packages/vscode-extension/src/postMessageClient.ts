@@ -1,4 +1,4 @@
-import type { ReviewClient, SessionState, PlanDocument, ReviewComment } from '@plan-review/core';
+import type { ReviewClient, SessionState, PlanDocument, ReviewComment, ReviewSubmission } from '@plan-review/core';
 import type { WebviewRequest, WebviewResponse } from './protocol.js';
 
 declare function acquireVsCodeApi(): { postMessage(msg: unknown): void };
@@ -45,5 +45,7 @@ export class PostMessageReviewClient implements ReviewClient {
     }>('loadDocument');
   }
   saveSession(state: SessionState) { return this.call<void>('saveSession', state); }
-  submitReview(comments: ReviewComment[]) { return this.call<{ ok: true }>('submitReview', { comments }); }
+  submitReview(submission: ReviewSubmission) {
+    return this.call<{ ok: true }>('submitReview', submission);
+  }
 }

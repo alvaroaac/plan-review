@@ -81,12 +81,12 @@ describe('App', () => {
     expect(screen.getByText('Comments (2)')).toBeTruthy();
   });
 
-  it('disables submit button when no comments', async () => {
+  it('keeps submit button enabled when no comments so reviewers can approve', async () => {
     const client = new FakeReviewClient({ document: mockPlanDoc });
     render(<App client={client} />);
     await waitFor(() => screen.getByText('Test Plan'));
-    const btn = screen.getByText('Submit Review') as HTMLButtonElement;
-    expect(btn.disabled).toBe(true);
+    const btn = screen.getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
+    expect(btn.disabled).toBe(false);
   });
 
   // ── Gap 1: Full add-comment flow (section-level) ───────────────────────────
@@ -120,7 +120,7 @@ describe('App', () => {
     expect(container.querySelector('.section-view.being-commented')).toBeNull();
 
     // Submit button is now enabled
-    const submitBtn = screen.getByText('Submit Review') as HTMLButtonElement;
+    const submitBtn = screen.getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
     expect(submitBtn.disabled).toBe(false);
   });
 
@@ -194,14 +194,19 @@ describe('App', () => {
     expect(screen.getByText('Comments (1)')).toBeTruthy();
 
     // Submit — client.submitReview should carry only the remaining comment
-    const submitBtn = screen.getByText('Submit Review') as HTMLButtonElement;
+    const submitBtn = screen.getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
     expect(submitBtn.disabled).toBe(false);
     fireEvent.click(submitBtn);
+    fireEvent.click(screen.getByLabelText(/Approve/i));
+    fireEvent.click(screen.getByText('Submit'));
 
     await waitFor(() => {
       expect(client.submits).toHaveLength(1);
-      expect(client.submits[0]).toHaveLength(1);
-      expect(client.submits[0][0].text).toBe('Second comment');
+      expect(client.submits[0]).toEqual({
+        comments: [expect.objectContaining({ text: 'Second comment' })],
+        verdict: 'approved',
+        summary: '',
+      });
     });
 
     // Submitted state shown

@@ -7,6 +7,7 @@ export interface PlanReviewSettings {
   outputFilePath: string;
   planModeDetection: 'auto' | 'always' | 'never';
   codeLensEnabled: boolean;
+  askBeforeSubmit: boolean;
 }
 
 export function getSettings(): PlanReviewSettings {
@@ -16,5 +17,6 @@ export function getSettings(): PlanReviewSettings {
     outputFilePath: c.get<string>('outputFilePath', '${planDir}/${planName}.review.md'),
     planModeDetection: c.get<'auto' | 'always' | 'never'>('planModeDetection', 'auto'),
     codeLensEnabled: c.get<boolean>('codeLens.enabled', true),
+    askBeforeSubmit: c.get<boolean>('askBeforeSubmit', false),
   };
 }

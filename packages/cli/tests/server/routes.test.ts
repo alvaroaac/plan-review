@@ -78,7 +78,7 @@ describe('server routes', () => {
     await stopTestServer(server);
   });
 
-  it('POST /api/review calls onSubmit with parsed comments', async () => {
+  it('POST /api/review calls onSubmit with parsed review submission', async () => {
     const onSubmit = vi.fn();
     const { server, port } = await startTestServer({
       getDocument: () => mockDoc,
@@ -93,15 +93,19 @@ describe('server routes', () => {
     const res = await fetch(`http://localhost:${port}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments }),
+      body: JSON.stringify({ comments, verdict: 'approved', summary: 'Ship it.' }),
     });
     const data = await res.json();
 
     expect(res.status).toBe(200);
     expect(data.success).toBe(true);
     expect(onSubmit).toHaveBeenCalledOnce();
-    expect(onSubmit.mock.calls[0][0]).toHaveLength(1);
-    expect(onSubmit.mock.calls[0][0][0].sectionId).toBe('1.1');
+    expect(onSubmit.mock.calls[0][0]).toMatchObject({
+      verdict: 'approved',
+      summary: 'Ship it.',
+    });
+    expect(onSubmit.mock.calls[0][0].comments).toHaveLength(1);
+    expect(onSubmit.mock.calls[0][0].comments[0].sectionId).toBe('1.1');
 
     await stopTestServer(server);
   });
@@ -164,7 +168,7 @@ describe('server routes', () => {
     const res = await fetch(`http://localhost:${port}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [{ text: 'no section id' }] }),
+      body: JSON.stringify({ comments: [{ text: 'no section id' }], verdict: null, summary: '' }),
     });
 
     expect(res.status).toBe(400);
@@ -184,7 +188,7 @@ describe('server routes', () => {
     const res = await fetch(`http://localhost:${port}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [{ sectionId: '1.1' }] }),
+      body: JSON.stringify({ comments: [{ sectionId: '1.1' }], verdict: null, summary: '' }),
     });
 
     expect(res.status).toBe(400);
@@ -204,7 +208,7 @@ describe('server routes', () => {
     const res = await fetch(`http://localhost:${port}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [null, 42, 'string'] }),
+      body: JSON.stringify({ comments: [null, 42, 'string'], verdict: null, summary: '' }),
     });
 
     expect(res.status).toBe(400);
@@ -231,11 +235,52 @@ describe('server routes', () => {
     const res = await fetch(`http://localhost:${port}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments }),
+      body: JSON.stringify({ comments, verdict: null, summary: '' }),
     });
 
     expect(res.status).toBe(200);
     expect(onSubmit).toHaveBeenCalledOnce();
+    expect(onSubmit.mock.calls[0][0].comments).toHaveLength(2);
+
+    await stopTestServer(server);
+  });
+
+  it('POST /api/review rejects invalid verdict', async () => {
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comments: [], verdict: 'changes-requested', summary: '' }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain('verdict');
+
+    await stopTestServer(server);
+  });
+
+  it('POST /api/review rejects missing summary', async () => {
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+    });
+
+    const res = await fetch(`http://localhost:${port}/api/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comments: [], verdict: null }),
+    });
+
+    expect(res.status).toBe(400);
+    const data = await res.json();
+    expect(data.error).toContain('summary');
 
     await stopTestServer(server);
   });

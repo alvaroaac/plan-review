@@ -6,6 +6,7 @@ import {
   saveSession as coreSaveSession,
   type PlanDocument,
   type ReviewComment,
+  type ReviewVerdict,
 } from '@plan-review/core';
 
 export interface MessageHandlers {
@@ -24,11 +25,19 @@ export interface MessageHandlers {
     planFsPath: string;
     document: PlanDocument;
     comments: ReviewComment[];
-  }): Promise<{ ok: true }>;
+    verdict: ReviewVerdict;
+    summary: string;
+  }): Promise<{ ok: true; submitted: boolean }>;
 }
 
 export function createMessageHandlers(deps?: {
-  submit?: (args: { planFsPath: string; document: PlanDocument; comments: ReviewComment[] }) => Promise<void>;
+  submit?: (args: {
+    planFsPath: string;
+    document: PlanDocument;
+    comments: ReviewComment[];
+    verdict: ReviewVerdict;
+    summary: string;
+  }) => Promise<{ submitted: boolean }>;
 }): MessageHandlers {
   return {
     async loadDocument({ planFsPath }) {
@@ -41,9 +50,9 @@ export function createMessageHandlers(deps?: {
     async saveSession({ planFsPath, contentHash, comments, activeSection }) {
       coreSaveSession(planFsPath, contentHash, comments, activeSection);
     },
-    async submitReview({ planFsPath, document, comments }) {
-      await deps?.submit?.({ planFsPath, document, comments });
-      return { ok: true };
+    async submitReview({ planFsPath, document, comments, verdict, summary }) {
+      const result = await deps?.submit?.({ planFsPath, document, comments, verdict, summary });
+      return { ok: true as const, submitted: result?.submitted ?? true };
     },
   };
 }

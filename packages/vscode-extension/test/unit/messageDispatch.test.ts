@@ -5,7 +5,7 @@ import type { PlanDocument, ReviewComment } from '@plan-review/core';
 
 vi.mock('vscode', () => ({
   workspace: { getConfiguration: () => ({ get: (_k: string, d: unknown) => d }), getWorkspaceFolder: () => undefined },
-  window: { showInformationMessage: vi.fn(), showWarningMessage: vi.fn(), showErrorMessage: vi.fn(), createOutputChannel: vi.fn() },
+  window: { showInformationMessage: vi.fn(), showWarningMessage: vi.fn(), showErrorMessage: vi.fn(), createOutputChannel: vi.fn(), showQuickPick: vi.fn() },
   env: { clipboard: { writeText: vi.fn() } },
   commands: { getCommands: vi.fn().mockResolvedValue([]), executeCommand: vi.fn(), registerCommand: vi.fn() },
   languages: { registerCodeLensProvider: vi.fn() },
@@ -40,7 +40,7 @@ function makeHandlers(overrides?: Partial<MessageHandlers>): MessageHandlers {
       restoredSession: undefined,
     }),
     saveSession: vi.fn().mockResolvedValue(undefined),
-    submitReview: vi.fn().mockResolvedValue({ ok: true }),
+    submitReview: vi.fn().mockResolvedValue({ ok: true, submitted: true }),
     ...overrides,
   };
 }
@@ -66,13 +66,14 @@ describe('handleWebviewMessage', () => {
   }
 
   it('ignores non-request messages', async () => {
-    await handleWebviewMessage({ kind: 'not-req' }, opts());
+    const result = await handleWebviewMessage({ kind: 'not-req' }, opts());
     expect(postMessage).not.toHaveBeenCalled();
+    expect(result).toEqual({});
   });
 
   it('dispatches loadDocument and caches the doc', async () => {
     const h = makeHandlers();
-    await handleWebviewMessage(
+    const result = await handleWebviewMessage(
       { id: 'r1', kind: 'req', method: 'loadDocument' },
       opts(h),
     );
@@ -82,6 +83,7 @@ describe('handleWebviewMessage', () => {
       id: 'r1', kind: 'res',
       result: { document: fakeDoc, contentHash: 'sha256:abc', restoredSession: undefined },
     });
+    expect(result).toEqual({});
   });
 
   it('dispatches saveSession with webview-supplied contentHash', async () => {
@@ -115,30 +117,83 @@ describe('handleWebviewMessage', () => {
     );
   });
 
-  it('dispatches submitReview using cachedDoc', async () => {
+  it('dispatches submitReview using cachedDoc and returns close action', async () => {
     const h = makeHandlers();
     cachedDoc = fakeDoc;
-    await handleWebviewMessage(
-      { id: 'r4', kind: 'req', method: 'submitReview', params: { comments: [] } },
+    const result = await handleWebviewMessage(
+      {
+        id: 'r4',
+        kind: 'req',
+        method: 'submitReview',
+        params: { comments: [], verdict: null, summary: '' },
+      },
       opts(h),
     );
     expect(h.submitReview).toHaveBeenCalledWith({
       planFsPath: '/work/plan.md',
       document: fakeDoc,
       comments: [],
+      verdict: null,
+      summary: '',
     });
-    expect(postMessage).toHaveBeenCalledWith({ id: 'r4', kind: 'res', result: { ok: true } });
+    expect(postMessage).toHaveBeenCalledWith({ id: 'r4', kind: 'res', result: { ok: true, submitted: true } });
+    expect(result).toEqual({ action: 'close' });
+  });
+
+  it('propagates approved verdict and summary through submitReview', async () => {
+    const h = makeHandlers();
+    cachedDoc = fakeDoc;
+    await handleWebviewMessage(
+      {
+        id: 'r4a',
+        kind: 'req',
+        method: 'submitReview',
+        params: { comments: [], verdict: 'approved', summary: 'LGTM' },
+      },
+      opts(h),
+    );
+    expect(h.submitReview).toHaveBeenCalledWith({
+      planFsPath: '/work/plan.md',
+      document: fakeDoc,
+      comments: [],
+      verdict: 'approved',
+      summary: 'LGTM',
+    });
+  });
+
+  it('does not return close action when submit was cancelled', async () => {
+    const h = makeHandlers({
+      submitReview: vi.fn().mockResolvedValue({ ok: true, submitted: false }),
+    });
+    cachedDoc = fakeDoc;
+    const result = await handleWebviewMessage(
+      {
+        id: 'r4b',
+        kind: 'req',
+        method: 'submitReview',
+        params: { comments: [], verdict: null, summary: '' },
+      },
+      opts(h),
+    );
+    expect(postMessage).toHaveBeenCalledWith({ id: 'r4b', kind: 'res', result: { ok: true, submitted: false } });
+    expect(result).toEqual({});
   });
 
   it('returns error when submitReview called without loaded doc', async () => {
     cachedDoc = null;
-    await handleWebviewMessage(
-      { id: 'r5', kind: 'req', method: 'submitReview', params: { comments: [] } },
+    const result = await handleWebviewMessage(
+      {
+        id: 'r5',
+        kind: 'req',
+        method: 'submitReview',
+        params: { comments: [], verdict: null, summary: '' },
+      },
       opts(),
     );
     expect(postMessage).toHaveBeenCalledWith({
       id: 'r5', kind: 'err', error: 'document not loaded',
     });
+    expect(result).toEqual({});
   });
 
   it('maps handler errors to err responses', async () => {

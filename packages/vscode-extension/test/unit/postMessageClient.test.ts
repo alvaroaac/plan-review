@@ -31,7 +31,7 @@ describe('PostMessageReviewClient', () => {
   it('rejects on err response', async () => {
     const { sent, emit } = setupWindow();
     const c = new PostMessageReviewClient();
-    const p = c.submitReview([]);
+    const p = c.submitReview({ comments: [], verdict: null, summary: '' });
     emit({ id: sent[0].id, kind: 'err', error: 'boom' });
     await expect(p).rejects.toThrow('boom');
   });

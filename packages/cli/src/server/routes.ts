@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs';
 import { join, normalize, resolve as resolvePath, sep, extname } from 'node:path';
-import type { PlanDocument, ReviewComment } from '@plan-review/core';
+import type { PlanDocument, ReviewComment, ReviewSubmission } from '@plan-review/core';
 
 const MAX_BODY_SIZE = 1024 * 1024; // 1MB
 
@@ -20,7 +20,7 @@ export interface RouteContext {
   getDocument: () => PlanDocument;
   getInitialActiveSection?: () => string | null;
   getAssetBaseDir?: () => string | null;
-  onSubmit: (comments: ReviewComment[]) => void;
+  onSubmit: (submission: ReviewSubmission) => void;
   getAssetHtml: () => string;
   onSessionSave?: (comments: ReviewComment[], activeSection: string | null) => void;
   onHeartbeat?: () => void;
@@ -32,6 +32,10 @@ function validateComment(obj: unknown): obj is ReviewComment {
   if (typeof obj !== 'object' || obj === null) return false;
   const c = obj as Record<string, unknown>;
   return typeof c.sectionId === 'string' && typeof c.text === 'string';
+}
+
+function validateVerdict(value: unknown): value is ReviewSubmission['verdict'] {
+  return value === 'approved' || value === null;
 }
 
 export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, res: ServerResponse) => void {
@@ -71,9 +75,21 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
         try {
           const parsed = JSON.parse(body);
           const comments = parsed.comments;
+          const verdict = parsed.verdict;
+          const summary = parsed.summary;
           if (!Array.isArray(comments)) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'comments must be an array' }));
+            return;
+          }
+          if (!validateVerdict(verdict)) {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'verdict must be "approved" or null' }));
+            return;
+          }
+          if (typeof summary !== 'string') {
+            res.writeHead(400, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'summary must be a string' }));
             return;
           }
           for (const c of comments) {
@@ -83,7 +99,7 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
               return;
             }
           }
-          ctx.onSubmit(comments as ReviewComment[]);
+          ctx.onSubmit({ comments: comments as ReviewComment[], verdict, summary });
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ success: true }));
         } catch {
