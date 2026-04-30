@@ -61,6 +61,11 @@
         "planReview.codeLens.enabled": {
           "type": "boolean",
           "default": true
+        },
+        "planReview.askBeforeSubmit": {
+          "type": "boolean",
+          "default": false,
+          "description": "Show a picker to choose where to send the review (clipboard / file) instead of using the static submitTargets list"
         }
       }
     },

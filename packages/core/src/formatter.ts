@@ -1,4 +1,4 @@
-import type { PlanDocument, ReviewComment } from './types.js';
+import type { PlanDocument, ReviewComment, ReviewVerdict } from './types.js';
 
 function escapeMarkdown(text: string): string {
   return text.replace(/([\\*_`~\[\]#>|])/g, '\\$1');
@@ -12,7 +12,16 @@ function sortComments(comments: ReviewComment[]): ReviewComment[] {
   });
 }
 
-export function formatReview(doc: PlanDocument): string {
+function verdictLabel(verdict: ReviewVerdict): string {
+  return verdict === 'approved' ? 'Approved' : 'Comment';
+}
+
+export interface FormatReviewOptions {
+  verdict: ReviewVerdict;
+  summary: string;
+}
+
+export function formatReview(doc: PlanDocument, opts: FormatReviewOptions): string {
   const commentedSectionIds = new Set(doc.comments.map((c) => c.sectionId));
   const reviewableSections = doc.sections.filter((s) =>
     doc.mode === 'plan' ? s.level === 3 : s.level >= 2,
@@ -24,11 +33,20 @@ export function formatReview(doc: PlanDocument): string {
   parts.push(`# Plan Review: ${doc.title}`);
   parts.push('');
   parts.push('## Review Summary');
+  parts.push(`- **Verdict:** ${verdictLabel(opts.verdict)}`);
   parts.push(`- **Sections reviewed:** ${commentedSections.length}/${reviewableSections.length}`);
   parts.push(`- **Comments:** ${doc.comments.length}`);
   parts.push(
     `- **Skipped:** ${reviewableSections.length - commentedSections.length} sections without comments`,
   );
+
+  if (opts.summary.trim() !== '') {
+    parts.push('');
+    parts.push('## Overall Comments');
+    parts.push('');
+    parts.push(escapeMarkdown(opts.summary));
+  }
+
   parts.push('');
   parts.push('---');
 

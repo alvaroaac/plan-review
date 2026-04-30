@@ -1,8 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import { dirname as dirnamePath } from 'node:path';
-import type { PlanDocument, ReviewComment } from '@plan-review/core';
+import type { PlanDocument } from '@plan-review/core';
 import { saveSession } from '@plan-review/core';
 import { HttpTransport } from './transport.js';
+import type { ReviewSubmission } from './transport.js';
 
 export interface BrowserReviewOptions {
   doc: PlanDocument;
@@ -19,7 +20,7 @@ const HEARTBEAT_TIMEOUT_MS = 30 * 1000; // 30s without a heartbeat while visible
 // the user cancels, closes the tab, or the overall idle ceiling fires.
 export async function runBrowserReview(
   { doc, absPath, contentHash, restoredActiveSection }: BrowserReviewOptions,
-): Promise<ReviewComment[]> {
+): Promise<ReviewSubmission> {
   const transport = new HttpTransport();
   transport.sendDocument(doc);
   transport.setInitialActiveSection(restoredActiveSection);
@@ -32,7 +33,7 @@ export async function runBrowserReview(
     });
   }
 
-  const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
+  const reviewPromise = new Promise<ReviewSubmission>((resolve, reject) => {
     const idleTimer = setTimeout(
       () => reject(new Error('Browser review timed out after 30 minutes of inactivity')),
       IDLE_TIMEOUT_MS,
@@ -59,9 +60,9 @@ export async function runBrowserReview(
       clearAll();
       reject(new Error('Review cancelled: browser closed'));
     });
-    transport.onReviewSubmit((comments) => {
+    transport.onReviewSubmit((submission) => {
       clearAll();
-      resolve(comments);
+      resolve(submission);
     });
   });
 

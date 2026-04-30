@@ -7,7 +7,7 @@ import { WebviewPanelManager } from './webviewPanelManager.js';
 import { createMessageHandlers, type MessageHandlers } from './messageHandlers.js';
 import { isRequest } from './protocol.js';
 import type { WebviewRequest } from './protocol.js';
-import type { ReviewComment, PlanDocument } from '@plan-review/core';
+import type { ReviewComment, PlanDocument, ReviewVerdict } from '@plan-review/core';
 import { computeContentHash, parse } from '@plan-review/core';
 import { runSubmit } from './submit/index.js';
 import { disposeChannel } from './submit/outputChannel.js';
@@ -19,8 +19,8 @@ let handlers: MessageHandlers;
 export function activate(context: vscode.ExtensionContext): void {
   panelManager = new WebviewPanelManager();
   handlers = createMessageHandlers({
-    submit: async ({ planFsPath, document, comments }) =>
-      runSubmit({ planFsPath, document, comments }),
+    submit: async ({ planFsPath, document, comments, verdict, summary }) =>
+      runSubmit({ planFsPath, document, comments, verdict, summary }),
   });
 
   // Register panelManager for automatic disposal on deactivation
@@ -69,8 +69,8 @@ export async function handleWebviewMessage(
     setCachedDoc: (doc: PlanDocument) => void;
     postMessage: (msg: unknown) => void;
   },
-): Promise<void> {
-  if (!isRequest(raw)) return;
+): Promise<{ action?: 'close' }> {
+  if (!isRequest(raw)) return {};
   const req = raw as WebviewRequest;
   try {
     if (req.method === 'loadDocument') {
@@ -98,19 +98,27 @@ export async function handleWebviewMessage(
       });
       opts.postMessage({ id: req.id, kind: 'res', result: null });
     } else if (req.method === 'submitReview') {
-      const params = req.params as { comments: ReviewComment[] };
+      const params = req.params as {
+        comments: ReviewComment[];
+        verdict: ReviewVerdict;
+        summary: string;
+      };
       const doc = opts.getCachedDoc();
       if (!doc) throw new Error('document not loaded');
       const r = await opts.handlers.submitReview({
         planFsPath: opts.planFsPath,
         document: doc,
         comments: params.comments,
+        verdict: params.verdict,
+        summary: params.summary,
       });
       opts.postMessage({ id: req.id, kind: 'res', result: r });
+      if (r.submitted) return { action: 'close' };
     }
   } catch (err) {
     opts.postMessage({ id: req.id, kind: 'err', error: (err as Error).message });
   }
+  return {};
 }
 
 function openOrFocusPanel(context: vscode.ExtensionContext, planUri: vscode.Uri): void {
@@ -147,13 +155,16 @@ function openOrFocusPanel(context: vscode.ExtensionContext, planUri: vscode.Uri)
   panel.onDidDispose(() => watcher.dispose());
 
   panel.webview.onDidReceiveMessage(async (raw: unknown) => {
-    await handleWebviewMessage(raw, {
+    const result = await handleWebviewMessage(raw, {
       handlers,
       planFsPath: planUri.fsPath,
       getCachedDoc: () => cachedDoc,
       setCachedDoc: (doc) => { cachedDoc = doc; },
       postMessage: (msg) => panel.webview.postMessage(msg),
     });
+    if (result.action === 'close') {
+      panel.dispose();
+    }
   });
 }
 

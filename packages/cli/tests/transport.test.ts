@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import { HttpTransport } from '../src/transport.js';
 import type { PlanDocument, ReviewComment } from '@plan-review/core';
+import type { ReviewSubmission } from '../src/transport.js';
 
 const mockDoc: PlanDocument = {
   title: 'Test',
@@ -40,7 +41,7 @@ describe('HttpTransport', () => {
     const transport = new HttpTransport();
     transport.sendDocument(mockDoc);
 
-    const received = new Promise<ReviewComment[]>((resolve) => {
+    const received = new Promise<ReviewSubmission>((resolve) => {
       transport.onReviewSubmit(resolve);
     });
 
@@ -52,12 +53,14 @@ describe('HttpTransport', () => {
     await fetch(`${url}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments }),
+      body: JSON.stringify({ comments, verdict: 'approved', summary: 'Looks ready.' }),
     });
 
     const result = await received;
-    expect(result).toHaveLength(1);
-    expect(result[0].sectionId).toBe('section-1');
+    expect(result.verdict).toBe('approved');
+    expect(result.summary).toBe('Looks ready.');
+    expect(result.comments).toHaveLength(1);
+    expect(result.comments[0].sectionId).toBe('section-1');
 
     await transport.stop();
   });
@@ -75,7 +78,7 @@ describe('HttpTransport', () => {
     transport.sendDocument(mockDoc);
 
     // Simulate the timeout pattern used in index.ts, but with 50ms
-    const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
+    const reviewPromise = new Promise<ReviewSubmission>((resolve, reject) => {
       transport.onReviewSubmit(resolve);
       setTimeout(() => reject(new Error('Browser review timed out')), 50);
     });
@@ -90,7 +93,7 @@ describe('HttpTransport', () => {
     const transport = new HttpTransport();
     transport.sendDocument(mockDoc);
 
-    const reviewPromise = new Promise<ReviewComment[]>((resolve, reject) => {
+    const reviewPromise = new Promise<ReviewSubmission>((resolve, reject) => {
       transport.onReviewSubmit(resolve);
       setTimeout(() => reject(new Error('Browser review timed out')), 5000);
     });
@@ -103,12 +106,12 @@ describe('HttpTransport', () => {
     await fetch(`${url}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments }),
+      body: JSON.stringify({ comments, verdict: null, summary: '' }),
     });
 
     const result = await reviewPromise;
-    expect(result).toHaveLength(1);
-    expect(result[0].text).toBe('Before timeout');
+    expect(result.comments).toHaveLength(1);
+    expect(result.comments[0].text).toBe('Before timeout');
 
     await transport.stop();
   });
@@ -121,7 +124,7 @@ describe('HttpTransport', () => {
     const res = await fetch(`${url}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [{ bad: 'shape' }] }),
+      body: JSON.stringify({ comments: [{ bad: 'shape' }], verdict: null, summary: '' }),
     });
 
     expect(res.status).toBe(400);
