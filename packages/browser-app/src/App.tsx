@@ -196,7 +196,7 @@ export function App({ client }: { client: ReviewClient }) {
         <h1>{doc.title}</h1>
         <span class="mode-badge">{doc.mode}</span>
         <span class="comment-count">{comments.length} comment{comments.length !== 1 ? 's' : ''}</span>
-        <SubmitReviewPanel commentCount={comments.length} disabled={!doc} onSubmit={submitReview} />
+        <SubmitReviewPanel commentCount={comments.length} onSubmit={submitReview} />
       </header>
       <div class="panels">
         <TOCPanel

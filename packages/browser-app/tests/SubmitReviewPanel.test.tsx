@@ -93,10 +93,4 @@ describe('SubmitReviewPanel', () => {
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(queryByLabelText(/Approve/i)).toBeNull();
   });
-
-  it('outer button is disabled when disabled prop is true', () => {
-    const { getByText } = render(<SubmitReviewPanel commentCount={0} disabled onSubmit={vi.fn()} />);
-    const button = getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
-    expect(button.disabled).toBe(true);
-  });
 });

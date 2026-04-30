@@ -36,8 +36,9 @@ export function formatReview(doc: PlanDocument, opts: FormatReviewOptions): stri
   parts.push(`- **Verdict:** ${verdictLabel(opts.verdict)}`);
   parts.push(`- **Sections reviewed:** ${commentedSections.length}/${reviewableSections.length}`);
   parts.push(`- **Comments:** ${doc.comments.length}`);
+  const skippedCount = reviewableSections.length - commentedSections.length;
   parts.push(
-    `- **Skipped:** ${reviewableSections.length - commentedSections.length} sections without comments`,
+    `- **Skipped:** ${skippedCount} section${skippedCount === 1 ? '' : 's'} without comments`,
   );
 
   if (opts.summary.trim() !== '') {
@@ -47,8 +48,10 @@ export function formatReview(doc: PlanDocument, opts: FormatReviewOptions): stri
     parts.push(escapeMarkdown(opts.summary));
   }
 
-  parts.push('');
-  parts.push('---');
+  if (commentedSections.length > 0) {
+    parts.push('');
+    parts.push('---');
+  }
 
   for (const section of commentedSections) {
     const sectionComments = sortComments(

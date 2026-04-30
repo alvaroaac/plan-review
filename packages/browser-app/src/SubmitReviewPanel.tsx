@@ -3,11 +3,10 @@ import type { ReviewVerdict } from '@plan-review/core';
 
 export interface SubmitReviewPanelProps {
   commentCount: number;
-  disabled?: boolean;
   onSubmit: (verdict: ReviewVerdict, summary: string) => Promise<void>;
 }
 
-export function SubmitReviewPanel({ commentCount, disabled, onSubmit }: SubmitReviewPanelProps) {
+export function SubmitReviewPanel({ commentCount, onSubmit }: SubmitReviewPanelProps) {
   const [open, setOpen] = useState(false);
   const [verdict, setVerdict] = useState<ReviewVerdict>('approved');
   const [summary, setSummary] = useState('');
@@ -52,7 +51,7 @@ export function SubmitReviewPanel({ commentCount, disabled, onSubmit }: SubmitRe
       <button
         type="button"
         class="submit-btn"
-        disabled={disabled || busy}
+        disabled={busy}
         onClick={() => setOpen((value) => !value)}
       >
         Submit Review <span class="caret">▾</span>

@@ -5,9 +5,9 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { WebviewPanelManager } from './webviewPanelManager.js';
 import { createMessageHandlers, type MessageHandlers } from './messageHandlers.js';
-import { isRequest } from './protocol.js';
+import { isRequest, isSaveSessionParams, isSubmitReviewParams } from './protocol.js';
 import type { WebviewRequest } from './protocol.js';
-import type { ReviewComment, PlanDocument, ReviewVerdict } from '@plan-review/core';
+import type { PlanDocument } from '@plan-review/core';
 import { computeContentHash, parse } from '@plan-review/core';
 import { runSubmit } from './submit/index.js';
 import { disposeChannel } from './submit/outputChannel.js';
@@ -78,11 +78,8 @@ export async function handleWebviewMessage(
       opts.setCachedDoc(r.document);
       opts.postMessage({ id: req.id, kind: 'res', result: r });
     } else if (req.method === 'saveSession') {
-      const params = req.params as {
-        comments: ReviewComment[];
-        activeSection: string | null;
-        contentHash?: string;
-      };
+      if (!isSaveSessionParams(req.params)) throw new Error('invalid saveSession params');
+      const params = req.params;
       // Prefer the webview-supplied hash so we preserve stale detection.
       // Fall back to an async file-read hash only for defensive compat with old clients.
       let contentHash = params.contentHash;
@@ -98,11 +95,8 @@ export async function handleWebviewMessage(
       });
       opts.postMessage({ id: req.id, kind: 'res', result: null });
     } else if (req.method === 'submitReview') {
-      const params = req.params as {
-        comments: ReviewComment[];
-        verdict: ReviewVerdict;
-        summary: string;
-      };
+      if (!isSubmitReviewParams(req.params)) throw new Error('invalid submitReview params');
+      const params = req.params;
       const doc = opts.getCachedDoc();
       if (!doc) throw new Error('document not loaded');
       const r = await opts.handlers.submitReview({
