@@ -35,7 +35,7 @@ describe('formatReview', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.1', text: 'Add index', timestamp: new Date() }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     expect(output).toContain('# Plan Review: Test Plan');
     expect(output).toContain('**Comments:** 1');
@@ -45,7 +45,7 @@ describe('formatReview', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.1', text: 'Add index', timestamp: new Date() }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     expect(output).toContain('Section 1.1');
     expect(output).toContain('Create schema');
@@ -56,7 +56,7 @@ describe('formatReview', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.1', text: 'Looks good', timestamp: new Date() }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
     expect(output).not.toContain('### Original Content');
   });
 
@@ -64,7 +64,7 @@ describe('formatReview', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.1', text: 'Section comment', timestamp: new Date() }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
     expect(output).toContain('### Reviewer Comment (entire section)');
     expect(output).not.toContain('### Reviewer Comment\n');
   });
@@ -83,7 +83,7 @@ describe('formatReview', () => {
         },
       }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
     expect(output).toContain('> First selected line.');
     expect(output).toContain('> Second selected line.');
     expect(output).toContain('Check this line');
@@ -102,7 +102,7 @@ describe('formatReview', () => {
         },
       ],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
     const anchoredPos = output.indexOf('Line comment');
     const sectionPos = output.indexOf('Section-level comment');
     expect(anchoredPos).toBeLessThan(sectionPos);
@@ -114,7 +114,7 @@ describe('formatReview', () => {
         { sectionId: '1.1', text: 'Need an index on this table', timestamp: new Date() },
       ],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     expect(output).toContain('Need an index on this table');
   });
@@ -123,7 +123,7 @@ describe('formatReview', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.1', text: 'Comment', timestamp: new Date() }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     expect(output).toContain('Blocks: 1.2');
   });
@@ -135,7 +135,7 @@ describe('formatReview', () => {
         { sectionId: '1.2', text: 'Second comment', timestamp: new Date() },
       ],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     expect(output).toContain('Section 1.1');
     expect(output).toContain('Section 1.2');
@@ -144,7 +144,7 @@ describe('formatReview', () => {
 
   it('returns empty review when no comments', () => {
     const doc = makeDoc();
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     expect(output).toContain('**Comments:** 0');
   });
@@ -153,7 +153,7 @@ describe('formatReview', () => {
     const doc = makeDoc({
       comments: [{ sectionId: '1.2', text: 'Note on migration', timestamp: new Date() }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
 
     // section 1.2 has dependsOn: ['1.1']
     expect(output).toContain('Depends on: 1.1');
@@ -167,7 +167,7 @@ describe('formatReview', () => {
         timestamp: new Date(),
       }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
     expect(output).not.toContain('**bold**');
     expect(output).toContain('\\*\\*bold\\*\\*');
     expect(output).toContain('\\[link\\]');
@@ -183,7 +183,7 @@ describe('formatReview', () => {
         anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['A line.'] },
       }],
     });
-    const output = formatReview(doc);
+    const output = formatReview(doc, { verdict: null, summary: '' });
     expect(output).toContain('\\#heading');
     expect(output).toContain('\\> quote');
   });
@@ -199,12 +199,51 @@ describe('formatReview', () => {
       ],
       comments: [{ sectionId: 'section-1', text: 'Looks good', timestamp: new Date() }],
     };
-    const output = formatReview(genericDoc);
+    const output = formatReview(genericDoc, { verdict: null, summary: '' });
 
     expect(output).toContain('# Plan Review: Generic Doc');
     expect(output).toContain('Section section-1');
     expect(output).toContain('Looks good');
     // Generic mode sections have no plan-mode metadata
     expect(output).not.toContain('Depends on');
+  });
+
+  it('renders verdict "Approved" when opts.verdict is "approved"', () => {
+    const doc = makeDoc({ comments: [] });
+    const out = formatReview(doc, { verdict: 'approved', summary: '' });
+    expect(out).toContain('**Verdict:** Approved');
+  });
+
+  it('renders verdict "Comment" when opts.verdict is null', () => {
+    const doc = makeDoc({
+      comments: [{ sectionId: '1.1', text: 'X', timestamp: new Date() }],
+    });
+    const out = formatReview(doc, { verdict: null, summary: '' });
+    expect(out).toContain('**Verdict:** Comment');
+  });
+
+  it('renders ## Overall Comments when summary is non-empty', () => {
+    const doc = makeDoc({ comments: [] });
+    const out = formatReview(doc, {
+      verdict: 'approved',
+      summary: 'Looks great overall.',
+    });
+    expect(out).toContain('## Overall Comments');
+    expect(out).toContain('Looks great overall.');
+  });
+
+  it('omits ## Overall Comments when summary is empty or whitespace', () => {
+    const doc = makeDoc({ comments: [] });
+    const out = formatReview(doc, { verdict: 'approved', summary: '   ' });
+    expect(out).not.toContain('## Overall Comments');
+  });
+
+  it('renders full template with no sections when approved + zero comments', () => {
+    const doc = makeDoc({ comments: [] });
+    const out = formatReview(doc, { verdict: 'approved', summary: '' });
+    expect(out).toContain('# Plan Review: Test Plan');
+    expect(out).toContain('**Verdict:** Approved');
+    expect(out).toContain('**Comments:** 0');
+    expect(out).not.toContain('## Section');
   });
 });

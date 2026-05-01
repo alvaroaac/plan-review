@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { FakeReviewClient } from '../src/reviewClient.js';
-import type { PlanDocument, ReviewComment } from '../src/types.js';
+import type { PlanDocument, ReviewComment, ReviewSubmission } from '../src/types.js';
 
 const doc: PlanDocument = {
   title: 'T',
@@ -25,7 +25,8 @@ describe('FakeReviewClient', () => {
   it('records submits and resolves ok', async () => {
     const client = new FakeReviewClient({ document: doc });
     const comments: ReviewComment[] = [{ sectionId: 's1', text: 'hi', timestamp: new Date() }];
-    await expect(client.submitReview(comments)).resolves.toEqual({ ok: true });
-    expect(client.submits).toEqual([comments]);
+    const submission: ReviewSubmission = { comments, verdict: 'approved', summary: 'LGTM' };
+    await expect(client.submitReview(submission)).resolves.toEqual({ ok: true });
+    expect(client.submits).toEqual([submission]);
   });
 });

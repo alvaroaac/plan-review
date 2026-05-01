@@ -1,11 +1,13 @@
 import type { Server } from 'node:http';
-import type { PlanDocument, ReviewComment } from '@plan-review/core';
+import type { PlanDocument, ReviewComment, ReviewSubmission } from '@plan-review/core';
 import { createReviewServer, startServer, stopServer } from './server/server.js';
 import { getAssetHtml } from './server/assets.js';
 
+export type { ReviewSubmission, ReviewVerdict } from '@plan-review/core';
+
 export interface Transport {
   sendDocument(doc: PlanDocument): void;
-  onReviewSubmit(handler: (comments: ReviewComment[]) => void): void;
+  onReviewSubmit(handler: (submission: ReviewSubmission) => void): void;
   start(port: number): Promise<{ url: string }>;
   stop(): Promise<void>;
 }
@@ -14,7 +16,7 @@ export class HttpTransport implements Transport {
   private doc: PlanDocument | null = null;
   private initialActiveSection: string | null = null;
   private assetBaseDir: string | null = null;
-  private submitHandler: ((comments: ReviewComment[]) => void) | null = null;
+  private submitHandler: ((submission: ReviewSubmission) => void) | null = null;
   private sessionSaveHandler: ((comments: ReviewComment[], activeSection: string | null) => void) | null = null;
   private heartbeatHandler: (() => void) | null = null;
   private pauseHandler: (() => void) | null = null;
@@ -35,7 +37,7 @@ export class HttpTransport implements Transport {
     this.assetBaseDir = dir;
   }
 
-  onReviewSubmit(handler: (comments: ReviewComment[]) => void): void {
+  onReviewSubmit(handler: (submission: ReviewSubmission) => void): void {
     this.submitHandler = handler;
   }
 
@@ -62,7 +64,7 @@ export class HttpTransport implements Transport {
       getDocument: () => this.doc!,
       getInitialActiveSection: () => this.initialActiveSection,
       getAssetBaseDir: () => this.assetBaseDir,
-      onSubmit: (comments) => this.submitHandler?.(comments),
+      onSubmit: (submission) => this.submitHandler?.(submission),
       getAssetHtml: () => getAssetHtml(),
       onSessionSave: (comments, activeSection) => this.sessionSaveHandler?.(comments, activeSection),
       onHeartbeat: () => this.heartbeatHandler?.(),

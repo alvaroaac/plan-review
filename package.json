@@ -1,9 +1,11 @@
 {
   "name": "plan-review-monorepo",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.0.1",
   "type": "module",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
   "scripts": {
     "build": "bash scripts/build.sh",
     "test": "npm run test -ws --if-present",

@@ -645,3 +645,90 @@ pre.mermaid[data-processed="true"] g.edgeLabel.edge-no-label foreignObject span:
 .banner { padding: 0.5rem 1rem; font-size: 0.9rem; display: flex; align-items: center; gap: 0.5rem; }
 .banner-warn { background: #6b4a00; color: #fff; }
 .banner button { margin-left: auto; }
+
+.submit-panel {
+  position: relative;
+  display: inline-block;
+}
+
+.submit-panel .submit-btn .caret {
+  margin-left: 0.4em;
+  font-size: 0.8em;
+}
+
+.submit-popover {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 320px;
+  padding: 12px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.submit-radio {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.submit-summary {
+  width: 100%;
+  min-height: 80px;
+  padding: 6px 8px;
+  font-family: inherit;
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  resize: vertical;
+}
+
+.submit-summary:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.submit-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.submit-actions button {
+  padding: 6px 12px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.submit-actions button:first-child {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.submit-confirm {
+  background: var(--accent);
+  color: white;
+}
+
+.submit-confirm:hover {
+  background: var(--accent-hover);
+}
+
+.submit-confirm:disabled,
+.submit-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

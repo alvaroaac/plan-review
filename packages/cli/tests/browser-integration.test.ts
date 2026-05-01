@@ -3,7 +3,8 @@ import { HttpTransport } from '../src/transport.js';
 import { parse, formatReview } from '@plan-review/core';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import type { ReviewComment } from '@plan-review/core';
+import type { PlanDocument, ReviewComment } from '@plan-review/core';
+import type { ReviewSubmission } from '../src/transport.js';
 
 const fixtureDir = resolve(import.meta.dirname, 'fixtures');
 
@@ -15,7 +16,7 @@ describe('browser review integration', () => {
     const transport = new HttpTransport();
     transport.sendDocument(doc);
 
-    const reviewPromise = new Promise<ReviewComment[]>((resolve) => {
+    const reviewPromise = new Promise<ReviewSubmission>((resolve) => {
       transport.onReviewSubmit(resolve);
     });
 
@@ -36,17 +37,26 @@ describe('browser review integration', () => {
     const submitRes = await fetch(`${url}/api/review`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments }),
+      body: JSON.stringify({ comments, verdict: 'approved', summary: 'Ready to merge.' }),
     });
     expect(submitRes.status).toBe(200);
 
     // CLI receives comments
     const received = await reviewPromise;
-    expect(received).toHaveLength(2);
+    expect(received.comments).toHaveLength(2);
+    expect(received.verdict).toBe('approved');
+    expect(received.summary).toBe('Ready to merge.');
 
     // Merge and format
-    doc.comments = received;
-    const output = formatReview(doc);
+    doc.comments = received.comments;
+    const formatReviewWithMeta = formatReview as (
+      doc: PlanDocument,
+      opts: Pick<ReviewSubmission, 'verdict' | 'summary'>,
+    ) => string;
+    const output = formatReviewWithMeta(doc, {
+      verdict: received.verdict,
+      summary: received.summary,
+    });
     expect(output).toContain('Schema looks good');
     expect(output).toContain('Need more detail on processor');
     expect(output).toContain('**Sections reviewed:** 2/4');
