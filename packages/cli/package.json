@@ -13,8 +13,7 @@
     "examples"
   ],
   "scripts": {
-    "build": "tsc && npm run build:browser",
-    "build:browser": "rm -rf ./dist/browser && cp -R ../browser-app/dist ./dist/browser",
+    "build": "node build.mjs",
     "dev": "tsx src/index.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
@@ -27,6 +26,15 @@
     "cli"
   ],
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alvaroaac/plan-review.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/alvaroaac/plan-review#readme",
+  "bugs": {
+    "url": "https://github.com/alvaroaac/plan-review/issues"
+  },
   "dependencies": {
     "@plan-review/core": "*",
     "chalk": "^5.6.2",
@@ -37,6 +45,7 @@
   "devDependencies": {
     "@types/node": "^25.6.0",
     "@vitest/coverage-v8": "^4.1.4",
+    "esbuild": "^0.28.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"
