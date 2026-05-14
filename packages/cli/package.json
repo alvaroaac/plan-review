@@ -31,7 +31,7 @@
     "url": "https://github.com/alvaroaac/plan-review.git",
     "directory": "packages/cli"
   },
-  "homepage": "https://github.com/alvaroaac/plan-review#readme",
+  "homepage": "https://github.com/alvaroaac/plan-review/tree/main/packages/cli#readme",
   "bugs": {
     "url": "https://github.com/alvaroaac/plan-review/issues"
   },
