@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { Command } from 'commander';
 import { readFileSync, mkdirSync, copyFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
