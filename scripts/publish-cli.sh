@@ -5,6 +5,7 @@ set -euo pipefail
 # Bumps packages/cli, builds (bundles core inline), strips workspace dep, publishes.
 
 BUMP="${1:-patch}"
+shift || true   # consume bump arg so "$@" = remaining flags (e.g. --otp=…)
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CLI="$ROOT/packages/cli"
 
@@ -26,7 +27,7 @@ cp package.json package.json.bak
 trap 'mv package.json.bak package.json' EXIT
 npm pkg delete dependencies.@plan-review/core
 
-npm publish "$@"
+npm publish "$@"   # forwards e.g. --otp=… --tag=…
 
 trap - EXIT
 mv package.json.bak package.json
