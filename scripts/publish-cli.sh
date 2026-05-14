@@ -19,8 +19,16 @@ npm run build -w @plan-review/browser-app
 npm run build -w @plan-review/core
 
 cd "$CLI"
-npm version "$BUMP"
+npm version "$BUMP" --no-git-tag-version
 npm run build
+
+# Commit version bump (includes root package-lock.json)
+cd "$ROOT"
+git add packages/cli/package.json package-lock.json
+VER="$(node -p "require('$CLI/package.json').version")"
+git commit -m "v${VER}"
+git tag "v${VER}"
+cd "$CLI"
 
 # Strip workspace-only dep before publish, restore after.
 cp package.json package.json.bak
