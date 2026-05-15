@@ -51,10 +51,16 @@ Tech-debt list (kept in the repo's `TECH_DEBT.md`):
 
 ## 3. Distribution Model
 
-- **Claude Code plugin** layout (B2 from brainstorming): a top-level `.claude-plugin/plugin.json`, plus a custom slash command (`commands/ultra-review.md`) and a skill (`skills/ultra-review/SKILL.md`).
-- The plugin invokes a bundled `ultra-review` CLI binary built via esbuild (single ESM file with shebang).
+Ultra-review ships through **two complementary channels** — they are not redundant, they coexist:
+
+1. **`ultra-review` CLI on npm.** The actual review engine. Built via esbuild into a single ESM file with shebang, published to the npm registry. Installable with `npm install -g ultra-review`. This is what does the work — `git` introspection, agent fan-out, HTML rendering. Usable on its own from any terminal, no Claude Code required.
+2. **Claude Code plugin on GitHub** (`alvaroaac/ultra-review` repo). A thin wrapper: `.claude-plugin/plugin.json` + a custom slash command (`commands/ultra-review.md`) + a skill (`skills/ultra-review/SKILL.md`). The slash command and skill shell out to the `ultra-review` binary on `$PATH`, falling back to a local dev build at `~/desenv/personal/ultra-review/` if not installed globally. Installed via Claude Code's plugin manager from the GitHub repo into `~/.claude/plugins/ultra-review/`.
+
+The CLI is the canonical artifact. The plugin is a convenience layer that lets `/ultra-review` inside Claude Code invoke the same binary a terminal user would invoke directly.
+
 - The CLI uses `@anthropic-ai/claude-agent-sdk` to fan out reviewer agents.
 - Code-orchestrated (not pure prompt-orchestrated): the orchestration loop is TypeScript code, agents are spawned with constrained prompts + tool allow-lists.
+- The npm-published binary is built by `scripts/publish-cli.sh`, which strips `workspace:*` deps and bundles internal `@ultra-review/*` packages inline (mirrors `plan-review`'s publish flow).
 
 ---
 
@@ -1349,18 +1355,24 @@ core ─┬─► report-template ──► cli (format subcommand)         [Tra
 
 ## 19. Phase 1 Acceptance Criteria
 
-The demo is done when:
+The demo is done when **both** distribution channels work end-to-end (see §3):
 
-1. `npm install -g ultra-review && cd <some repo> && ultra-review --base main` works end-to-end from a clean machine.
+**CLI channel (npm):**
+
+1. `npm install -g ultra-review && cd <some repo> && ultra-review --base main` works end-to-end from a clean machine. This is the primary install path — the binary does the actual review.
 2. Running on a real branch produces an HTML report at `.ultra-review/<ts>/report.html` that:
    - Renders without horizontal scrolling at 1280px.
    - Has the V4 Glass aesthetic (radial gradients, frosted cards, gradient-clipped stat numbers).
    - Has working copy-as-prompt buttons on every finding.
    - Shows reviewer roster, executive summary, filter chips, and at least one SVG diagram.
 3. Running with `-o stdout` (default) prints the markdown digest in the shape of §11.6.
-4. `/ultra-review` slash command launches the same flow from inside Claude Code.
-5. `~/.claude/plugins/ultra-review/` is installable from the GitHub repo as a plugin.
-6. The whole run completes on a 500-LOC diff in under ~5 minutes.
+4. The whole run completes on a 500-LOC diff in under ~5 minutes.
+
+**Plugin channel (Claude Code):**
+
+5. The GitHub repo `alvaroaac/ultra-review` is installable as a Claude Code plugin (lands at `~/.claude/plugins/ultra-review/`).
+6. `/ultra-review` slash command, invoked from inside Claude Code, shells out to the `ultra-review` binary and produces the same report. The slash command resolves the binary via `command -v ultra-review`, falling back to the local dev build at `~/desenv/personal/ultra-review/dist/index.js`.
+7. The skill at `skills/ultra-review/SKILL.md` is auto-discovered by Claude Code and dispatches to the same binary.
 
 ---
 
