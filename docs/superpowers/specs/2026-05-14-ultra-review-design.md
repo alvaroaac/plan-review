@@ -1480,6 +1480,74 @@ core ─┬─► report-template ──► cli (format subcommand)         [Tra
 
 The horizontal arrows on tracks A/B/C represent concurrent timelines, not a left-to-right priority.
 
+## 18d. Execution Model — Five Plans for Agentic Development
+
+The work is split into **five separate implementation plans** so each parallel slice can be executed by an independent subagent (own session, own worktree). One monolithic plan would force linear execution and defeat the parallelism baked into §18b/§18c.
+
+```
+                        ┌─► Plan 2 (Track A) ─┐
+Plan 1 (Foundation) ───►├─► Plan 3 (Track B) ─├──► Plan 5 (Merge + Convergence)
+                        └─► Plan 4 (Track C) ─┘
+```
+
+### 18d.1 The Five Plans
+
+| # | Plan | Scope | Inputs | Outputs (the convergence contract) |
+|---|---|---|---|---|
+| **1** | **Foundation** | Monorepo scaffold + `@ultra-review/core` types + fixture `RunResult` JSON. Everything in §18b milestones 1–2. | Empty `~/desenv/personal/ultra-review/` directory. | `packages/core/dist/` published locally with all types from §8 exported; `fixtures/sample-result.json` matches §18c.1; root `package.json`, `tsconfig.json`, `build.sh`, `publish-cli.sh` all in place per §7. |
+| **2** | **Track A — Formatter** | `@ultra-review/report-template`, `ultra-review format` subcommand, markdown-digest emitter, snapshot tests. §18c Track A acceptance. | Plan 1 outputs (core types + fixture). | A CLI binary in `packages/cli/dist/index.js` whose `format` subcommand renders `fixtures/sample-result.json` to a styled HTML report + markdown digest. |
+| **3** | **Track B — Context** | `@ultra-review/context` (git introspection, diff, deterministic slicer, bundle assembly). | Plan 1 outputs. | `@ultra-review/context` exports `assembleContextBundle(spec, repo) → ContextBundle` matching §8 type. Unit tests with fixture repos. |
+| **4** | **Track C — Agents + Orchestrator-stub** | `@ultra-review/prompts`, `@ultra-review/agents` wrappers (with mocked Anthropic client), `@ultra-review/orchestrator` scaffolding that accepts a *mocked* `ContextBundle` factory. | Plan 1 outputs. | `@ultra-review/agents` exports `runTriage`, `runReviewer`, `runSenior`, `runFormatter` (signatures match §14). `@ultra-review/orchestrator` exports `runPipeline(opts) → RunResult` that works with a mock context source. Tests pass against canned fixtures. |
+| **5** | **Merge + Convergence** | Wire Plan 4's orchestrator to Plan 3's real `assembleContextBundle`. Wire Plan 2's formatter into the main `ultra-review` command. Plugin wiring (`.claude-plugin/`, `commands/`, `skills/`). Live API smoke run. npm publish dry-run. | Plans 2, 3, 4 all merged into main. | Phase 1 Acceptance Criteria (§19) all green. |
+
+### 18d.2 Isolation Rules (must hold during Plans 2/3/4)
+
+These rules let the three parallel plans run without stepping on each other:
+
+1. **Each plan owns exactly the packages listed in §18d.1.** No plan modifies files outside its owned package, except: all plans may *read* `@ultra-review/core`. No plan modifies `@ultra-review/core` after Plan 1 ships — if a type change is needed, surface it to the merge plan, do not patch in flight.
+2. **No cross-track imports.** Track A's `report-template` must not import from `context` or `orchestrator`. Track B's `context` must not import from `agents` or `report-template`. Track C's `agents`/`orchestrator` must not import from `report-template` or `context` directly — orchestrator consumes a `ContextBundleFactory` interface that's mocked locally until Plan 5 swaps it for the real one.
+3. **Each plan runs in its own git worktree.** Branch naming: `track/foundation`, `track/a-formatter`, `track/b-context`, `track/c-agents`, `merge/convergence`. Worktrees: `~/desenv/personal/ultra-review-{a,b,c,merge}/`.
+4. **Each plan ships its own `CHANGELOG-TRACK.md`** at the track's package root listing files touched and any decisions worth surfacing to the merge plan. The merge plan reads all three before integration.
+5. **Each plan's tests must pass in isolation** with no dependency on the other tracks' real implementations. Mocks/stubs are explicitly allowed and expected.
+
+### 18d.3 Plan 5 (Merge) Responsibilities
+
+The merge plan is its own discrete plan, not an afterthought. It owns:
+
+1. **Branch integration.** Merge `track/a-formatter`, `track/b-context`, `track/c-agents` into `main` in that order. Resolve `package.json` workspace conflicts deterministically (alphabetical key order). The `core` package is frozen since Plan 1 — no merge conflicts there.
+2. **Stub-to-real swap.** Replace the mock `ContextBundleFactory` in `@ultra-review/orchestrator` with a real call to `@ultra-review/context.assembleContextBundle`. This is the single line of cross-track wiring that was deliberately deferred.
+3. **Main CLI wiring.** Wire `ultra-review` (default subcommand, not `format`) to: invoke orchestrator → write `RunResult` to `.ultra-review/<ts>/result.json` → invoke formatter on it → open the HTML in browser. The `format` subcommand from Plan 2 stays untouched as the manual debug path.
+4. **Plugin wiring.** Create `.claude-plugin/plugin.json`, `commands/ultra-review.md`, `skills/ultra-review/SKILL.md` per §7.10–7.12. Verify slash command and skill both dispatch to the binary.
+5. **End-to-end smoke.** Run `ultra-review --base main` against a real branch with a non-trivial diff. Capture timings. Verify §19 acceptance criteria all green.
+6. **npm publish dry-run.** Execute `scripts/publish-cli.sh patch --dry-run` (or equivalent) to confirm the bundled CLI strips workspace deps cleanly. Do NOT actually publish — that's a manual user step.
+7. **Tech-debt seed file.** Write `TECH_DEBT.md` from §20 seeds + anything surfaced in the three track `CHANGELOG-TRACK.md` files.
+
+### 18d.4 Why this structure works for subagent execution
+
+- Plan 1 must complete before 2/3/4 can start — it sets the type contract every other plan depends on. Linear.
+- Plans 2/3/4 share only the frozen `@ultra-review/core` package; their owned packages are disjoint, their tests run in isolation, their dependency arrows in §18c's build diagram never cross. Three subagents can work in three worktrees without coordination.
+- Plan 5 is the only place real cross-package wiring happens. It runs after 2/3/4 are merged and is therefore sequential by nature — one agent, one worktree, one PR.
+- **No plan exceeds ~one focused implementation session.** If `writing-plans` produces a plan that would require >1 session of subagent work, decompose further before kicking off execution.
+
+### 18d.5 Handoff to `writing-plans`
+
+When invoking `writing-plans`, do so **five times**, each invocation scoped to one plan. Recommended prompt skeleton per invocation:
+
+```
+Read docs/superpowers/specs/2026-05-14-ultra-review-design.md.
+Produce the implementation plan for §18d Plan <N> ("<name>") only.
+Inputs: <from §18d.1 row N>.
+Outputs (the convergence contract this plan must satisfy):
+<from §18d.1 row N>.
+Constraints: obey §18d.2 isolation rules. Do not touch files outside
+the packages owned by this plan. Tests must pass with the other tracks
+mocked or absent.
+```
+
+The resulting five plan documents live under `docs/superpowers/plans/ultra-review/0{1..5}-<slug>.md` for clarity.
+
+---
+
 ## 19. Phase 1 Acceptance Criteria
 
 The demo is done when **both** distribution channels work end-to-end (see §3):
