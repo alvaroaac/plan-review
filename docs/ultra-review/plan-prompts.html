@@ -84,21 +84,21 @@
 
   <h1>ultra-review — plan-writing prompts (5×)</h1>
   <p class="lede">
-    Open <strong>5 fresh Claude Code sessions</strong>, paste one prompt into each. They write the 5 implementation plans in parallel. Spec lives at <code>docs/ultra-review/design-spec.md</code>.
+    Open <strong>5 fresh Claude Code sessions</strong>, paste one prompt into each. They write the 5 implementation plans in parallel. Spec lives at <code>design-spec.md</code>.
   </p>
 
   <div class="card">
     <button class="copy-btn" data-copy-target="#p1">Copy</button>
     <h2>Plan 1 — Foundation</h2>
-    <p class="sub">writes → docs/superpowers/plans/ultra-review/01-foundation.md</p>
+    <p class="sub">writes → plans/01-foundation.md</p>
 <div id="p1" class="prompt">Invoke superpowers:writing-plans.
 
-Spec: docs/ultra-review/design-spec.md (on main).
+Spec: design-spec.md (on main).
 
 Produce the implementation plan for §18d Plan 1 ("Foundation") only.
 
 Scope strictly to row 1 of §18d.1:
-- Inputs: Empty `~/desenv/personal/ultra-review/` directory.
+- Inputs: Empty `plugins/ultra-review/` directory.
 - Outputs (convergence contract): `packages/core/dist/` published locally with all types from §8 exported; `fixtures/sample-result.json` matches §18c.1; root `package.json`, `tsconfig.json`, `build.sh`, `publish-cli.sh` all in place per §7.
 - Covers §18b milestones 1–2.
 
@@ -108,18 +108,18 @@ Constraints:
 - After this plan ships, `@ultra-review/core` is frozen; type changes go to the merge plan, not patched in flight.
 - Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
 
-Target repo: `~/desenv/personal/ultra-review/` (to be scaffolded by this plan).
+Target repo: `plugins/ultra-review/` (to be scaffolded by this plan).
 
-Write the plan to `docs/superpowers/plans/ultra-review/01-foundation.md` in this repo.</div>
+Write the plan to `plans/01-foundation.md` in this repo.</div>
   </div>
 
   <div class="card">
     <button class="copy-btn" data-copy-target="#p2">Copy</button>
     <h2>Plan 2 — Track A: Formatter</h2>
-    <p class="sub">writes → docs/superpowers/plans/ultra-review/02-track-a-formatter.md</p>
+    <p class="sub">writes → plans/02-track-a-formatter.md</p>
 <div id="p2" class="prompt">Invoke superpowers:writing-plans.
 
-Spec: docs/ultra-review/design-spec.md (on main).
+Spec: design-spec.md (on main).
 
 Produce the implementation plan for §18d Plan 2 ("Track A — Formatter") only.
 
@@ -136,18 +136,18 @@ Constraints:
 - Tests must pass with Tracks B+C absent.
 - Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
 
-Target repo: `~/desenv/personal/ultra-review/` (in worktree `track/a-formatter`).
+Target scaffold path: `plugins/ultra-review/` (relative to the host repo root). Per §18d.2 rule 3, parallel sessions may use a git worktree (`track/a-formatter`) or share the working tree — your owned package subdir prevents collisions either way.
 
-Write the plan to `docs/superpowers/plans/ultra-review/02-track-a-formatter.md` in this repo.</div>
+Write the plan to `plans/02-track-a-formatter.md` in this repo.</div>
   </div>
 
   <div class="card">
     <button class="copy-btn" data-copy-target="#p3">Copy</button>
     <h2>Plan 3 — Track B: Context</h2>
-    <p class="sub">writes → docs/superpowers/plans/ultra-review/03-track-b-context.md</p>
+    <p class="sub">writes → plans/03-track-b-context.md</p>
 <div id="p3" class="prompt">Invoke superpowers:writing-plans.
 
-Spec: docs/ultra-review/design-spec.md (on main).
+Spec: design-spec.md (on main).
 
 Produce the implementation plan for §18d Plan 3 ("Track B — Context") only.
 
@@ -164,18 +164,18 @@ Constraints:
 - Tests must pass with Tracks A+C absent.
 - Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
 
-Target repo: `~/desenv/personal/ultra-review/` (in worktree `track/b-context`).
+Target scaffold path: `plugins/ultra-review/` (relative to the host repo root). Per §18d.2 rule 3, parallel sessions may use a git worktree (`track/b-context`) or share the working tree — your owned package subdir prevents collisions either way.
 
-Write the plan to `docs/superpowers/plans/ultra-review/03-track-b-context.md` in this repo.</div>
+Write the plan to `plans/03-track-b-context.md` in this repo.</div>
   </div>
 
   <div class="card">
     <button class="copy-btn" data-copy-target="#p4">Copy</button>
     <h2>Plan 4 — Track C: Agents + Orchestrator (stub)</h2>
-    <p class="sub">writes → docs/superpowers/plans/ultra-review/04-track-c-agents.md</p>
+    <p class="sub">writes → plans/04-track-c-agents.md</p>
 <div id="p4" class="prompt">Invoke superpowers:writing-plans.
 
-Spec: docs/ultra-review/design-spec.md (on main).
+Spec: design-spec.md (on main).
 
 Produce the implementation plan for §18d Plan 4 ("Track C — Agents + Orchestrator-stub") only.
 
@@ -196,18 +196,18 @@ Constraints:
 - Tests must pass with Tracks A+B absent.
 - Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
 
-Target repo: `~/desenv/personal/ultra-review/` (in worktree `track/c-agents`).
+Target scaffold path: `plugins/ultra-review/` (relative to the host repo root). Per §18d.2 rule 3, parallel sessions may use a git worktree (`track/c-agents`) or share the working tree — your owned package subdir prevents collisions either way.
 
-Write the plan to `docs/superpowers/plans/ultra-review/04-track-c-agents.md` in this repo.</div>
+Write the plan to `plans/04-track-c-agents.md` in this repo.</div>
   </div>
 
   <div class="card">
     <button class="copy-btn" data-copy-target="#p5">Copy</button>
     <h2>Plan 5 — Merge + Convergence</h2>
-    <p class="sub">writes → docs/superpowers/plans/ultra-review/05-merge.md</p>
+    <p class="sub">writes → plans/05-merge.md</p>
 <div id="p5" class="prompt">Invoke superpowers:writing-plans.
 
-Spec: docs/ultra-review/design-spec.md (on main).
+Spec: design-spec.md (on main).
 
 Produce the implementation plan for §18d Plan 5 ("Merge + Convergence") only.
 
@@ -225,16 +225,16 @@ Scope strictly to row 5 of §18d.1 and the full §18d.3 responsibility list:
 
 Constraints:
 - This is the only plan that touches files across multiple tracks' packages.
-- Single agent, single worktree (`merge/convergence`), one PR.
+- Single agent, single working tree (worktree `merge/convergence` if using git worktrees), one PR.
 - Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
 
-Target repo: `~/desenv/personal/ultra-review/` (in worktree `merge/convergence`).
+Target scaffold path: `plugins/ultra-review/` (relative to the host repo root). Worktree optional (`merge/convergence` if used); sequential by nature so a single working tree is fine.
 
-Write the plan to `docs/superpowers/plans/ultra-review/05-merge.md` in this repo.</div>
+Write the plan to `plans/05-merge.md` in this repo.</div>
   </div>
 
   <div class="note">
-    <strong>Run order.</strong> All 5 plan-writing sessions can run in parallel — plans don't depend on each other being <em>written</em>, only on the spec being stable. <strong>Execution order is different:</strong> Plan 1 first (sequential gate), then Plans 2/3/4 in parallel worktrees, then Plan 5 (sequential merge).
+    <strong>Run order.</strong> All 5 plan-writing sessions can run in parallel — plans don't depend on each other being <em>written</em>, only on the spec being stable. <strong>Execution order is different:</strong> Plan 1 first (sequential gate), then Plans 2/3/4 in parallel sessions (worktrees or shared tree — see §18d.2), then Plan 5 (sequential merge).
   </div>
 
 </div>
