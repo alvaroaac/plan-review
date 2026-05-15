@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ultra-review — writing-plans handoff</title>
+<style>
+  :root {
+    --bg-0: #0a0a0f;
+    --bg-card: rgba(255,255,255,0.04);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+    --text-0: #f5f5fa;
+    --text-1: #b8b8c8;
+    --text-2: #6e6e80;
+    --accent: #7c5cff;
+    --accent-2: #5cffd8;
+    --kbd-bg: rgba(255,255,255,0.06);
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(800px 600px at 80% -10%, rgba(124,92,255,0.18), transparent 60%),
+      radial-gradient(900px 700px at -10% 110%, rgba(92,255,216,0.10), transparent 60%),
+      var(--bg-0);
+    color: var(--text-0);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .wrap {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 48px 24px 80px;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 32px;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .title {
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-2);
+    margin: 0 0 6px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, var(--text-0) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--kbd-bg);
+    border: 1px solid var(--border-strong);
+    color: var(--text-1);
+  }
+  .card {
+    background: var(--bg-card);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 20px;
+    position: relative;
+  }
+  .card h2 {
+    margin: 0 0 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+  p { margin: 0 0 12px; color: var(--text-1); }
+  p:last-child { margin-bottom: 0; }
+  code, .mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-0);
+  }
+  p code {
+    background: var(--kbd-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  a { color: var(--accent-2); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  ol { margin: 0; padding-left: 20px; color: var(--text-1); }
+  ol li { margin-bottom: 6px; }
+  .copy-btn {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--text-1);
+    background: var(--kbd-bg);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 6px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s, color 0.15s;
+  }
+  .copy-btn:hover { background: rgba(255,255,255,0.10); color: var(--text-0); }
+  .copy-btn.copied { color: var(--accent-2); border-color: var(--accent-2); }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  .prompt-block {
+    margin-top: 16px;
+    padding: 16px;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--text-0);
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  footer {
+    margin-top: 32px;
+    color: var(--text-2);
+    font-size: 12px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <p class="title">writing-plans handoff</p>
+      <h1>ultra-review</h1>
+    </div>
+    <span class="pill">main · a3cc819</span>
+  </header>
+
+  <section class="card">
+    <button class="copy-btn" data-copy-target="#prompt" aria-label="Copy prompt">
+      Copy <span class="kbd">⌘C</span>
+    </button>
+    <h2>Prompt</h2>
+    <div id="prompt" class="prompt-block">Read docs/ultra-review/design-spec.md (commit a3cc819 on main). Produce an implementation plan for ultra-review. Target: fresh repo at ~/desenv/personal/ultra-review/ → alvaroaac/ultra-review (MIT, public). Follow the milestone order in §18b — demo HTML against fixture data before wiring real LLM calls. Acceptance criteria in §19.</div>
+  </section>
+
+  <section class="card">
+    <h2>Key spec sections</h2>
+    <ol>
+      <li><strong>§2</strong> — non-goals and explicit deferrals</li>
+      <li><strong>§4</strong> — role × depth × slice reviewer matrix</li>
+      <li><strong>§5</strong> — 7-call pipeline (triage → 4 reviewers → senior → formatter)</li>
+      <li><strong>§7</strong> — literal pattern artifacts (build, tsconfig, plugin.json, SKILL.md)</li>
+      <li><strong>§11</strong> — V4 Glass HTML design system</li>
+      <li><strong>§18b</strong> — demo-first milestone order</li>
+      <li><strong>§19</strong> — Phase 1 acceptance criteria</li>
+      <li><strong>§20</strong> — tech-debt seeds for <code>TECH_DEBT.md</code></li>
+    </ol>
+  </section>
+
+  <footer>
+    spec: docs/ultra-review/design-spec.md · alvaroaac/ultra-review (to be created)
+  </footer>
+</div>
+
+<script>
+(() => {
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-copy-target]');
+    if (!btn) return;
+    const sel = btn.getAttribute('data-copy-target');
+    const node = sel && document.querySelector(sel);
+    if (!node) return;
+    try {
+      await navigator.clipboard.writeText(node.innerText.trim());
+      btn.classList.add('copied');
+      setTimeout(() => btn.classList.remove('copied'), 1500);
+    } catch (err) {
+      console.error('clipboard write failed', err);
+    }
+  });
+})();
+</script>
+</body>
+</html>

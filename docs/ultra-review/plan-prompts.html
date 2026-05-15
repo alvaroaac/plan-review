@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ultra-review — plan-writing prompts (5×)</title>
+<style>
+  body {
+    margin: 0;
+    padding: 32px 24px 80px;
+    font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+    font-size: 14.5px;
+    line-height: 1.5;
+    background: #0f1115;
+    color: #e6e6ec;
+  }
+  .wrap { max-width: 920px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  .lede { color: #9a9aa6; margin: 0 0 24px; font-size: 13.5px; }
+  .lede code { background: #1a1d24; padding: 1px 5px; border-radius: 3px; font-size: 12.5px; }
+  .card {
+    background: #161920;
+    border: 1px solid #262a33;
+    border-radius: 8px;
+    padding: 16px 18px;
+    margin-bottom: 18px;
+    position: relative;
+  }
+  .card h2 {
+    margin: 0 0 4px;
+    font-size: 15px;
+    font-weight: 600;
+    color: #e6e6ec;
+  }
+  .card .sub {
+    margin: 0 0 12px;
+    font-size: 12.5px;
+    color: #7d7d8a;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    font: inherit;
+    font-size: 12px;
+    color: #cfcfd8;
+    background: #1f2229;
+    border: 1px solid #2e323c;
+    border-radius: 6px;
+    padding: 4px 9px;
+    cursor: pointer;
+  }
+  .copy-btn:hover { background: #262a33; }
+  .copy-btn.copied { color: #5cffd8; border-color: #5cffd8; }
+  .prompt {
+    margin-top: 8px;
+    padding: 12px 14px;
+    background: #0a0c10;
+    border: 1px solid #20232b;
+    border-radius: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    color: #e6e6ec;
+    overflow-x: auto;
+  }
+  .note {
+    margin-top: 24px;
+    padding: 12px 14px;
+    background: #161920;
+    border: 1px dashed #2e323c;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #b8b8c4;
+  }
+  .note strong { color: #e6e6ec; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>ultra-review — plan-writing prompts (5×)</h1>
+  <p class="lede">
+    Open <strong>5 fresh Claude Code sessions</strong>, paste one prompt into each. They write the 5 implementation plans in parallel. Spec lives at <code>docs/ultra-review/design-spec.md</code>.
+  </p>
+
+  <div class="card">
+    <button class="copy-btn" data-copy-target="#p1">Copy</button>
+    <h2>Plan 1 — Foundation</h2>
+    <p class="sub">writes → docs/superpowers/plans/ultra-review/01-foundation.md</p>
+<div id="p1" class="prompt">Invoke superpowers:writing-plans.
+
+Spec: docs/ultra-review/design-spec.md (on main).
+
+Produce the implementation plan for §18d Plan 1 ("Foundation") only.
+
+Scope strictly to row 1 of §18d.1:
+- Inputs: Empty `~/desenv/personal/ultra-review/` directory.
+- Outputs (convergence contract): `packages/core/dist/` published locally with all types from §8 exported; `fixtures/sample-result.json` matches §18c.1; root `package.json`, `tsconfig.json`, `build.sh`, `publish-cli.sh` all in place per §7.
+- Covers §18b milestones 1–2.
+
+Constraints:
+- Obey §18d.2 isolation rules.
+- This plan is the gate for Plans 2/3/4 — its outputs must be stable before they begin.
+- After this plan ships, `@ultra-review/core` is frozen; type changes go to the merge plan, not patched in flight.
+- Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
+
+Target repo: `~/desenv/personal/ultra-review/` (to be scaffolded by this plan).
+
+Write the plan to `docs/superpowers/plans/ultra-review/01-foundation.md` in this repo.</div>
+  </div>
+
+  <div class="card">
+    <button class="copy-btn" data-copy-target="#p2">Copy</button>
+    <h2>Plan 2 — Track A: Formatter</h2>
+    <p class="sub">writes → docs/superpowers/plans/ultra-review/02-track-a-formatter.md</p>
+<div id="p2" class="prompt">Invoke superpowers:writing-plans.
+
+Spec: docs/ultra-review/design-spec.md (on main).
+
+Produce the implementation plan for §18d Plan 2 ("Track A — Formatter") only.
+
+Scope strictly to row 2 of §18d.1:
+- Inputs: Plan 1 outputs (core types + fixture `RunResult` JSON).
+- Outputs (convergence contract): a CLI binary in `packages/cli/dist/index.js` whose `format` subcommand renders `fixtures/sample-result.json` to a styled HTML report + markdown digest matching §11.6.
+- Owns: `@ultra-review/report-template`, the `ultra-review format` CLI subcommand, the markdown-digest emitter, the fixture `RunResult` JSON, snapshot tests, browser-open helper.
+- Must satisfy §18c Track A acceptance criteria (5 items).
+- §18c.1 RunResult JSON template is the input contract — validate with Zod, friendly errors on mismatch.
+
+Constraints:
+- Obey §18d.2 isolation rules.
+- Do not import from `@ultra-review/context`, `@ultra-review/orchestrator`, or any other track's packages.
+- Tests must pass with Tracks B+C absent.
+- Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
+
+Target repo: `~/desenv/personal/ultra-review/` (in worktree `track/a-formatter`).
+
+Write the plan to `docs/superpowers/plans/ultra-review/02-track-a-formatter.md` in this repo.</div>
+  </div>
+
+  <div class="card">
+    <button class="copy-btn" data-copy-target="#p3">Copy</button>
+    <h2>Plan 3 — Track B: Context</h2>
+    <p class="sub">writes → docs/superpowers/plans/ultra-review/03-track-b-context.md</p>
+<div id="p3" class="prompt">Invoke superpowers:writing-plans.
+
+Spec: docs/ultra-review/design-spec.md (on main).
+
+Produce the implementation plan for §18d Plan 3 ("Track B — Context") only.
+
+Scope strictly to row 3 of §18d.1:
+- Inputs: Plan 1 outputs (core types).
+- Outputs (convergence contract): `@ultra-review/context` exports `assembleContextBundle(spec, repo) → ContextBundle` matching the §8 ContextBundle type. Unit tests with fixture repos cover the slicer rules from §13.
+- Owns: `@ultra-review/context` (git introspection, diff, deterministic slicer, bundle assembly).
+- Slicer rules per §13: feature-area → largest common dir; boundary-changes → files with changed exports; risk-hotspots → highest insertions+deletions.
+- depth=deep neighbor expansion: one-hop static `import`/`require` graph, capped at token budget.
+
+Constraints:
+- Obey §18d.2 isolation rules.
+- Do not import from `@ultra-review/agents`, `@ultra-review/report-template`, or any other track's packages.
+- Tests must pass with Tracks A+C absent.
+- Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
+
+Target repo: `~/desenv/personal/ultra-review/` (in worktree `track/b-context`).
+
+Write the plan to `docs/superpowers/plans/ultra-review/03-track-b-context.md` in this repo.</div>
+  </div>
+
+  <div class="card">
+    <button class="copy-btn" data-copy-target="#p4">Copy</button>
+    <h2>Plan 4 — Track C: Agents + Orchestrator (stub)</h2>
+    <p class="sub">writes → docs/superpowers/plans/ultra-review/04-track-c-agents.md</p>
+<div id="p4" class="prompt">Invoke superpowers:writing-plans.
+
+Spec: docs/ultra-review/design-spec.md (on main).
+
+Produce the implementation plan for §18d Plan 4 ("Track C — Agents + Orchestrator-stub") only.
+
+Scope strictly to row 4 of §18d.1:
+- Inputs: Plan 1 outputs (core types).
+- Outputs (convergence contract):
+  * `@ultra-review/agents` exports `runTriage`, `runReviewer`, `runSenior`, `runFormatter` with signatures matching §14.
+  * `@ultra-review/orchestrator` exports `runPipeline(opts) → RunResult` that works with a mock `ContextBundleFactory` interface.
+  * Tests pass against canned fixtures (mocked Anthropic client).
+- Owns: `@ultra-review/prompts`, `@ultra-review/agents`, `@ultra-review/orchestrator`.
+- Prompt templates per §12.1–§12.4 (triage, reviewer, senior, formatter).
+- Real `ContextBundleFactory` swap is Plan 5's job, not this plan's.
+
+Constraints:
+- Obey §18d.2 isolation rules.
+- Do not import from `@ultra-review/context` or `@ultra-review/report-template`. Orchestrator consumes a `ContextBundleFactory` interface that's locally mocked.
+- Mock the Anthropic client — no live API calls in tests.
+- Tests must pass with Tracks A+B absent.
+- Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
+
+Target repo: `~/desenv/personal/ultra-review/` (in worktree `track/c-agents`).
+
+Write the plan to `docs/superpowers/plans/ultra-review/04-track-c-agents.md` in this repo.</div>
+  </div>
+
+  <div class="card">
+    <button class="copy-btn" data-copy-target="#p5">Copy</button>
+    <h2>Plan 5 — Merge + Convergence</h2>
+    <p class="sub">writes → docs/superpowers/plans/ultra-review/05-merge.md</p>
+<div id="p5" class="prompt">Invoke superpowers:writing-plans.
+
+Spec: docs/ultra-review/design-spec.md (on main).
+
+Produce the implementation plan for §18d Plan 5 ("Merge + Convergence") only.
+
+Scope strictly to row 5 of §18d.1 and the full §18d.3 responsibility list:
+- Inputs: Plans 2, 3, 4 all merged into main.
+- Outputs (convergence contract): Phase 1 Acceptance Criteria (§19) all green — both npm CLI channel and Claude Code plugin channel.
+- Responsibilities (§18d.3):
+  1. Branch integration: merge `track/a-formatter`, `track/b-context`, `track/c-agents` into main in that order.
+  2. Stub-to-real swap: replace mocked `ContextBundleFactory` in orchestrator with real `@ultra-review/context.assembleContextBundle`.
+  3. Main CLI wiring: `ultra-review` default subcommand → orchestrator → write RunResult JSON → invoke formatter → open HTML in browser. `format` subcommand stays untouched.
+  4. Plugin wiring: `.claude-plugin/plugin.json`, `commands/ultra-review.md`, `skills/ultra-review/SKILL.md` per §7.10–7.12.
+  5. End-to-end smoke run on a real branch.
+  6. npm publish dry-run via `scripts/publish-cli.sh patch --dry-run` (do NOT actually publish).
+  7. Write `TECH_DEBT.md` from §20 seeds + anything surfaced in the three `CHANGELOG-TRACK.md` files.
+
+Constraints:
+- This is the only plan that touches files across multiple tracks' packages.
+- Single agent, single worktree (`merge/convergence`), one PR.
+- Plan must fit in one focused implementation session (§18d.4) — decompose further if not.
+
+Target repo: `~/desenv/personal/ultra-review/` (in worktree `merge/convergence`).
+
+Write the plan to `docs/superpowers/plans/ultra-review/05-merge.md` in this repo.</div>
+  </div>
+
+  <div class="note">
+    <strong>Run order.</strong> All 5 plan-writing sessions can run in parallel — plans don't depend on each other being <em>written</em>, only on the spec being stable. <strong>Execution order is different:</strong> Plan 1 first (sequential gate), then Plans 2/3/4 in parallel worktrees, then Plan 5 (sequential merge).
+  </div>
+
+</div>
+
+<script>
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('[data-copy-target]');
+  if (!btn) return;
+  const sel = btn.getAttribute('data-copy-target');
+  const node = sel && document.querySelector(sel);
+  if (!node) return;
+  try {
+    await navigator.clipboard.writeText(node.innerText.trim());
+    const orig = btn.textContent;
+    btn.classList.add('copied');
+    btn.textContent = 'Copied';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.textContent = orig;
+    }, 1300);
+  } catch (err) {
+    console.error('clipboard write failed', err);
+  }
+});
+</script>
+</body>
+</html>
