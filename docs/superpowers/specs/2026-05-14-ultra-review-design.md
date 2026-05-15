@@ -1268,17 +1268,84 @@ These point to the corresponding `plan-review` files as historical backup only �
 
 Demo-first. Land the HTML template + clipboard JS rendered from a **fixture `RunResult`** before wiring any real LLM call. This lets the aesthetic, copy-as-prompt buttons, SVG hotspot map, and filter chips be validated against canned data while the pipeline is still stubbed.
 
+The plan must split work into **two parallel tracks** so the formatter is usable as a standalone tool while the orchestration layer is still being built — see §18c.
+
 Suggested milestone order (a plan can reorganise):
 
 1. Monorepo + tooling scaffold (root `package.json`, `tsconfig`, build scripts).
 2. `@ultra-review/core` types + a fixture `RunResult` JSON.
-3. `@ultra-review/report-template` with template HTML, CSS tokens, clipboard JS — rendered against the fixture and opened in a browser. **First demoable state.**
+3. **Track A starts here, in parallel with Tracks B+C:** `@ultra-review/report-template` with template HTML, CSS tokens, clipboard JS — rendered against the fixture and opened in a browser. **First demoable state.** Track A also delivers a standalone `ultra-review format` CLI subcommand (§18c) so the user can hand-run the formatter against a manually-assembled `RunResult` JSON.
 4. `@ultra-review/context` (git introspection, diff, deterministic slicer).
 5. `@ultra-review/prompts` + `@ultra-review/agents` wrappers, with mocked Anthropic client.
 6. `@ultra-review/orchestrator` wiring stages together.
-7. `@ultra-review/cli` binary + `.ultra-review/` dir + browser open.
+7. `@ultra-review/cli` main command (`ultra-review`) wiring orchestrator + formatter + `.ultra-review/` dir + browser open.
 8. Plugin wiring (`.claude-plugin/`, `commands/`, `skills/`).
 9. Live API smoke run on a real branch.
+
+## 18c. Parallel Formatter Delivery (Track A)
+
+**Why this section exists.** Before any orchestration is built, the user intends to act as the orchestrator manually: spinning up reviewer agents themselves, hand-assembling a `RunResult` JSON, and running the formatter to produce the polished HTML report. The plan must therefore deliver the formatter as a standalone, self-contained tool **as the very first usable milestone**, independent of the rest of the pipeline.
+
+**Track split.**
+
+- **Track A — Formatter (delivered first, runs in parallel from milestone 3 onward).** Owns: `@ultra-review/core` types (jointly with B), `@ultra-review/report-template`, the standalone `ultra-review format` CLI subcommand, the markdown-digest emitter, fixture `RunResult` JSON, snapshot tests, browser-open. Goal: a working `ultra-review format <result.json>` binary that emits both `report.html` and the markdown digest, fed by a JSON file the user hand-assembles.
+- **Track B — Context.** Owns: `@ultra-review/context` (git introspection, diff, slicer, bundle assembly). Depends on core types only.
+- **Track C — Agents + orchestrator.** Owns: `@ultra-review/prompts`, `@ultra-review/agents`, `@ultra-review/orchestrator`. Depends on core types and (eventually) context.
+
+Tracks B and C converge into the main `ultra-review` command at milestone 7. Track A's deliverable is usable on day one of milestone 3 and continues to be useful afterward as the manual debug path.
+
+**Standalone formatter CLI surface.**
+
+```bash
+# Render HTML + emit markdown digest to stdout from a hand-assembled RunResult JSON.
+ultra-review format ./my-run.json
+ultra-review format ./my-run.json --out ./report.html
+ultra-review format ./my-run.json --no-open   # don't open browser
+ultra-review format -                          # read JSON from stdin
+```
+
+Behaviour:
+- Validates input JSON against the `RunResult` schema (Zod). Friendly error on mismatch.
+- Writes `report.html` next to the input file (or `--out`, or `.ultra-review/<ts>/report.html` if neither).
+- Prints the markdown digest to stdout (same shape as §11.6).
+- Opens the HTML in the browser unless `--no-open`.
+- **Does not invoke the formatter LLM agent.** The standalone path renders the report deterministically from the JSON using the template + a small local markdown renderer. The LLM formatter agent (§14) is only used by the full `ultra-review` pipeline to *generate* a `RunResult`, not to format one — meaning the formatter agent's job is really "synthesise the SVG hotspot and exec summary HTML fragments and bundle them into the slots". Track A's standalone path skips those LLM-generated fragments (or accepts them pre-baked in the input JSON under `result.synthesis.htmlFragments?`).
+
+**Schema addition for manual use.** Extend `SeniorSynthesis` with an optional pre-baked fragments slot so the standalone formatter can render rich content when the user hand-supplies it:
+
+```typescript
+export interface SeniorSynthesis {
+  findings: Finding[];
+  summary: string;            // markdown — always rendered locally
+  verdict: 'block' | 'request-changes' | 'approve-with-nits' | 'approve';
+  /**
+   * Optional pre-baked HTML/SVG fragments the LLM formatter (or the user, manually)
+   * supplies. When absent, the standalone formatter falls back to a minimal SVG
+   * hotspot map computed from the diff stats and a plain markdown render of summary.
+   */
+  htmlFragments?: {
+    summaryHtml?: string;     // pre-rendered exec summary HTML
+    diagramSvg?: string;      // inline SVG hotspot map
+  };
+}
+```
+
+**Acceptance for Track A (must be met before Tracks B+C are considered "done"):**
+
+1. `ultra-review format fixtures/sample-result.json` produces a fully-styled HTML report indistinguishable from the eventual full-pipeline output.
+2. The same command emits a markdown digest matching §11.6.
+3. Schema validation rejects malformed input with a readable error pointing at the bad field.
+4. The user can hand-assemble a `RunResult` JSON in a text editor (or have a separate Claude session emit it) and feed it through Track A end-to-end with no other ultra-review machinery built.
+5. Snapshot tests cover at least: a 0-finding report, a critical-only report, a mixed-severity report with all four severities, a report with `htmlFragments` supplied vs. omitted.
+
+**Updated build order** with track parallelism noted:
+
+```
+core ─┬─► report-template ──► cli (format subcommand)         [Track A]
+      ├─► context                                              [Track B]
+      └─► prompts ──► agents ──► orchestrator ──► cli (main)   [Track C]
+                                                  └─► plugin wiring
+```
 
 ## 19. Phase 1 Acceptance Criteria
 
