@@ -1264,6 +1264,22 @@ These point to the corresponding `plan-review` files as historical backup only â
 
 ---
 
+## 18b. Implementation Milestone Order
+
+Demo-first. Land the HTML template + clipboard JS rendered from a **fixture `RunResult`** before wiring any real LLM call. This lets the aesthetic, copy-as-prompt buttons, SVG hotspot map, and filter chips be validated against canned data while the pipeline is still stubbed.
+
+Suggested milestone order (a plan can reorganise):
+
+1. Monorepo + tooling scaffold (root `package.json`, `tsconfig`, build scripts).
+2. `@ultra-review/core` types + a fixture `RunResult` JSON.
+3. `@ultra-review/report-template` with template HTML, CSS tokens, clipboard JS â€” rendered against the fixture and opened in a browser. **First demoable state.**
+4. `@ultra-review/context` (git introspection, diff, deterministic slicer).
+5. `@ultra-review/prompts` + `@ultra-review/agents` wrappers, with mocked Anthropic client.
+6. `@ultra-review/orchestrator` wiring stages together.
+7. `@ultra-review/cli` binary + `.ultra-review/` dir + browser open.
+8. Plugin wiring (`.claude-plugin/`, `commands/`, `skills/`).
+9. Live API smoke run on a real branch.
+
 ## 19. Phase 1 Acceptance Criteria
 
 The demo is done when:
