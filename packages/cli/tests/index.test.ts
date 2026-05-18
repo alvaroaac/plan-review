@@ -2,18 +2,20 @@ import { describe, it, expect } from 'vitest';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..');
 const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf-8'));
 const entryPoint = join(projectRoot, 'src', 'index.ts');
 
-function runCli(args: string[], stdinData?: string) {
+function runCli(args: string[], stdinData?: string, env: NodeJS.ProcessEnv = {}) {
   return spawnSync('npx', ['tsx', entryPoint, ...args], {
     cwd: projectRoot,
     encoding: 'utf-8',
     input: stdinData,
+    env: { ...process.env, ...env },
     timeout: 15000,
   });
 }
@@ -75,10 +77,16 @@ describe('index.ts CLI', () => {
     expect(helpText).not.toMatch(/^\s*--browser\s/m);
   });
 
-  it('sessions subcommand runs without error', () => {
-    const result = runCli(['sessions']);
-    expect(result.status).toBe(0);
-    const output = result.stdout + result.stderr;
-    expect(output).toContain('.plan-review/sessions');
+  it('sessions subcommand runs without error and prints the default session dir', () => {
+    const home = mkdtempSync(join(tmpdir(), 'plan-review-empty-home-'));
+    try {
+      const result = runCli(['sessions'], undefined, { HOME: home });
+      expect(result.status).toBe(0);
+      const output = result.stdout + result.stderr;
+      expect(output).toContain('No saved sessions.');
+      expect(output).toContain('.plan-review/sessions');
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 });

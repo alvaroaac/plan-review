@@ -10,6 +10,7 @@
     "build": "bash scripts/build.sh",
     "test": "npm run test -ws --if-present",
     "typecheck": "npm run typecheck -ws --if-present",
-    "dev": "npm run dev -w plan-review"
+    "dev": "npm run dev -w plan-review",
+    "release:packages": "npm run build && npm publish -w @plan-review/core -w @plan-review/react"
   }
 }

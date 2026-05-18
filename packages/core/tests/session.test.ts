@@ -1,29 +1,23 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, writeFileSync, readFileSync, mkdirSync, existsSync, unlinkSync, rmSync } from 'node:fs';
+import { mkdtemp, writeFile, readdir, rm, mkdir } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import type { ReviewComment } from '../src/types.js';
-
-// Mock os.homedir() to use a temp dir per test
-let tempHome: string;
-
-vi.mock('node:os', async () => {
-  const actual = await vi.importActual<typeof import('node:os')>('node:os');
-  return {
-    ...actual,
-    homedir: () => tempHome,
-  };
-});
-
-// Import after mock is set up
-const {
-  getSessionDir,
+import * as sessionModule from '../src/session.js';
+import {
   computeContentHash,
-  saveSession,
-  loadSession,
-  clearSession,
-  listSessions,
-} = await import('../src/session.js');
+  DEFAULT_SESSION_DIR,
+  FileSessionStore,
+  type FileSessionStoreOptions,
+  type SessionMeta,
+  type SessionData,
+  type SessionStore,
+} from '../src/session.js';
+// @ts-expect-error SessionLoadResult was intentionally removed from the public API.
+import type { SessionLoadResult } from '../src/session.js';
+
+let dir: string;
 
 function makeComment(overrides: Partial<ReviewComment> = {}): ReviewComment {
   return {
@@ -34,264 +28,206 @@ function makeComment(overrides: Partial<ReviewComment> = {}): ReviewComment {
   };
 }
 
-describe('session', () => {
-  beforeEach(() => {
-    tempHome = mkdtempSync(join(tmpdir(), 'plan-review-test-'));
+function makeSession(overrides: Partial<SessionData> = {}): SessionData {
+  return {
+    version: 1,
+    planPath: '/tmp/plan.md',
+    contentHash: 'sha256:abc123',
+    comments: [makeComment()],
+    activeSection: 'task-1',
+    lastModified: '2026-01-15T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+async function filesInSessionDir(): Promise<string[]> {
+  return (await readdir(dir)).filter((file) => file.endsWith('.json'));
+}
+
+describe('FileSessionStore', () => {
+  beforeEach(async () => {
+    dir = await mkdtemp(join(tmpdir(), 'plan-review-session-'));
   });
 
-  afterEach(() => {
-    rmSync(tempHome, { recursive: true, force: true });
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
   });
 
-  // ---------- getSessionDir ----------
-  describe('getSessionDir', () => {
-    it('returns path under ~/.plan-review/sessions/', () => {
-      const dir = getSessionDir();
-      expect(dir).toBe(join(tempHome, '.plan-review', 'sessions'));
-    });
+  it('exports the legacy default session directory constant without creating it', () => {
+    const expectedDir = join(homedir(), '.plan-review', 'sessions');
 
-    it('creates the directory if it does not exist', () => {
-      const dir = getSessionDir();
-      expect(existsSync(dir)).toBe(true);
-    });
-
-    it('does not throw if directory already exists', () => {
-      getSessionDir(); // create it
-      expect(() => getSessionDir()).not.toThrow(); // call again
-    });
+    expect(DEFAULT_SESSION_DIR).toBe(expectedDir);
+    if (!existsSync(expectedDir)) {
+      expect(existsSync(DEFAULT_SESSION_DIR)).toBe(false);
+    }
   });
 
-  // ---------- computeContentHash ----------
-  describe('computeContentHash', () => {
-    it('returns sha256:<hex> format', () => {
-      const hash = computeContentHash('hello');
-      expect(hash).toMatch(/^sha256:[a-f0-9]{64}$/);
-    });
+  it('exports the new session contract and omits legacy runtime helpers', () => {
+    const options: FileSessionStoreOptions = { dir, keyHashLength: 12 };
+    const store: SessionStore = new FileSessionStore(options);
+    const meta: SessionMeta = {
+      key: '/tmp/plan.md',
+      commentCount: 1,
+      lastModified: '2026-01-15T10:00:00.000Z',
+    };
+    const removedType: SessionLoadResult | null = null;
 
-    it('returns deterministic results', () => {
-      const a = computeContentHash('test content');
-      const b = computeContentHash('test content');
-      expect(a).toBe(b);
+    expect(store).toBeInstanceOf(FileSessionStore);
+    expect(meta).toEqual({
+      key: '/tmp/plan.md',
+      commentCount: 1,
+      lastModified: '2026-01-15T10:00:00.000Z',
     });
-
-    it('returns different hashes for different content', () => {
-      const a = computeContentHash('content A');
-      const b = computeContentHash('content B');
-      expect(a).not.toBe(b);
-    });
+    expect(removedType).toBeNull();
+    expect('saveSession' in sessionModule).toBe(false);
+    expect('loadSession' in sessionModule).toBe(false);
+    expect('clearSession' in sessionModule).toBe(false);
+    expect('listSessions' in sessionModule).toBe(false);
+    expect('getSessionDir' in sessionModule).toBe(false);
+    expect('SessionLoadResult' in sessionModule).toBe(false);
   });
 
-  // ---------- saveSession ----------
-  describe('saveSession', () => {
-    it('writes a JSON file to the session directory', () => {
-      const comments = [makeComment()];
-      saveSession('/tmp/plan.md', 'sha256:abc123', comments, 'task-1');
-
-      const dir = getSessionDir();
-      const files = require('node:fs').readdirSync(dir) as string[];
-      expect(files.length).toBe(1);
-      expect(files[0]).toMatch(/\.json$/);
-    });
-
-    it('writes valid SessionData JSON', () => {
-      const comments = [makeComment()];
-      saveSession('/tmp/plan.md', 'sha256:abc123', comments, 'task-1');
-
-      const dir = getSessionDir();
-      const files = require('node:fs').readdirSync(dir) as string[];
-      const content = JSON.parse(readFileSync(join(dir, files[0]), 'utf-8'));
-
-      expect(content.version).toBe(1);
-      expect(content.planPath).toBe('/tmp/plan.md');
-      expect(content.contentHash).toBe('sha256:abc123');
-      expect(content.comments).toHaveLength(1);
-      expect(content.comments[0].sectionId).toBe('task-1');
-      expect(content.activeSection).toBe('task-1');
-      expect(content.lastModified).toBeDefined();
-    });
-
-    it('handles activeSection = null', () => {
-      saveSession('/tmp/plan.md', 'sha256:abc123', [], null);
-
-      const dir = getSessionDir();
-      const files = require('node:fs').readdirSync(dir) as string[];
-      const content = JSON.parse(readFileSync(join(dir, files[0]), 'utf-8'));
-      expect(content.activeSection).toBeNull();
-    });
-
-    it('does not throw on write error (best-effort)', () => {
-      // Make session dir a file to cause write error
-      const dir = join(tempHome, '.plan-review', 'sessions');
-      rmSync(dir, { recursive: true, force: true });
-      mkdirSync(join(tempHome, '.plan-review'), { recursive: true });
-      writeFileSync(dir, 'not a directory');
-
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      expect(() => {
-        saveSession('/tmp/plan.md', 'sha256:abc', [], null);
-      }).not.toThrow();
-      consoleSpy.mockRestore();
-    });
+  it('computes deterministic sha256 content hashes', () => {
+    expect(computeContentHash('hello')).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(computeContentHash('same')).toBe(computeContentHash('same'));
+    expect(computeContentHash('one')).not.toBe(computeContentHash('two'));
   });
 
-  // ---------- loadSession ----------
-  describe('loadSession', () => {
-    it('returns null when no session file exists', () => {
-      const result = loadSession('/tmp/nonexistent.md', 'sha256:abc');
-      expect(result).toBeNull();
+  it('round-trips session data and restores Date timestamps', async () => {
+    const store = new FileSessionStore({ dir });
+    const data = makeSession({ comments: [makeComment({ text: 'My review' })] });
+
+    await store.save('/tmp/plan.md', data);
+    const loaded = await store.load('/tmp/plan.md');
+
+    expect(loaded).toMatchObject({
+      version: 1,
+      planPath: '/tmp/plan.md',
+      contentHash: 'sha256:abc123',
+      activeSection: 'task-1',
+      lastModified: '2026-01-15T10:00:00.000Z',
     });
-
-    it('loads comments and activeSection from saved session', () => {
-      const comments = [makeComment({ text: 'My review' })];
-      saveSession('/tmp/plan.md', 'sha256:abc', comments, 'task-2');
-
-      const result = loadSession('/tmp/plan.md', 'sha256:abc');
-      expect(result).not.toBeNull();
-      expect(result!.comments).toHaveLength(1);
-      expect(result!.comments[0].text).toBe('My review');
-      expect(result!.activeSection).toBe('task-2');
-    });
-
-    it('sets stale=false when hashes match', () => {
-      saveSession('/tmp/plan.md', 'sha256:abc', [], null);
-      const result = loadSession('/tmp/plan.md', 'sha256:abc');
-      expect(result!.stale).toBe(false);
-    });
-
-    it('sets stale=true when hashes differ', () => {
-      saveSession('/tmp/plan.md', 'sha256:abc', [], null);
-      const result = loadSession('/tmp/plan.md', 'sha256:different');
-      expect(result!.stale).toBe(true);
-    });
-
-    it('handles corrupt JSON: logs warning, deletes file, returns null', () => {
-      // Write a valid session first to get the file path, then corrupt it
-      saveSession('/tmp/plan.md', 'sha256:abc', [], null);
-      const dir = getSessionDir();
-      const files = require('node:fs').readdirSync(dir) as string[];
-      const filePath = join(dir, files[0]);
-
-      writeFileSync(filePath, '{{{CORRUPT JSON!!!');
-
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const result = loadSession('/tmp/plan.md', 'sha256:abc');
-      expect(result).toBeNull();
-      expect(existsSync(filePath)).toBe(false);
-      expect(consoleSpy).toHaveBeenCalled();
-      consoleSpy.mockRestore();
-    });
-
-    it('restores Date objects in comment timestamps', () => {
-      const comment = makeComment({ timestamp: new Date('2026-03-10T12:00:00Z') });
-      saveSession('/tmp/plan.md', 'sha256:abc', [comment], null);
-
-      const result = loadSession('/tmp/plan.md', 'sha256:abc');
-      expect(result!.comments[0].timestamp).toBeInstanceOf(Date);
-      expect(result!.comments[0].timestamp.toISOString()).toBe('2026-03-10T12:00:00.000Z');
-    });
+    expect(loaded?.comments[0].text).toBe('My review');
+    expect(loaded?.comments[0].timestamp).toBeInstanceOf(Date);
+    expect(loaded?.comments[0].timestamp.toISOString()).toBe('2026-01-15T10:00:00.000Z');
   });
 
-  // ---------- clearSession ----------
-  describe('clearSession', () => {
-    it('deletes an existing session file', () => {
-      saveSession('/tmp/plan.md', 'sha256:abc', [], null);
-      const dir = getSessionDir();
-      const filesBefore = require('node:fs').readdirSync(dir) as string[];
-      expect(filesBefore.length).toBe(1);
-
-      clearSession('/tmp/plan.md');
-      const filesAfter = require('node:fs').readdirSync(dir) as string[];
-      expect(filesAfter.length).toBe(0);
-    });
-
-    it('does not throw when session file does not exist', () => {
-      expect(() => clearSession('/tmp/nonexistent.md')).not.toThrow();
-    });
+  it('returns null when loading a missing session', async () => {
+    const store = new FileSessionStore({ dir });
+    await expect(store.load('/tmp/missing.md')).resolves.toBeNull();
   });
 
-  // ---------- listSessions ----------
-  describe('listSessions', () => {
-    it('returns empty array when no sessions exist', () => {
-      const sessions = listSessions();
-      expect(sessions).toEqual([]);
-    });
+  it('returns null when the session file cannot be read', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('/tmp/plan.md', makeSession());
+    const [file] = await filesInSessionDir();
+    const filePath = join(dir, file);
+    await store.clear('/tmp/plan.md');
+    await mkdir(filePath);
 
-    it('lists saved sessions with metadata', () => {
-      const comments = [makeComment(), makeComment({ text: 'Second' })];
-      saveSession('/tmp/plan.md', 'sha256:abc', comments, null);
+    await expect(store.load('/tmp/plan.md')).resolves.toBeNull();
+  });
 
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].planPath).toBe('/tmp/plan.md');
-      expect(sessions[0].commentCount).toBe(2);
-      expect(sessions[0].lastModified).toBeDefined();
-    });
+  it('uses the opaque key hash and preserves legacy 16-character filenames by default', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('/tmp/plan.md', makeSession());
 
-    it('lists multiple sessions', () => {
-      saveSession('/tmp/plan1.md', 'sha256:aaa', [makeComment()], null);
-      saveSession('/tmp/plan2.md', 'sha256:bbb', [], 'task-1');
+    const files = await filesInSessionDir();
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/^[a-f0-9]{16}\.json$/);
+  });
 
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(2);
-    });
+  it('supports a custom key hash length', async () => {
+    const store = new FileSessionStore({ dir, keyHashLength: 8 });
+    await store.save('forge:FUL-42:spec', makeSession({ planPath: 'forge:FUL-42:spec' }));
 
-    it('sets stale=null when plan file does not exist on disk', () => {
-      saveSession('/tmp/nonexistent-plan-xyz.md', 'sha256:abc', [], null);
+    const files = await filesInSessionDir();
+    expect(files).toHaveLength(1);
+    expect(files[0]).toMatch(/^[a-f0-9]{8}\.json$/);
+  });
 
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].stale).toBeNull();
-    });
+  it('throws when saving fails', async () => {
+    const fileInsteadOfDir = join(dir, 'not-a-directory');
+    await writeFile(fileInsteadOfDir, 'x');
+    const store = new FileSessionStore({ dir: fileInsteadOfDir });
 
-    it('sets stale=false when plan file hash matches', () => {
-      // Create an actual plan file
-      const planPath = join(tempHome, 'myplan.md');
-      const planContent = '# My Plan\n\n## Task 1\n\nDo something';
-      writeFileSync(planPath, planContent);
-      const hash = computeContentHash(planContent);
+    await expect(store.save('/tmp/plan.md', makeSession())).rejects.toThrow();
+  });
 
-      saveSession(planPath, hash, [], null);
+  it('auto-deletes corrupt JSON on load and returns null', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('/tmp/plan.md', makeSession());
+    const [file] = await filesInSessionDir();
+    const filePath = join(dir, file);
+    await writeFile(filePath, '{{{CORRUPT JSON!!!');
 
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].stale).toBe(false);
-    });
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(store.load('/tmp/plan.md')).resolves.toBeNull();
+    expect(existsSync(filePath)).toBe(false);
+    await expect(store.load('/tmp/plan.md')).resolves.toBeNull();
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Corrupt session file'));
+    consoleSpy.mockRestore();
+  });
 
-    it('sets stale=true when plan file hash differs', () => {
-      const planPath = join(tempHome, 'myplan.md');
-      writeFileSync(planPath, 'original content');
-      saveSession(planPath, 'sha256:oldhash', [], null);
+  it('clears an existing session and treats missing sessions as a no-op', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('/tmp/plan.md', makeSession());
+    expect(await filesInSessionDir()).toHaveLength(1);
 
-      // Plan file on disk has different content from stored hash
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].stale).toBe(true);
-    });
+    await store.clear('/tmp/plan.md');
+    expect(await filesInSessionDir()).toHaveLength(0);
+    await expect(store.clear('/tmp/plan.md')).resolves.toBeUndefined();
+  });
 
-    it('skips non-JSON files in sessions directory', () => {
-      getSessionDir(); // ensure dir exists
-      const dir = getSessionDir();
-      writeFileSync(join(dir, 'not-a-session.txt'), 'random');
-      writeFileSync(join(dir, '.DS_Store'), 'junk');
+  it('lists empty when the session directory does not exist', async () => {
+    const missingDir = join(dir, 'missing');
+    const store = new FileSessionStore({ dir: missingDir });
 
-      saveSession('/tmp/plan.md', 'sha256:abc', [], null);
+    await expect(store.list()).resolves.toEqual([]);
+  });
 
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(1);
-    });
+  it('lists saved sessions with metadata but no staleness', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('/tmp/one.md', makeSession({
+      planPath: '/tmp/one.md',
+      comments: [makeComment(), makeComment({ text: 'Second' })],
+    }));
+    await store.save('/tmp/two.md', makeSession({
+      planPath: '/tmp/two.md',
+      comments: [],
+      activeSection: null,
+      lastModified: '2026-01-16T10:00:00.000Z',
+    }));
 
-    it('skips corrupt session files gracefully', () => {
-      getSessionDir();
-      const dir = getSessionDir();
-      writeFileSync(join(dir, 'corrupt.json'), '{{NOT VALID JSON');
+    await expect(store.list()).resolves.toEqual(expect.arrayContaining([
+      { key: '/tmp/one.md', commentCount: 2, lastModified: '2026-01-15T10:00:00.000Z' },
+      { key: '/tmp/two.md', commentCount: 0, lastModified: '2026-01-16T10:00:00.000Z' },
+    ]));
+  });
 
-      saveSession('/tmp/plan.md', 'sha256:abc', [], null);
+  it('skips non-json and corrupt files while listing', async () => {
+    const store = new FileSessionStore({ dir });
+    await mkdir(dir, { recursive: true });
+    await writeFile(join(dir, 'notes.txt'), 'ignore me');
+    await writeFile(join(dir, 'corrupt.json'), '{{NOPE');
+    await store.save('/tmp/plan.md', makeSession());
 
-      const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const sessions = listSessions();
-      expect(sessions).toHaveLength(1);
-      expect(sessions[0].planPath).toBe('/tmp/plan.md');
-      consoleSpy.mockRestore();
-    });
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const sessions = await store.list();
+
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].key).toBe('/tmp/plan.md');
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Skipping corrupt session file'));
+    consoleSpy.mockRestore();
+  });
+
+  it('stores sessions for two opaque keys independently', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('forge:FUL-1', makeSession({ planPath: 'forge:FUL-1', comments: [makeComment({ text: 'A' })] }));
+    await store.save('forge:FUL-2', makeSession({ planPath: 'forge:FUL-2', comments: [makeComment({ text: 'B' })] }));
+
+    expect((await store.load('forge:FUL-1'))?.comments[0].text).toBe('A');
+    expect((await store.load('forge:FUL-2'))?.comments[0].text).toBe('B');
+    expect(await store.list()).toHaveLength(2);
   });
 });

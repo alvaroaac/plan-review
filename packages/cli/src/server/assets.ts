@@ -9,6 +9,7 @@ function resolveHtmlPath(): string {
     join(__dirname, 'browser', 'index.html'),
     join(__dirname, '..', 'browser', 'index.html'),
     join(__dirname, '..', 'dist', 'browser', 'index.html'),
+    join(__dirname, '..', '..', 'dist', 'browser', 'index.html'),
   ];
   for (const p of candidates) {
     if (existsSync(p)) return p;
