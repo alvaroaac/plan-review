@@ -10,7 +10,7 @@
 
 ## Task Summary
 
-Refactor `@plan-review/core`'s session persistence so the storage location and backend are injectable, and extract the browser-app's autosave debounce/flush loop into a framework-neutral helper exported from core. Goal: let downstream consumers (the CLI today, Forge tomorrow) embed plan-review's session machinery without inheriting the hardcoded `~/.plan-review/sessions/` location or duplicating the 500ms-debounce wiring.
+Refactor `@plan-review/core`'s session persistence so the storage location and backend are injectable, and extract the browser-app's autosave debounce/flush loop into a framework-neutral helper exported from core. Ship a new `@plan-review/react` package with idiomatic hooks over the helper so Forge (and any future React consumer) doesn't re-wire the same effect logic. Goal: let downstream consumers embed plan-review's session machinery without inheriting the hardcoded `~/.plan-review/sessions/` location or duplicating the 500ms-debounce wiring.
 
 The disk-on-format stays compatible so existing user sessions keep working. The module-level `saveSession`/`loadSession`/`clearSession`/`listSessions`/`getSessionDir` functions are removed (TS error at upgrade time — fail loud).
 
@@ -322,9 +322,108 @@ CLI keeps its existing `key = resolve(planPath)` convention so user sessions per
 
 For `list()` callers that need staleness vs current-content: re-implement the re-read-planPath-and-compare logic in the CLI layer (it was always a CLI concern — see Approach §2 notes).
 
-### 6. Browser-app migration
+### 6. New package — `@plan-review/react`
 
-`packages/browser-app/src/App.tsx`: replace the in-component debounce + beforeunload effects with `createAutosave`:
+Forge's React renderer needs an idiomatic hook over `createAutosave`. Ship it as a sibling workspace package so React stays a peer dep there, not in `core`.
+
+```
+packages/react/
+├── package.json
+├── tsconfig.json
+└── src/
+    ├── index.ts
+    └── useAutosave.ts
+```
+
+`packages/react/package.json`:
+
+```json
+{
+  "name": "@plan-review/react",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": { ".": "./dist/index.js" },
+  "scripts": { "build": "tsc", "test": "vitest run", "typecheck": "tsc --noEmit" },
+  "dependencies": { "@plan-review/core": "*" },
+  "peerDependencies": { "react": ">=18" },
+  "devDependencies": {
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.0.0",
+    "jsdom": "^29.0.2",
+    "react": "^18.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.4"
+  }
+}
+```
+
+`packages/react/src/useAutosave.ts`:
+
+```ts
+import { useEffect, useMemo } from 'react';
+import {
+  createAutosave,
+  type Autosave,
+  type AutosaveOptions,
+} from '@plan-review/core';
+
+/**
+ * Wraps `createAutosave` in a React-stable instance.
+ * Caller is responsible for keeping `opts.save` referentially stable (e.g. via useCallback).
+ */
+export function useAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
+  const autosave = useMemo(
+    () => createAutosave(opts),
+    [opts.delayMs, opts.save, opts.onError],
+  );
+  useEffect(() => () => autosave.cancel(), [autosave]);
+  return autosave;
+}
+
+/**
+ * Schedules `snapshot` for autosave on each change.
+ * Combines `useAutosave` with a `useEffect` that fires `schedule`.
+ */
+export function useAutosaveSnapshot<T>(
+  snapshot: T,
+  opts: AutosaveOptions<T>,
+  options?: { enabled?: boolean },
+): Autosave<T> {
+  const autosave = useAutosave(opts);
+  useEffect(() => {
+    if (options?.enabled === false) return;
+    autosave.schedule(snapshot);
+  }, [autosave, snapshot, options?.enabled]);
+  return autosave;
+}
+
+/**
+ * Wires `autosave.flush()` to `beforeunload` so closing the tab/window
+ * doesn't drop a pending debounce.
+ */
+export function useFlushOnUnload<T>(autosave: Autosave<T>): void {
+  useEffect(() => {
+    const handler = () => {
+      autosave.flush().catch(() => {});
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [autosave]);
+}
+```
+
+`packages/react/src/index.ts`:
+
+```ts
+export { useAutosave, useAutosaveSnapshot, useFlushOnUnload } from './useAutosave.js';
+```
+
+### 7. Browser-app migration
+
+`packages/browser-app/` is Preact, not React — `@plan-review/react` does not apply there. Browser-app consumes the headless `createAutosave` from core directly. Replace the in-component debounce + beforeunload effects:
 
 ```ts
 import { createAutosave, type Autosave } from '@plan-review/core';
@@ -354,9 +453,9 @@ useEffect(() => {
 }, [autosave]);
 ```
 
-Same user-visible behavior; the debounce logic is now reusable.
+Same user-visible behavior; debounce logic now reusable across consumers. A future Preact-adapter package (`@plan-review/preact`) could mirror `@plan-review/react`, but skipped until a second Preact consumer materializes — browser-app is the only one.
 
-### 7. Tests
+### 8. Tests
 
 `packages/core/tests/session.test.ts` — rewrite around `FileSessionStore`:
 
@@ -384,9 +483,19 @@ Same user-visible behavior; the debounce logic is now reusable.
 
 `packages/browser-app/tests/` — existing `App.tsx` tests should pass unchanged (autosave behavior is identical). Optionally add: `beforeunload` event triggers `client.saveSession` exactly once even if a debounce was pending.
 
+`packages/react/tests/useAutosave.test.tsx` — new. Render under `@testing-library/react` with fake timers:
+
+- `useAutosave` returns a stable instance across re-renders if `opts` is stable.
+- `useAutosaveSnapshot` calls `schedule` on each snapshot change; debounce coalesces.
+- `useAutosaveSnapshot({ enabled: false })` does not schedule.
+- Unmount cancels any pending save (calls `autosave.cancel()`).
+- `useFlushOnUnload` dispatches `flush()` on `beforeunload`; removes listener on unmount.
+
 `packages/core/tests/public-api.test.ts` — new. Imports every name from `@plan-review/core` and asserts presence + type shape. Failures here mean the public surface changed unintentionally.
 
-### 8. Documentation
+`packages/react/tests/public-api.test.ts` — new. Same idea for `@plan-review/react` exports.
+
+### 9. Documentation
 
 - Update `packages/core/README.md` (if present) with the new public API examples (CLI consumer pattern + autosave pattern).
 - Add a short `MIGRATION.md` at repo root or under `docs/` listing the removed symbols and their replacements. One example per removed function.
@@ -406,6 +515,7 @@ Same user-visible behavior; the debounce logic is now reusable.
 - [x] **Autosave helper** — shipped from core, framework-neutral, no DOM/Node deps.
 - [x] **Staleness check** — moves out of core's `list()` into CLI layer (was always a CLI concern; Forge will compute its own staleness against its own artifacts).
 - [x] **Version bump** — `0.0.x → 0.1.0`. Major-ish surface change marked by minor bump while still pre-1.0.
+- [x] **React adapter** — ship as new `@plan-review/react` package immediately. Forge is the first consumer; packaging overhead (~50 lines: package.json + tsconfig + index + hook + tests) is trivial and a future second React consumer (e.g. an Electron review surface) will reuse it without extracting.
 
 ---
 
@@ -415,4 +525,4 @@ Same user-visible behavior; the debounce logic is now reusable.
 - **CLI command for cleaning up the session dir** (e.g. `plan-review sessions prune`). Mentioned in discussion as the cure for a no-auto-delete policy; we kept auto-delete, so this command isn't urgent. Logged as a tech-debt candidate.
 - **IndexedDB / BroadcastChannel backends** for browser-only contexts. The `SessionStore` interface supports them; nobody needs one today.
 - **Migration tooling** for users with bespoke session dirs. Not a real population today.
-- **`@plan-review/react` adapter package**. The autosave helper is framework-neutral and consumers wire it themselves. A React-hook wrapper would be ~10 lines; skip until two React consumers exist (Forge will be the first; revisit when the second appears).
+- **`@plan-review/preact` adapter package**. Browser-app is the only Preact consumer; consumes `createAutosave` directly. Revisit when a second Preact consumer appears.
