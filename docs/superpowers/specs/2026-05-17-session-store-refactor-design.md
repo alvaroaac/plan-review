@@ -495,9 +495,24 @@ Same user-visible behavior; debounce logic now reusable across consumers. A futu
 
 `packages/react/tests/public-api.test.ts` — new. Same idea for `@plan-review/react` exports.
 
-### 9. Documentation
+### 9. Publishing
+
+Today: the `plan-review` CLI is published to npm (v1.1.5). The internal workspace packages `@plan-review/core` and `@plan-review/react` are marked `"private": true` and never reach the registry. Forge needs both as regular npm deps — flip them to public.
+
+Changes:
+
+- `packages/core/package.json`: remove `"private": true`. Set `"version": "0.1.0"`. Add `"publishConfig": { "access": "public" }` if the `@plan-review` org on npm requires it (free org accounts need this flag).
+- `packages/react/package.json`: same pattern. `"version": "0.1.0"`.
+- Both packages: confirm `"files": ["dist"]` (or rely on a `.npmignore`) so only built output ships, not sources/tests.
+- Both packages: ensure `"main"`, `"types"`, and `"exports"` point at `dist/` paths that exist after `npm run build`.
+- Add an npm script at repo root (e.g. `"release:packages": "npm run build -ws && npm publish -w @plan-review/core -w @plan-review/react"`) so a single command publishes both. Manual for now; release-please / changesets later if cadence warrants.
+
+CLI publishing flow stays as-is. The CLI's `package.json` should depend on the **published** versions of `@plan-review/core` once both ship (replace any `"workspace:*"` or `"*"` ranges with `"^0.1.0"`). If the monorepo uses `npm workspaces`, workspace-internal builds still resolve to the local copy during `npm install` at the repo root.
+
+### 10. Documentation
 
 - Update `packages/core/README.md` (if present) with the new public API examples (CLI consumer pattern + autosave pattern).
+- Add a `packages/react/README.md` with the three hook examples (`useAutosave`, `useAutosaveSnapshot`, `useFlushOnUnload`).
 - Add a short `MIGRATION.md` at repo root or under `docs/` listing the removed symbols and their replacements. One example per removed function.
 - Update any spec/docs referencing `saveSession`/`loadSession` to point at `FileSessionStore`.
 
@@ -516,6 +531,7 @@ Same user-visible behavior; debounce logic now reusable across consumers. A futu
 - [x] **Staleness check** — moves out of core's `list()` into CLI layer (was always a CLI concern; Forge will compute its own staleness against its own artifacts).
 - [x] **Version bump** — `0.0.x → 0.1.0`. Major-ish surface change marked by minor bump while still pre-1.0.
 - [x] **React adapter** — ship as new `@plan-review/react` package immediately. Forge is the first consumer; packaging overhead (~50 lines: package.json + tsconfig + index + hook + tests) is trivial and a future second React consumer (e.g. an Electron review surface) will reuse it without extracting.
+- [x] **Publishing** — both `@plan-review/core` and `@plan-review/react` go public to npm at `0.1.0`. Forge consumes them as regular deps. Single `release:packages` script publishes both together. Reason: Forge can't `file:`-link cleanly across repos for packaged builds, and consumers (Forge, future others) shouldn't have to vendor.
 
 ---
 
