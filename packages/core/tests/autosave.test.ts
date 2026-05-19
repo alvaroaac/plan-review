@@ -149,10 +149,15 @@ describe('createAutosave', () => {
     expect(timeoutSpy).toHaveBeenCalledWith(expect.any(Function), 0);
   });
 
-  it('flush waits for the latest overlapping in-flight save', async () => {
+  it('serializes overlapping saves so older snapshots cannot finish last', async () => {
     const releases = new Map<string, () => void>();
+    let secondStarted!: () => void;
+    const secondStartedPromise = new Promise<void>((resolve) => {
+      secondStarted = resolve;
+    });
     const save = vi.fn().mockImplementation((snapshot: string) => new Promise<void>((resolve) => {
       releases.set(snapshot, resolve);
+      if (snapshot === 'second') secondStarted();
     }));
     const autosave = createAutosave<string>({ delayMs: 500, save });
 
@@ -162,9 +167,13 @@ describe('createAutosave', () => {
 
     autosave.schedule('second');
     const secondFlush = autosave.flush();
-    expect(save).toHaveBeenCalledWith('second');
+    await Promise.resolve();
+    expect(save).toHaveBeenCalledOnce();
 
     releases.get('first')?.();
+    await secondStartedPromise;
+    expect(save).toHaveBeenCalledTimes(2);
+    expect(save).toHaveBeenLastCalledWith('second');
     await firstFlush;
 
     let resolved = false;

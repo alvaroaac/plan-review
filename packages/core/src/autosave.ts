@@ -17,6 +17,7 @@ export function createAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
   let pendingResolve: (() => void) | null = null;
   let pendingPromise: Promise<void> | null = null;
   let inFlightPromise: Promise<void> | null = null;
+  let saveQueue: Promise<void> | null = null;
 
   function ensurePendingPromise(): Promise<void> {
     if (!pendingPromise) {
@@ -39,28 +40,30 @@ export function createAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
     pendingResolve = null;
     pendingPromise = null;
 
-    let savePromise: Promise<void>;
-    try {
-      savePromise = opts.save(snapshot);
-    } catch (err) {
-      savePromise = Promise.reject(err);
-    }
-
-    const currentPromise = savePromise.catch((err) => {
-      if (opts.onError) {
-        opts.onError(err);
-      } else {
-        setTimeout(() => {
-          throw err;
-        }, 0);
+    const runSave = async (): Promise<void> => {
+      try {
+        await opts.save(snapshot);
+      } catch (err) {
+        if (opts.onError) {
+          opts.onError(err);
+        } else {
+          setTimeout(() => {
+            throw err;
+          }, 0);
+        }
       }
-    }).finally(() => {
+    };
+    const currentPromise = (saveQueue ? saveQueue.then(runSave) : runSave()).finally(() => {
       resolveCurrent?.();
       if (inFlightPromise === currentPromise) {
         inFlightPromise = null;
       }
+      if (saveQueue === currentPromise) {
+        saveQueue = null;
+      }
     });
 
+    saveQueue = currentPromise;
     inFlightPromise = currentPromise;
     await inFlightPromise;
   }
