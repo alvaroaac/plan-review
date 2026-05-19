@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import type {
   PlanDocument,
   ReviewComment,
@@ -6,6 +6,7 @@ import type {
   ReviewClient,
   ReviewVerdict,
 } from '@plan-review/core';
+import { createAutosave, type Autosave } from '@plan-review/core/autosave';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
 import { CommentSidebar } from './CommentSidebar.js';
@@ -18,6 +19,12 @@ interface CommentingTarget {
   anchor?: LineAnchor;
 }
 
+type AutosaveSnapshot = {
+  comments: ReviewComment[];
+  activeSection: string | null;
+  contentHash: string;
+};
+
 export function App({ client }: { client: ReviewClient }) {
   const [doc, setDoc] = useState<PlanDocument | null>(null);
   const [comments, setComments] = useState<ReviewComment[]>([]);
@@ -28,6 +35,15 @@ export function App({ client }: { client: ReviewClient }) {
   const [staleBanner, setStaleBanner] = useState(false);
   const [contentHash, setContentHash] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
+  const suppressedAutosaveSnapshot = useRef<AutosaveSnapshot | null>(null);
+  const autosave = useMemo<Autosave<AutosaveSnapshot>>(
+    () => createAutosave({
+      delayMs: 500,
+      save: (snapshot) => client.saveSession(snapshot),
+      onError: () => {},
+    }),
+    [client],
+  );
 
   // Auto-save session on comment change
   useEffect(() => {
@@ -36,11 +52,21 @@ export function App({ client }: { client: ReviewClient }) {
       if (!initialLoadDone.current) return;
     }
     if (contentHash === null) return;
-    const timer = setTimeout(() => {
-      client.saveSession({ comments, activeSection, contentHash }).catch(() => {}); // best-effort
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [comments, activeSection, client, contentHash]);
+
+    const suppressed = suppressedAutosaveSnapshot.current;
+    if (suppressed) {
+      suppressedAutosaveSnapshot.current = null;
+      if (
+        comments === suppressed.comments &&
+        activeSection === suppressed.activeSection &&
+        contentHash === suppressed.contentHash
+      ) {
+        return;
+      }
+    }
+
+    autosave.schedule({ comments, activeSection, contentHash });
+  }, [autosave, comments, activeSection, contentHash, doc]);
 
   // Flush session on window unload so closing mid-debounce doesn't drop comments.
   // Note: for PostMessageReviewClient (VS Code webview), postMessage is a synchronous
@@ -50,12 +76,13 @@ export function App({ client }: { client: ReviewClient }) {
   // and the debounced auto-save above covers the common case.
   useEffect(() => {
     const flush = () => {
-      if (contentHash === null) return;
-      client.saveSession({ comments, activeSection, contentHash }).catch(() => {});
+      autosave.flush().catch(() => {});
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
-  }, [client, comments, activeSection, contentHash]);
+  }, [autosave]);
+
+  useEffect(() => () => autosave.cancel(), [autosave]);
 
   useEffect(() => {
     client
@@ -64,6 +91,13 @@ export function App({ client }: { client: ReviewClient }) {
         setDoc(result.document);
         if (result.contentHash) setContentHash(result.contentHash);
         if (result.restoredSession) {
+          if (result.restoredSession.stale && result.contentHash) {
+            suppressedAutosaveSnapshot.current = {
+              comments: result.restoredSession.comments,
+              activeSection: result.restoredSession.activeSection,
+              contentHash: result.contentHash,
+            };
+          }
           setComments(result.restoredSession.comments);
           setActiveSection(result.restoredSession.activeSection);
           if (result.restoredSession.stale) setStaleBanner(true);

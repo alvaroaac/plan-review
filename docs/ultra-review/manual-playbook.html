@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ultra-review — manual demo playbook</title>
+<style>
+  :root {
+    --bg-0: #0a0a0f;
+    --bg-card: rgba(255,255,255,0.04);
+    --bg-code: rgba(0,0,0,0.45);
+    --border: rgba(255,255,255,0.08);
+    --border-strong: rgba(255,255,255,0.14);
+    --text-0: #f5f5fa;
+    --text-1: #b8b8c8;
+    --text-2: #6e6e80;
+    --accent: #7c5cff;
+    --accent-2: #5cffd8;
+    --accent-warn: #ffb86c;
+    --kbd-bg: rgba(255,255,255,0.06);
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background:
+      radial-gradient(900px 700px at 85% -10%, rgba(124,92,255,0.20), transparent 60%),
+      radial-gradient(1000px 800px at -10% 110%, rgba(92,255,216,0.10), transparent 60%),
+      var(--bg-0);
+    color: var(--text-0);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 1.55;
+  }
+  .layout {
+    display: grid;
+    grid-template-columns: 240px 1fr;
+    gap: 32px;
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 40px 24px 80px;
+  }
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    .toc { position: static !important; max-height: none !important; }
+  }
+  .toc {
+    position: sticky;
+    top: 24px;
+    align-self: start;
+    max-height: calc(100vh - 48px);
+    overflow-y: auto;
+    padding: 20px 18px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+  }
+  .toc h2 {
+    margin: 0 0 12px;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+  .toc ol {
+    margin: 0;
+    padding-left: 18px;
+    color: var(--text-1);
+    font-size: 13.5px;
+  }
+  .toc ol li { margin-bottom: 8px; }
+  .toc a { color: inherit; text-decoration: none; }
+  .toc a:hover { color: var(--accent-2); }
+  header {
+    margin-bottom: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  .title {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.14em;
+    color: var(--text-2);
+    margin: 0 0 6px;
+  }
+  h1 {
+    margin: 0;
+    font-size: 28px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    background: linear-gradient(135deg, var(--text-0) 0%, var(--accent) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .pill {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: var(--kbd-bg);
+    border: 1px solid var(--border-strong);
+    color: var(--text-1);
+  }
+  .pill.accent {
+    border-color: var(--accent);
+    color: var(--accent-2);
+  }
+  .pill.warn {
+    border-color: var(--accent-warn);
+    color: var(--accent-warn);
+  }
+  .card {
+    background: var(--bg-card);
+    backdrop-filter: blur(20px) saturate(140%);
+    -webkit-backdrop-filter: blur(20px) saturate(140%);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 24px;
+    margin-bottom: 20px;
+    position: relative;
+  }
+  .card h2 {
+    margin: 0 0 10px;
+    font-size: 18px;
+    font-weight: 600;
+    letter-spacing: -0.005em;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  .step-num {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent);
+  }
+  .card h3 {
+    margin: 18px 0 8px;
+    font-size: 13px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--text-2);
+    font-weight: 600;
+  }
+  p { margin: 0 0 12px; color: var(--text-1); }
+  p:last-child { margin-bottom: 0; }
+  code, .mono {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--text-0);
+  }
+  p code, li code {
+    background: var(--kbd-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    font-size: 12.5px;
+  }
+  ul, ol { color: var(--text-1); padding-left: 20px; margin: 0 0 12px; }
+  ul li, ol li { margin-bottom: 4px; }
+  strong { color: var(--text-0); }
+  .prompt-wrap {
+    position: relative;
+    margin-top: 12px;
+  }
+  .prompt-block {
+    padding: 16px 18px;
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.6;
+    color: var(--text-0);
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+  }
+  .copy-btn {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    font: inherit;
+    font-size: 12px;
+    color: var(--text-1);
+    background: rgba(0,0,0,0.55);
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    padding: 5px 10px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    z-index: 1;
+  }
+  .copy-btn:hover { background: rgba(255,255,255,0.10); color: var(--text-0); }
+  .copy-btn.copied { color: var(--accent-2); border-color: var(--accent-2); }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    background: rgba(0,0,0,0.45);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 1px 5px;
+  }
+  .tree {
+    padding: 14px 16px;
+    background: var(--bg-code);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    line-height: 1.7;
+    color: var(--text-0);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  .meta-row {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 8px 0 12px;
+    font-size: 13.5px;
+  }
+  th, td {
+    text-align: left;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-1);
+  }
+  th { color: var(--text-0); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  td code { font-size: 12px; }
+  footer {
+    margin-top: 32px;
+    color: var(--text-2);
+    font-size: 12px;
+    text-align: center;
+  }
+  .callout {
+    margin: 12px 0;
+    padding: 12px 14px;
+    background: rgba(255,184,108,0.08);
+    border: 1px solid rgba(255,184,108,0.25);
+    border-radius: 10px;
+    color: var(--text-1);
+    font-size: 13.5px;
+  }
+  .callout strong { color: var(--accent-warn); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="toc">
+    <h2>Playbook</h2>
+    <ol>
+      <li><a href="#overview">Overview</a></li>
+      <li><a href="#dirlayout">Scratch dir</a></li>
+      <li><a href="#step1">Step 1 — Triage</a></li>
+      <li><a href="#step2">Step 2 — Reviewers ×N</a></li>
+      <li><a href="#step3">Step 3 — QA roast ×N</a></li>
+      <li><a href="#step4">Step 4 — Senior merge</a></li>
+      <li><a href="#step5">Step 5 — Final QA</a></li>
+      <li><a href="#step6">Step 6 — Format</a></li>
+      <li><a href="#tips">Practical notes</a></li>
+    </ol>
+  </aside>
+
+  <main>
+    <header>
+      <div>
+        <p class="title">manual demo playbook · §18e</p>
+        <h1>ultra-review — human-as-orchestrator</h1>
+      </div>
+      <div class="meta-row">
+        <span class="pill">main · 6545571</span>
+        <span class="pill accent">6 sessions</span>
+        <span class="pill warn">paste &amp; go</span>
+      </div>
+    </header>
+
+    <section id="overview" class="card">
+      <h2><span class="step-num">§</span> Architecture in one line</h2>
+      <p>
+        <strong>Separate Claude Code sessions, file-based handoff.</strong> Not Task subagents in one orchestrator window.
+        Each session reads only what it needs, writes one JSON file, and exits. Reviewer and QA stages run in real parallel terminals.
+      </p>
+      <table>
+        <thead><tr><th>Concern</th><th>Orchestrator + subagents</th><th>Multi-session (this playbook)</th></tr></thead>
+        <tbody>
+          <tr><td>Context bloat</td><td>4 reviewers + 4 QAs + merge ≈ 50–150 KB lives in one window forever</td><td>Each session ≈ diff + scoped files only</td></tr>
+          <tr><td>Parallelism</td><td>Spawns subagents but observed serially</td><td>4 terminals = real wall-clock parallel</td></tr>
+          <tr><td>Failure isolation</td><td>One bad subagent poisons orchestrator</td><td>Re-run one session, others untouched</td></tr>
+          <tr><td>Maps to eventual code</td><td>No — pipeline will be code-orchestrated</td><td>Yes — same on-disk JSON contract</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="dirlayout" class="card">
+      <h2><span class="step-num">📁</span> Scratch directory</h2>
+      <p>One pinned timestamp per run. Everything writes here:</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#tree-block" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="tree-block" class="tree">.ultra-review/manual/2026-05-15T1030/
+├── triage.json           # step 1
+├── diff.patch            # step 1 — `git diff &lt;base&gt;...HEAD` cached for reviewers
+├── reviewer-R1.json      # step 2 (× N reviewers, parallel)
+├── reviewer-R2.json
+├── reviewer-R3.json
+├── reviewer-R4.json
+├── qa-R1.json            # step 3 (× N, parallel)
+├── qa-R2.json
+├── qa-R3.json
+├── qa-R4.json
+├── result.json           # step 4 — matches §18c.1 RunResult schema
+└── qa-final.json         # step 5 — optional polish pass</div>
+      </div>
+      <p>Export the timestamp once and substitute everywhere:</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#ts-block" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="ts-block" class="prompt-block">export TS=$(date -u +%Y-%m-%dT%H%M)
+mkdir -p .ultra-review/manual/$TS</div>
+      </div>
+    </section>
+
+    <section id="step1" class="card">
+      <h2><span class="step-num">Step 1</span> Triage — 1 session</h2>
+      <p>Fresh Claude Code session in the repo. Reads the diff, picks 4 reviewer triples, resolves scoped files per the deterministic slicer rules.</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#p1" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="p1" class="prompt-block">You are the triage stage of ultra-review. Read docs/ultra-review/design-spec.md §4, §5, §13.
+
+The PR I want reviewed: &lt;PR URL or describe branch&gt;.
+
+Do:
+1. `git diff &lt;base&gt;...HEAD &gt; .ultra-review/manual/&lt;ts&gt;/diff.patch` and `git diff --stat`.
+2. Inspect the diff. Pick exactly 4 reviewer triples from the role × depth × slice matrix in §4 that maximise differentiation. Drop slices that don't fit (e.g. docs-only PR drops security).
+3. For each triple, resolve `scopedFiles` deterministically:
+   - feature-area → files in the diff sharing the largest common dir
+   - boundary-changes → files where exported symbols changed
+   - risk-hotspots → files with the most insertions+deletions
+4. Write `.ultra-review/manual/&lt;ts&gt;/triage.json` matching this shape:
+   {
+     "ts": "&lt;ISO timestamp&gt;",
+     "repo": { ...RepoMetadata from §8... },
+     "triples": [ { "id": "R1", "role": "...", "depth": "...", "slice": "...", "scopedFiles": [...] }, ... ],
+     "skipped": [ { "triple": {...}, "reason": "..." } ]
+   }
+
+Print the chosen triples + reasoning, then stop. Do not run the reviewers.</div>
+      </div>
+    </section>
+
+    <section id="step2" class="card">
+      <h2><span class="step-num">Step 2</span> Reviewers — N parallel sessions</h2>
+      <p>Open one fresh terminal per triple. Same prompt, change the reviewer id (<code>R1</code> → <code>R2</code> / <code>R3</code> / <code>R4</code>). They never read each other's output.</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#p2" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="p2" class="prompt-block">You are reviewer R1 of ultra-review. Read docs/ultra-review/design-spec.md §4, §12.2 (reviewer prompt template), §8 (Finding type).
+
+Inputs:
+- `.ultra-review/manual/&lt;ts&gt;/triage.json` — find your triple by id "R1".
+- `.ultra-review/manual/&lt;ts&gt;/diff.patch` — the unified diff.
+- The files listed in your `scopedFiles`. If your depth is "deep", also read immediate dependencies and dependents (one-hop static `import`/`require` graph), capped at sane token budget.
+
+Do:
+1. Review according to your role/depth/slice. Bias your finding categories per your role:
+   - security: auth, injection, secrets, deserialization, supply chain
+   - correctness: off-by-one, error handling, race conditions, type punning
+   - architecture: layering, coupling, naming of boundaries, API contracts
+   - dx-readability: naming, structure, dead code, comment quality
+2. Write `.ultra-review/manual/&lt;ts&gt;/reviewer-R1.json` matching ReviewerOutput from §8:
+   {
+     "reviewerId": "R1",
+     "spec": { ...your full ReviewerSpec... },
+     "findings": [ Finding, Finding, ... ],
+     "notes": "freeform rationale for the senior"
+   }
+
+Each Finding must have: id (F001…), reviewerId, severity, title (≤80c), body (markdown), file, startLine, endLine, suggestion (markdown fenced or null), tags array.
+
+Do not invent findings to pad the review. Zero findings is a valid output.</div>
+      </div>
+      <div class="callout"><strong>Tip:</strong> open all 4 terminals first, paste each, then walk away. Doing one at a time defeats the parallelism.</div>
+    </section>
+
+    <section id="step3" class="card">
+      <h2><span class="step-num">Step 3</span> QA roast — N parallel sessions</h2>
+      <p>Adversarial pass. One session per reviewer output. Goal: break the <em>review</em>, not the code. Run after step 2 finishes; parallel across reviewers.</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#p3" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="p3" class="prompt-block">You are the QA gate for reviewer R1's output. Be adversarial. Your job is to roast this review — find what's wrong with it, not what's wrong with the code.
+
+Inputs:
+- `.ultra-review/manual/&lt;ts&gt;/reviewer-R1.json`
+- `.ultra-review/manual/&lt;ts&gt;/diff.patch`
+- The files cited in R1's findings (read them directly to verify claims).
+
+Check each finding for:
+1. **Factually wrong** — does the code actually do what the finding claims?
+2. **Line numbers wrong** — do startLine/endLine point at the right span?
+3. **Severity inflation** — is a "critical" actually a nit?
+4. **Hallucinated APIs** — does the suggestion reference functions/types that don't exist?
+5. **Scope creep** — does the finding criticise code outside the diff?
+6. **Duplicate of the diff's own intent** — does the finding complain about something the PR is explicitly fixing?
+7. **Missed obvious issues** — given R1's role/depth/slice, what should they have caught and didn't?
+
+Write `.ultra-review/manual/&lt;ts&gt;/qa-R1.json`:
+{
+  "reviewerId": "R1",
+  "verdicts": [
+    { "findingId": "F001", "verdict": "valid" | "refute" | "downgrade" | "rephrase", "reason": "...", "newSeverity": "..." (if downgrade) }
+  ],
+  "missed": [ { "what": "...", "where": "file:line", "severity": "..." } ]
+}</div>
+      </div>
+    </section>
+
+    <section id="step4" class="card">
+      <h2><span class="step-num">Step 4</span> Senior merge — 1 session</h2>
+      <p>Reads everything, dedupes, applies QA verdicts, writes the rich exec summary, picks the verdict tag, emits the final <code>result.json</code> in §18c.1 shape.</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#p4" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="p4" class="prompt-block">You are the senior synthesis stage of ultra-review. Read docs/ultra-review/design-spec.md §12.3 (senior prompt template), §8 (SeniorSynthesis, RunResult), §18c.1 (RunResult JSON template).
+
+Inputs:
+- `.ultra-review/manual/&lt;ts&gt;/triage.json`
+- `.ultra-review/manual/&lt;ts&gt;/reviewer-R*.json` (all of them)
+- `.ultra-review/manual/&lt;ts&gt;/qa-R*.json` (all of them)
+- `.ultra-review/manual/&lt;ts&gt;/diff.patch`
+
+Do:
+1. Apply QA verdicts: drop refuted findings (set `refutedBy`), apply severity downgrades, rephrase where requested.
+2. Dedupe: when ≥2 reviewers raised the same finding, keep one, set `agreedWith` to the other reviewer IDs.
+3. Merge in any "missed" findings from QA only if they're concrete (file:line cited) and the QA gate is confident.
+4. Sort findings by severity (critical → major → minor → nit), stable within severity.
+5. Write an executive summary in markdown. Rich, not perfunctory:
+   - 1–2 sentence headline of what the PR is doing
+   - The top 2–3 findings called out with their gist
+   - Net verdict in plain English
+   - Counts by severity
+6. Pick a verdict tag: `block` | `request-changes` | `approve-with-nits` | `approve`.
+7. Write `.ultra-review/manual/&lt;ts&gt;/result.json` matching the populated example in §18c.1 exactly. Include:
+   - `repo` and `meta` (from triage.json + your timing — set finishedAt = now)
+   - `synthesis` with findings, summary, verdict
+   - `reviewers` with each reviewer's full spec + their original (pre-dedupe) findings preserved for debugging
+   - `synthesis.htmlFragments` is optional — skip it for the manual demo, the formatter will fall back to defaults
+
+Validate the JSON parses cleanly before exiting.</div>
+      </div>
+    </section>
+
+    <section id="step5" class="card">
+      <h2><span class="step-num">Step 5</span> Final QA — 1 session, optional</h2>
+      <p>One last adversarial pass on the synthesised report itself.</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#p5" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="p5" class="prompt-block">You are the final QA gate. Read .ultra-review/manual/&lt;ts&gt;/result.json and roast the synthesis itself.
+
+Check:
+- Does the executive summary actually match the findings? (No "approves" when there's a critical, no "blocks" when there are only nits.)
+- Are deduped findings genuinely the same? (No false-merge of distinct issues.)
+- Is the verdict tag calibrated against the severity counts?
+- Any finding whose `refutedBy` reason is weak — should it come back?
+- Is the summary rich enough to stand alone, or does it read like filler?
+
+Write `.ultra-review/manual/&lt;ts&gt;/qa-final.json`:
+{
+  "verdict": "ship" | "revise",
+  "issues": [ { "what": "...", "fix": "..." } ],
+  "summaryFeedback": "..."
+}
+
+If verdict is "revise", re-open the merge session, apply the fixes, write a new result.json.</div>
+      </div>
+    </section>
+
+    <section id="step6" class="card">
+      <h2><span class="step-num">Step 6</span> Format</h2>
+      <p>Once Plan 2 ships:</p>
+      <div class="prompt-wrap">
+        <button class="copy-btn" data-copy-target="#p6" aria-label="Copy">Copy <span class="kbd">⌘C</span></button>
+<div id="p6" class="prompt-block">ultra-review format .ultra-review/manual/&lt;ts&gt;/result.json --out .ultra-review/manual/&lt;ts&gt;/report.html</div>
+      </div>
+      <p>Until then, paste <code>result.json</code> into a Claude session with the §11 V4 Glass HTML template inlined and have it render the report by hand.</p>
+    </section>
+
+    <section id="tips" class="card">
+      <h2><span class="step-num">⚙</span> Practical notes</h2>
+      <ul>
+        <li><strong>Open all 4 reviewer terminals before pasting anything.</strong> Pasting serially defeats the parallelism.</li>
+        <li><strong>Use <code>cd</code> worktrees, not separate clones</strong> — same <code>.git</code> dir, separate working trees. <code>git worktree add ../ultra-review-r1 HEAD</code>. Or just <code>cd</code> four terminals into the same repo — only the reviewer sessions read files, they don't write outside the scratch dir.</li>
+        <li><strong>Pin one timestamp.</strong> <code>export TS=$(date -u +%Y-%m-%dT%H%M)</code> and substitute in every prompt.</li>
+        <li><strong>Skip step 3 (QA roast) on the first run</strong> to baseline what the reviewers tend to hallucinate. Add it back once you've calibrated.</li>
+        <li><strong>Skip step 5 (final QA) for short PRs.</strong> Under ~200 LOC the diminishing returns aren't worth the round trip.</li>
+      </ul>
+    </section>
+
+    <footer>
+      spec: docs/ultra-review/design-spec.md · §18e
+    </footer>
+  </main>
+</div>
+
+<script>
+(() => {
+  document.addEventListener('click', async (e) => {
+    const btn = e.target.closest('[data-copy-target]');
+    if (!btn) return;
+    const sel = btn.getAttribute('data-copy-target');
+    const node = sel && document.querySelector(sel);
+    if (!node) return;
+    try {
+      await navigator.clipboard.writeText(node.innerText.trim());
+      btn.classList.add('copied');
+      const orig = btn.firstChild;
+      const prevText = orig.nodeValue;
+      orig.nodeValue = 'Copied ';
+      setTimeout(() => {
+        btn.classList.remove('copied');
+        orig.nodeValue = prevText;
+      }, 1400);
+    } catch (err) {
+      console.error('clipboard write failed', err);
+    }
+  });
+})();
+</script>
+</body>
+</html>

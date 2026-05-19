@@ -2,13 +2,14 @@
 set -euo pipefail
 
 # Build all packages in dependency order:
-#   core → browser-app → cli → vscode-extension
+#   core → react → browser-app → cli → vscode-extension
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
 
 packages=(
   "@plan-review/core"
+  "@plan-review/react"
   "@plan-review/browser-app"
   "plan-review"
   "plan-review-vscode"

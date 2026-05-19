@@ -51,10 +51,10 @@ Tech-debt list (kept in the repo's `TECH_DEBT.md`):
 
 ## 3. Distribution Model
 
-Ultra-review ships through **two complementary channels** — they are not redundant, they coexist:
+Ultra-review's source lives inside the host repo at **`plugins/ultra-review/`** (relative to the host repo root). All scaffolding — `package.json`, `tsconfig.json`, `packages/`, `.claude-plugin/`, `commands/`, `skills/` — is rooted there. The project ships through **two complementary channels** from that source tree:
 
-1. **`ultra-review` CLI on npm.** The actual review engine. Built via esbuild into a single ESM file with shebang, published to the npm registry. Installable with `npm install -g ultra-review`. This is what does the work — `git` introspection, agent fan-out, HTML rendering. Usable on its own from any terminal, no Claude Code required.
-2. **Claude Code plugin on GitHub** (`alvaroaac/ultra-review` repo). A thin wrapper: `.claude-plugin/plugin.json` + a custom slash command (`commands/ultra-review.md`) + a skill (`skills/ultra-review/SKILL.md`). The slash command and skill shell out to the `ultra-review` binary on `$PATH`, falling back to a local dev build at `~/desenv/personal/ultra-review/` if not installed globally. Installed via Claude Code's plugin manager from the GitHub repo into `~/.claude/plugins/ultra-review/`.
+1. **`ultra-review` CLI on npm.** The actual review engine. Built via esbuild into a single ESM file with shebang, published to the npm registry from `plugins/ultra-review/packages/cli/`. Installable with `npm install -g ultra-review`. This is what does the work — `git` introspection, agent fan-out, HTML rendering. Usable on its own from any terminal, no Claude Code required.
+2. **Claude Code plugin.** A thin wrapper: `.claude-plugin/plugin.json` + a custom slash command (`commands/ultra-review.md`) + a skill (`skills/ultra-review/SKILL.md`) at the `plugins/ultra-review/` root. The slash command and skill shell out to the `ultra-review` binary on `$PATH`, falling back to a local dev build at `plugins/ultra-review/packages/cli/dist/index.js` if not installed globally. Can be installed by Claude Code's plugin manager either by pointing at the host repo + subpath, or by extracting `plugins/ultra-review/` as its own repo for standalone distribution.
 
 The CLI is the canonical artifact. The plugin is a convenience layer that lets `/ultra-review` inside Claude Code invoke the same binary a terminal user would invoke directly.
 
@@ -1494,7 +1494,7 @@ Plan 1 (Foundation) ───►├─► Plan 3 (Track B) ─├──► Plan 
 
 | # | Plan | Scope | Inputs | Outputs (the convergence contract) |
 |---|---|---|---|---|
-| **1** | **Foundation** | Monorepo scaffold + `@ultra-review/core` types + fixture `RunResult` JSON. Everything in §18b milestones 1–2. | Empty `~/desenv/personal/ultra-review/` directory. | `packages/core/dist/` published locally with all types from §8 exported; `fixtures/sample-result.json` matches §18c.1; root `package.json`, `tsconfig.json`, `build.sh`, `publish-cli.sh` all in place per §7. |
+| **1** | **Foundation** | Monorepo scaffold + `@ultra-review/core` types + fixture `RunResult` JSON. Everything in §18b milestones 1–2. All scaffolding rooted at `plugins/ultra-review/` (relative to the host repo). | Empty `plugins/ultra-review/` directory (created by this plan if not present). | `plugins/ultra-review/packages/core/dist/` built locally with all types from §8 exported; `plugins/ultra-review/fixtures/sample-result.json` matches §18c.1; `plugins/ultra-review/package.json`, `tsconfig.json`, `build.sh`, `publish-cli.sh` all in place per §7. |
 | **2** | **Track A — Formatter** | `@ultra-review/report-template`, `ultra-review format` subcommand, markdown-digest emitter, snapshot tests. §18c Track A acceptance. | Plan 1 outputs (core types + fixture). | A CLI binary in `packages/cli/dist/index.js` whose `format` subcommand renders `fixtures/sample-result.json` to a styled HTML report + markdown digest. |
 | **3** | **Track B — Context** | `@ultra-review/context` (git introspection, diff, deterministic slicer, bundle assembly). | Plan 1 outputs. | `@ultra-review/context` exports `assembleContextBundle(spec, repo) → ContextBundle` matching §8 type. Unit tests with fixture repos. |
 | **4** | **Track C — Agents + Orchestrator-stub** | `@ultra-review/prompts`, `@ultra-review/agents` wrappers (with mocked Anthropic client), `@ultra-review/orchestrator` scaffolding that accepts a *mocked* `ContextBundle` factory. | Plan 1 outputs. | `@ultra-review/agents` exports `runTriage`, `runReviewer`, `runSenior`, `runFormatter` (signatures match §14). `@ultra-review/orchestrator` exports `runPipeline(opts) → RunResult` that works with a mock context source. Tests pass against canned fixtures. |
@@ -1506,7 +1506,9 @@ These rules let the three parallel plans run without stepping on each other:
 
 1. **Each plan owns exactly the packages listed in §18d.1.** No plan modifies files outside its owned package, except: all plans may *read* `@ultra-review/core`. No plan modifies `@ultra-review/core` after Plan 1 ships — if a type change is needed, surface it to the merge plan, do not patch in flight.
 2. **No cross-track imports.** Track A's `report-template` must not import from `context` or `orchestrator`. Track B's `context` must not import from `agents` or `report-template`. Track C's `agents`/`orchestrator` must not import from `report-template` or `context` directly — orchestrator consumes a `ContextBundleFactory` interface that's mocked locally until Plan 5 swaps it for the real one.
-3. **Each plan runs in its own git worktree.** Branch naming: `track/foundation`, `track/a-formatter`, `track/b-context`, `track/c-agents`, `merge/convergence`. Worktrees: `~/desenv/personal/ultra-review-{a,b,c,merge}/`.
+3. **Parallel execution isolation.** Each parallel plan (2/3/4) runs in its own Claude Code session. Two acceptable isolation modes — pick whichever fits the host repo:
+   - **Git worktrees** (preferred when the host repo is git-tracked): `git worktree add ../<host-repo>-track-a HEAD` etc., one worktree per track, branch names `track/a-formatter`, `track/b-context`, `track/c-agents`.
+   - **Same working tree, disjoint packages** (acceptable since §18d.2 rule 1 guarantees each plan only touches its own package subdir). Parallel sessions edit `plugins/ultra-review/packages/{report-template,context,agents,orchestrator}/` independently. The only shared file is `plugins/ultra-review/package.json` workspace deps — coordinate with `git stash` or hand-merge if both add workspaces simultaneously.
 4. **Each plan ships its own `CHANGELOG-TRACK.md`** at the track's package root listing files touched and any decisions worth surfacing to the merge plan. The merge plan reads all three before integration.
 5. **Each plan's tests must pass in isolation** with no dependency on the other tracks' real implementations. Mocks/stubs are explicitly allowed and expected.
 
@@ -1531,20 +1533,15 @@ The merge plan is its own discrete plan, not an afterthought. It owns:
 
 ### 18d.5 Handoff to `writing-plans`
 
-When invoking `writing-plans`, do so **five times**, each invocation scoped to one plan. Recommended prompt skeleton per invocation:
+When invoking `writing-plans`, do so **five times**, each invocation scoped to one plan. The five paste-ready prompts live in `plan-prompts.html` alongside this spec. Each prompt:
 
-```
-Read docs/superpowers/specs/2026-05-14-ultra-review-design.md.
-Produce the implementation plan for §18d Plan <N> ("<name>") only.
-Inputs: <from §18d.1 row N>.
-Outputs (the convergence contract this plan must satisfy):
-<from §18d.1 row N>.
-Constraints: obey §18d.2 isolation rules. Do not touch files outside
-the packages owned by this plan. Tests must pass with the other tracks
-mocked or absent.
-```
+- references this spec by relative path (`design-spec.md`),
+- pins target scaffolding location to `plugins/ultra-review/` (relative to the host repo root where the Claude Code session is opened),
+- writes the resulting plan to `plans/0<N>-<slug>.md` (relative to this folder),
+- pulls inputs/outputs verbatim from the §18d.1 row for that plan,
+- repeats the §18d.2 isolation rules as constraints.
 
-The resulting five plan documents live under `docs/superpowers/plans/ultra-review/0{1..5}-<slug>.md` for clarity.
+The resulting five plan documents land under `plans/0{1..5}-<slug>.md` alongside this spec, so the entire artefact bundle (spec + plans) stays in one folder that can be zipped, transferred, and unzipped wholesale.
 
 ---
 

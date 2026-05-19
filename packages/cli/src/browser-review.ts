@@ -1,7 +1,13 @@
 import { spawnSync } from 'node:child_process';
 import { dirname as dirnamePath } from 'node:path';
-import type { PlanDocument } from '@plan-review/core';
-import { saveSession } from '@plan-review/core';
+import {
+  DEFAULT_SESSION_DIR,
+  FileSessionStore,
+  type PlanDocument,
+  type ReviewComment,
+  type SessionData,
+  type SessionStore,
+} from '@plan-review/core';
 import { HttpTransport } from './transport.js';
 import type { ReviewSubmission } from './transport.js';
 
@@ -14,6 +20,7 @@ export interface BrowserReviewOptions {
 
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes — overall ceiling
 const HEARTBEAT_TIMEOUT_MS = 30 * 1000; // 30s without a heartbeat while visible = browser gone
+const sessionStore = new FileSessionStore({ dir: DEFAULT_SESSION_DIR });
 
 // Boot an HttpTransport, open the URL in the user's default browser, and
 // resolve with the reviewed comments when the browser posts them. Rejects if
@@ -29,7 +36,7 @@ export async function runBrowserReview(
 
   if (absPath) {
     transport.onSessionSave((comments, activeSection) => {
-      saveSession(absPath, contentHash, comments, activeSection);
+      return saveReviewSession(sessionStore, absPath, contentHash, comments, activeSection);
     });
   }
 
@@ -83,4 +90,22 @@ export async function runBrowserReview(
   } finally {
     await transport.stop();
   }
+}
+
+async function saveReviewSession(
+  store: SessionStore,
+  planPath: string,
+  contentHash: string,
+  comments: ReviewComment[],
+  activeSection: string | null,
+): Promise<void> {
+  const data: SessionData = {
+    version: 1,
+    planPath,
+    contentHash,
+    comments,
+    activeSection,
+    lastModified: new Date().toISOString(),
+  };
+  await store.save(planPath, data);
 }

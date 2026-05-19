@@ -81,6 +81,90 @@ describe('App', () => {
     expect(screen.getByText('Comments (2)')).toBeTruthy();
   });
 
+  it('does not save stale restored comments during initial hydration', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const saves: unknown[] = [];
+      const client: ReviewClient = {
+        loadDocument: async () => ({
+          document: mockPlanDoc,
+          contentHash: 'hash-new',
+          restoredSession: {
+            comments: [
+              { sectionId: '1.1', text: 'stale restored comment', timestamp: new Date('2026-04-15') },
+            ],
+            activeSection: '1.1',
+            stale: true,
+          },
+        }),
+        saveSession: async (session) => { saves.push(session); },
+        submitReview: async () => ({ ok: true }),
+      };
+
+      render(<App client={client} />);
+
+      await waitFor(() => expect(screen.getByText('stale restored comment')).toBeTruthy());
+      expect(screen.getByText(/comments may no longer match/i)).toBeTruthy();
+
+      await vi.advanceTimersByTimeAsync(600);
+      window.dispatchEvent(new Event('beforeunload'));
+      await Promise.resolve();
+
+      expect(saves).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('autosaves the first user comment after stale restored hydration', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const saves: Array<{
+        comments: Array<{ text: string }>;
+        contentHash: string;
+      }> = [];
+      const client: ReviewClient = {
+        loadDocument: async () => ({
+          document: mockPlanDoc,
+          contentHash: 'hash-new',
+          restoredSession: {
+            comments: [
+              { sectionId: '1.1', text: 'stale restored comment', timestamp: new Date('2026-04-15') },
+            ],
+            activeSection: '1.1',
+            stale: true,
+          },
+        }),
+        saveSession: async (session) => { saves.push(session); },
+        submitReview: async () => ({ ok: true }),
+      };
+
+      render(<App client={client} />);
+
+      await waitFor(() => expect(screen.getByText('stale restored comment')).toBeTruthy());
+
+      const links = screen.getAllByText('Add comment to entire section');
+      fireEvent.click(links[0]);
+      const textarea = screen.getByPlaceholderText('Add a comment...');
+      fireEvent.input(textarea, { target: { value: 'first real edit' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(screen.getByText('first real edit')).toBeTruthy());
+
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(saves).toHaveLength(1);
+      expect(saves[0].contentHash).toBe('hash-new');
+      expect(saves[0].comments.map((comment) => comment.text)).toEqual([
+        'stale restored comment',
+        'first real edit',
+      ]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps submit button enabled when no comments so reviewers can approve', async () => {
     const client = new FakeReviewClient({ document: mockPlanDoc });
     render(<App client={client} />);
@@ -294,6 +378,66 @@ describe('App', () => {
     expect(lastSave.comments).toHaveLength(1);
     expect(lastSave.comments[0].text).toBe('Test auto-save');
     expect(lastSave.contentHash).toBe('hash-abc');
+  });
+
+  it('flushes the pending debounced save on beforeunload', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-abc' });
+
+      render(<App client={client} />);
+      await waitFor(() => screen.getByText('Test Plan'));
+
+      const links = screen.getAllByText('Add comment to entire section');
+      fireEvent.click(links[0]);
+      const textarea = screen.getByPlaceholderText('Add a comment...');
+      fireEvent.input(textarea, { target: { value: 'Flush me' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(screen.getByText('Flush me')).toBeTruthy());
+
+      expect(client.sessionSaves).toHaveLength(0);
+      window.dispatchEvent(new Event('beforeunload'));
+      await Promise.resolve();
+
+      expect(client.sessionSaves).toHaveLength(1);
+      expect(client.sessionSaves[0]).toMatchObject({ contentHash: 'hash-abc' });
+      expect(client.sessionSaves[0].comments[0].text).toBe('Flush me');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('swallows autosave failures without scheduling an async rethrow', async () => {
+    vi.useFakeTimers();
+
+    try {
+      let saveAttempts = 0;
+      const client: ReviewClient = {
+        loadDocument: async () => ({ document: mockPlanDoc, contentHash: 'hash-abc' }),
+        saveSession: async () => {
+          saveAttempts += 1;
+          throw new Error('autosave failed');
+        },
+        submitReview: async () => ({ ok: true }),
+      };
+
+      render(<App client={client} />);
+      await waitFor(() => screen.getByText('Test Plan'));
+
+      const links = screen.getAllByText('Add comment to entire section');
+      fireEvent.click(links[0]);
+      const textarea = screen.getByPlaceholderText('Add a comment...');
+      fireEvent.input(textarea, { target: { value: 'Best effort' } });
+      fireEvent.click(screen.getByText('Add'));
+      await waitFor(() => expect(screen.getByText('Best effort')).toBeTruthy());
+
+      await vi.advanceTimersByTimeAsync(600);
+
+      expect(saveAttempts).toBe(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   function fireMessage(data: unknown) {

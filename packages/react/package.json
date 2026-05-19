@@ -1,5 +1,5 @@
 {
-  "name": "@plan-review/core",
+  "name": "@plan-review/react",
   "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
@@ -8,11 +8,7 @@
     "dist"
   ],
   "exports": {
-    ".": "./dist/index.js",
-    "./autosave": {
-      "types": "./dist/autosave.d.ts",
-      "default": "./dist/autosave.js"
-    }
+    ".": "./dist/index.js"
   },
   "publishConfig": {
     "access": "public"
@@ -20,13 +16,20 @@
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "marked": "^15.0.12"
+    "@plan-review/core": "^0.1.0"
+  },
+  "peerDependencies": {
+    "react": ">=18"
   },
   "devDependencies": {
-    "@types/node": "^25.6.0",
+    "@testing-library/react": "^16.0.0",
+    "@types/react": "^18.0.0",
+    "jsdom": "^29.0.2",
+    "react": "^18.0.0",
+    "react-dom": "^18.0.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"
   }
