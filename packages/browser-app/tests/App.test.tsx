@@ -297,6 +297,43 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByText(/Review submitted/)).toBeTruthy());
   });
 
+  it('shows a copyable review recovery screen when submit fails', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      configurable: true,
+      value: { writeText },
+    });
+    const client: ReviewClient = {
+      loadDocument: async () => ({ document: mockPlanDoc }),
+      saveSession: async () => {},
+      submitReview: async () => {
+        throw new Error('submit failed');
+      },
+    };
+
+    render(<App client={client} />);
+    await waitFor(() => screen.getByText('Test Plan'));
+
+    await addSectionComment(0, 'Do not lose this');
+
+    fireEvent.click(screen.getByText(/Submit Review/i));
+    fireEvent.click(screen.getByLabelText(/Approve/i));
+    fireEvent.click(screen.getByText('Submit'));
+
+    await waitFor(() => expect(screen.getByText('Submit failed')).toBeTruthy());
+    expect(screen.getByText('Copy the review and paste it into your agent session.')).toBeTruthy();
+    expect(screen.queryByText(/Submit Review/i)).toBeNull();
+    expect(screen.queryByText(/^Error:/)).toBeNull();
+
+    const reviewText = (screen.getByDisplayValue(/Do not lose this/) as HTMLTextAreaElement).value;
+    expect(reviewText).toContain('# Plan Review: Test Plan');
+    expect(reviewText).toContain('Do not lose this');
+
+    fireEvent.click(screen.getByText('Copy review to clipboard'));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(reviewText));
+    expect(screen.getByText('Copied')).toBeTruthy();
+  });
+
   // ── Gap 4: Navigation + active section sync ────────────────────────────────
 
   it('clicking TOC item marks the correct SectionView as active', async () => {

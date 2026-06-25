@@ -365,6 +365,57 @@ section.footnotes a[data-footnote-backref]:hover { text-decoration: underline; }
 .loading { color: var(--text-secondary); }
 .submitted { color: var(--success); }
 
+.submit-failure {
+  min-height: 100vh;
+  padding: 32px 20px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  overflow: auto;
+}
+
+.submit-failure-inner {
+  width: min(960px, 100%);
+  margin: 0 auto;
+}
+
+.submit-failure h1 {
+  margin-bottom: 8px;
+  font-size: 24px;
+}
+
+.submit-failure p {
+  margin-bottom: 16px;
+  color: var(--text-secondary);
+}
+
+.submit-failure-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.copy-status {
+  font-size: 14px;
+}
+
+.copy-status.success { color: var(--success); }
+.copy-status.error { color: var(--danger); }
+
+.submit-failure-review {
+  width: 100%;
+  min-height: 60vh;
+  padding: 14px;
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
 /* ── Line block gutter ──────────────────────────────────── */
 
 .line-block {

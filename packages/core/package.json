@@ -9,6 +9,10 @@
   ],
   "exports": {
     ".": "./dist/index.js",
+    "./formatter": {
+      "types": "./dist/formatter.d.ts",
+      "default": "./dist/formatter.js"
+    },
     "./autosave": {
       "types": "./dist/autosave.d.ts",
       "default": "./dist/autosave.js"

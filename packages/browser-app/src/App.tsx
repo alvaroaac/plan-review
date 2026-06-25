@@ -6,6 +6,7 @@ import type {
   ReviewClient,
   ReviewVerdict,
 } from '@plan-review/core';
+import { formatReview } from '@plan-review/core/formatter';
 import { createAutosave, type Autosave } from '@plan-review/core/autosave';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
@@ -25,6 +26,10 @@ type AutosaveSnapshot = {
   contentHash: string;
 };
 
+type SubmitFailure = {
+  reviewText: string;
+};
+
 export function App({ client }: { client: ReviewClient }) {
   const [doc, setDoc] = useState<PlanDocument | null>(null);
   const [comments, setComments] = useState<ReviewComment[]>([]);
@@ -32,6 +37,7 @@ export function App({ client }: { client: ReviewClient }) {
   const [commentingTarget, setCommentingTarget] = useState<CommentingTarget | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitFailure, setSubmitFailure] = useState<SubmitFailure | null>(null);
   const [staleBanner, setStaleBanner] = useState(false);
   const [contentHash, setContentHash] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
@@ -140,7 +146,7 @@ export function App({ client }: { client: ReviewClient }) {
   // - On beforeunload, sendBeacon('/api/cancel') so the server exits quickly on a clean tab close.
   // After submit, all of this is disabled — the server is already shutting down.
   useEffect(() => {
-    if (submitted) return;
+    if (submitted || submitFailure) return;
 
     const post = (path: string): void => {
       // Defensive against test envs where `fetch` may return undefined.
@@ -175,7 +181,7 @@ export function App({ client }: { client: ReviewClient }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
-  }, [submitted]);
+  }, [submitted, submitFailure]);
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);
@@ -200,7 +206,13 @@ export function App({ client }: { client: ReviewClient }) {
       await client.submitReview({ comments, verdict, summary });
       setSubmitted(true);
     } catch {
-      setError('Failed to submit review');
+      if (!doc) {
+        setError('Failed to submit review');
+        return;
+      }
+      setSubmitFailure({
+        reviewText: formatReview({ ...doc, comments }, { verdict, summary }),
+      });
     }
   };
 
@@ -215,6 +227,7 @@ export function App({ client }: { client: ReviewClient }) {
   }
 
   if (submitted) return <div class="submitted">Review submitted. You can close this tab.</div>;
+  if (submitFailure) return <SubmitFailureView reviewText={submitFailure.reviewText} />;
   if (error) return <div class="loading">Error: {error}</div>;
   if (!doc) return <div class="loading">Loading...</div>;
 
@@ -271,6 +284,38 @@ export function App({ client }: { client: ReviewClient }) {
           onDelete={deleteComment}
           onCancelComment={() => setCommentingTarget(null)}
         />
+      </div>
+    </div>
+  );
+}
+
+function SubmitFailureView({ reviewText }: { reviewText: string }) {
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const copyReview = async () => {
+    try {
+      await navigator.clipboard.writeText(reviewText);
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('failed');
+    }
+  };
+
+  return (
+    <div class="submit-failure">
+      <div class="submit-failure-inner">
+        <h1>Submit failed</h1>
+        <p>Copy the review and paste it into your agent session.</p>
+        <div class="submit-failure-actions">
+          <button type="button" class="submit-btn" onClick={copyReview}>
+            Copy review to clipboard
+          </button>
+          {copyStatus === 'copied' && <span class="copy-status success">Copied</span>}
+          {copyStatus === 'failed' && (
+            <span class="copy-status error">Could not copy. Select the review below.</span>
+          )}
+        </div>
+        <textarea class="submit-failure-review" readOnly value={reviewText} />
       </div>
     </div>
   );
