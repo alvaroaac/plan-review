@@ -2,7 +2,7 @@ import { defineConfig } from '@playwright/test';
 
 // Visual regression + DOM-level browser tests.
 // Lives alongside vitest — vitest runs `tests/**/*.test.ts`, Playwright runs
-// `tests/visual/**/*.spec.ts`. No overlap.
+// `tests/**/*.spec.ts`. Scripts scope e2e and visual suites separately.
 //
 // These tests boot the real `HttpTransport` in-process (same pattern as
 // tests/browser-integration.test.ts), point a headless Chromium at it, and
@@ -10,7 +10,7 @@ import { defineConfig } from '@playwright/test';
 //
 // Run: `npm run test:visual`.
 export default defineConfig({
-  testDir: './tests/visual',
+  testDir: './tests',
   testMatch: '**/*.spec.ts',
   globalSetup: './tests/visual/global-setup.ts',
   fullyParallel: false,

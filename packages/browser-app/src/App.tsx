@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'preact/hooks';
+import { useState, useEffect, useRef, useMemo } from 'preact/hooks';
 import type {
   PlanDocument,
   ReviewComment,
@@ -6,6 +6,8 @@ import type {
   ReviewClient,
   ReviewVerdict,
 } from '@plan-review/core';
+import { formatReview } from '@plan-review/core/formatter';
+import { createAutosave, type Autosave } from '@plan-review/core/autosave';
 import { TOCPanel } from './TOCPanel.js';
 import { SectionView } from './SectionView.js';
 import { CommentSidebar } from './CommentSidebar.js';
@@ -18,6 +20,16 @@ interface CommentingTarget {
   anchor?: LineAnchor;
 }
 
+type AutosaveSnapshot = {
+  comments: ReviewComment[];
+  activeSection: string | null;
+  contentHash: string;
+};
+
+type SubmitFailure = {
+  reviewText: string;
+};
+
 export function App({ client }: { client: ReviewClient }) {
   const [doc, setDoc] = useState<PlanDocument | null>(null);
   const [comments, setComments] = useState<ReviewComment[]>([]);
@@ -25,22 +37,43 @@ export function App({ client }: { client: ReviewClient }) {
   const [commentingTarget, setCommentingTarget] = useState<CommentingTarget | null>(null);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [submitFailure, setSubmitFailure] = useState<SubmitFailure | null>(null);
   const [staleBanner, setStaleBanner] = useState(false);
   const [contentHash, setContentHash] = useState<string | null>(null);
   const initialLoadDone = useRef(false);
+  const suppressedAutosaveSnapshot = useRef<AutosaveSnapshot | null>(null);
+  const autosave = useMemo<Autosave<AutosaveSnapshot>>(
+    () => createAutosave({
+      delayMs: 500,
+      save: (snapshot) => client.saveSession(snapshot),
+      onError: () => {},
+    }),
+    [client],
+  );
 
   // Auto-save session on comment change
   useEffect(() => {
     if (!initialLoadDone.current) {
-      initialLoadDone.current = comments.length > 0 || doc !== null;
-      if (!initialLoadDone.current) return;
+      if (doc === null) return;
+      initialLoadDone.current = true;
+      return;
     }
     if (contentHash === null) return;
-    const timer = setTimeout(() => {
-      client.saveSession({ comments, activeSection, contentHash }).catch(() => {}); // best-effort
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [comments, activeSection, client, contentHash]);
+
+    const suppressed = suppressedAutosaveSnapshot.current;
+    if (suppressed) {
+      suppressedAutosaveSnapshot.current = null;
+      if (
+        comments === suppressed.comments &&
+        activeSection === suppressed.activeSection &&
+        contentHash === suppressed.contentHash
+      ) {
+        return;
+      }
+    }
+
+    autosave.schedule({ comments, activeSection, contentHash });
+  }, [autosave, comments, activeSection, contentHash, doc]);
 
   // Flush session on window unload so closing mid-debounce doesn't drop comments.
   // Note: for PostMessageReviewClient (VS Code webview), postMessage is a synchronous
@@ -50,12 +83,13 @@ export function App({ client }: { client: ReviewClient }) {
   // and the debounced auto-save above covers the common case.
   useEffect(() => {
     const flush = () => {
-      if (contentHash === null) return;
-      client.saveSession({ comments, activeSection, contentHash }).catch(() => {});
+      autosave.flush().catch(() => {});
     };
     window.addEventListener('beforeunload', flush);
     return () => window.removeEventListener('beforeunload', flush);
-  }, [client, comments, activeSection, contentHash]);
+  }, [autosave]);
+
+  useEffect(() => () => autosave.cancel(), [autosave]);
 
   useEffect(() => {
     client
@@ -64,6 +98,13 @@ export function App({ client }: { client: ReviewClient }) {
         setDoc(result.document);
         if (result.contentHash) setContentHash(result.contentHash);
         if (result.restoredSession) {
+          if (result.restoredSession.stale && result.contentHash) {
+            suppressedAutosaveSnapshot.current = {
+              comments: result.restoredSession.comments,
+              activeSection: result.restoredSession.activeSection,
+              contentHash: result.contentHash,
+            };
+          }
           setComments(result.restoredSession.comments);
           setActiveSection(result.restoredSession.activeSection);
           if (result.restoredSession.stale) setStaleBanner(true);
@@ -106,7 +147,7 @@ export function App({ client }: { client: ReviewClient }) {
   // - On beforeunload, sendBeacon('/api/cancel') so the server exits quickly on a clean tab close.
   // After submit, all of this is disabled — the server is already shutting down.
   useEffect(() => {
-    if (submitted) return;
+    if (submitted || submitFailure) return;
 
     const post = (path: string): void => {
       // Defensive against test envs where `fetch` may return undefined.
@@ -141,7 +182,7 @@ export function App({ client }: { client: ReviewClient }) {
       document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('beforeunload', onBeforeUnload);
     };
-  }, [submitted]);
+  }, [submitted, submitFailure]);
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);
@@ -166,7 +207,13 @@ export function App({ client }: { client: ReviewClient }) {
       await client.submitReview({ comments, verdict, summary });
       setSubmitted(true);
     } catch {
-      setError('Failed to submit review');
+      if (!doc) {
+        setError('Failed to submit review');
+        return;
+      }
+      setSubmitFailure({
+        reviewText: formatReview({ ...doc, comments }, { verdict, summary }),
+      });
     }
   };
 
@@ -181,6 +228,7 @@ export function App({ client }: { client: ReviewClient }) {
   }
 
   if (submitted) return <div class="submitted">Review submitted. You can close this tab.</div>;
+  if (submitFailure) return <SubmitFailureView reviewText={submitFailure.reviewText} />;
   if (error) return <div class="loading">Error: {error}</div>;
   if (!doc) return <div class="loading">Loading...</div>;
 
@@ -237,6 +285,38 @@ export function App({ client }: { client: ReviewClient }) {
           onDelete={deleteComment}
           onCancelComment={() => setCommentingTarget(null)}
         />
+      </div>
+    </div>
+  );
+}
+
+function SubmitFailureView({ reviewText }: { reviewText: string }) {
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copied' | 'failed'>('idle');
+
+  const copyReview = async () => {
+    try {
+      await navigator.clipboard.writeText(reviewText);
+      setCopyStatus('copied');
+    } catch {
+      setCopyStatus('failed');
+    }
+  };
+
+  return (
+    <div class="submit-failure">
+      <div class="submit-failure-inner">
+        <h1>Submit failed</h1>
+        <p>Copy the review and paste it into your agent session.</p>
+        <div class="submit-failure-actions">
+          <button type="button" class="submit-btn" onClick={copyReview}>
+            Copy review to clipboard
+          </button>
+          {copyStatus === 'copied' && <span class="copy-status success">Copied</span>}
+          {copyStatus === 'failed' && (
+            <span class="copy-status error">Could not copy. Select the review below.</span>
+          )}
+        </div>
+        <textarea class="submit-failure-review" readOnly value={reviewText} />
       </div>
     </div>
   );

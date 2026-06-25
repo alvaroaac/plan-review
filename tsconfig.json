@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
+    { "path": "./packages/react" },
     { "path": "./packages/cli" },
     { "path": "./packages/browser-app" },
     { "path": "./packages/vscode-extension" }

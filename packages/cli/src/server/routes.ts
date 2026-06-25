@@ -22,7 +22,7 @@ export interface RouteContext {
   getAssetBaseDir?: () => string | null;
   onSubmit: (submission: ReviewSubmission) => void;
   getAssetHtml: () => string;
-  onSessionSave?: (comments: ReviewComment[], activeSection: string | null) => void;
+  onSessionSave?: (comments: ReviewComment[], activeSection: string | null) => void | Promise<void>;
   onHeartbeat?: () => void;
   onPause?: () => void;
   onCancel?: () => void;
@@ -123,11 +123,13 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
         }
         body += chunk.toString();
       });
-      req.on('end', () => {
+      req.on('end', async () => {
         if (size > MAX_BODY_SIZE) return;
+        let comments: unknown;
+        let activeSection: string | null;
         try {
           const parsed = JSON.parse(body);
-          const comments = parsed.comments;
+          comments = parsed.comments;
           if (!Array.isArray(comments)) {
             res.writeHead(400, { 'Content-Type': 'application/json' });
             res.end(JSON.stringify({ error: 'comments must be an array' }));
@@ -140,13 +142,20 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
               return;
             }
           }
-          const activeSection = typeof parsed.activeSection === 'string' ? parsed.activeSection : null;
-          ctx.onSessionSave?.(comments as ReviewComment[], activeSection);
-          res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ success: true }));
+          activeSection = typeof parsed.activeSection === 'string' ? parsed.activeSection : null;
         } catch {
           res.writeHead(400, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({ error: 'Invalid JSON' }));
+          return;
+        }
+
+        try {
+          await ctx.onSessionSave?.(comments as ReviewComment[], activeSection);
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ success: true }));
+        } catch {
+          res.writeHead(500, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Failed to save session' }));
         }
       });
       return;

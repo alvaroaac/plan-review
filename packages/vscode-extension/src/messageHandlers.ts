@@ -2,11 +2,13 @@ import { readFile } from 'node:fs/promises';
 import {
   parse,
   computeContentHash,
-  loadSession,
-  saveSession as coreSaveSession,
+  DEFAULT_SESSION_DIR,
+  FileSessionStore,
   type PlanDocument,
   type ReviewComment,
   type ReviewVerdict,
+  type SessionData,
+  type SessionStore,
 } from '@plan-review/core';
 
 export interface MessageHandlers {
@@ -31,6 +33,7 @@ export interface MessageHandlers {
 }
 
 export function createMessageHandlers(deps?: {
+  sessionStore?: SessionStore;
   submit?: (args: {
     planFsPath: string;
     document: PlanDocument;
@@ -39,16 +42,34 @@ export function createMessageHandlers(deps?: {
     summary: string;
   }) => Promise<{ submitted: boolean }>;
 }): MessageHandlers {
+  const sessionStore = deps?.sessionStore ?? new FileSessionStore({ dir: DEFAULT_SESSION_DIR });
+
   return {
     async loadDocument({ planFsPath }) {
       const content = await readFile(planFsPath, 'utf-8');
       const document = parse(content);
       const contentHash = computeContentHash(content);
-      const restoredSession = loadSession(planFsPath, contentHash) ?? undefined;
+      const data = await sessionStore.load(planFsPath);
+      const restoredSession = data
+        ? {
+            comments: data.comments,
+            activeSection: data.activeSection,
+            stale: data.contentHash !== contentHash,
+          }
+        : undefined;
       return { document, contentHash, restoredSession };
     },
     async saveSession({ planFsPath, contentHash, comments, activeSection }) {
-      coreSaveSession(planFsPath, contentHash, comments, activeSection);
+      const data: SessionData = {
+        version: 1,
+        planPath: planFsPath,
+        contentHash,
+        comments,
+        activeSection,
+        lastModified: new Date().toISOString(),
+      };
+
+      await sessionStore.save(planFsPath, data);
     },
     async submitReview({ planFsPath, document, comments, verdict, summary }) {
       const result = await deps?.submit?.({ planFsPath, document, comments, verdict, summary });

@@ -5,6 +5,7 @@ dist/
 .DS_Store
 coverage/
 thoughts/
+docs/ultra-review/
 .superpowers/
 .worktrees/
 playwright-report/

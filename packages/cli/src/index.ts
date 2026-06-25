@@ -5,8 +5,21 @@ import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
-import { parse, formatReview, loadSession, saveSession, clearSession, computeContentHash, listSessions, getSessionDir } from '@plan-review/core';
-import type { OutputTarget, PlanDocument, ReviewSubmission } from '@plan-review/core';
+import {
+  parse,
+  formatReview,
+  FileSessionStore,
+  DEFAULT_SESSION_DIR,
+  computeContentHash,
+} from '@plan-review/core';
+import type {
+  OutputTarget,
+  PlanDocument,
+  ReviewComment,
+  ReviewSubmission,
+  SessionData,
+  SessionStore,
+} from '@plan-review/core';
 import { navigate } from './navigator.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
 import { createRequire } from 'node:module';
@@ -17,6 +30,7 @@ const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 
 const program = new Command();
+const sessionStore = new FileSessionStore({ dir: DEFAULT_SESSION_DIR });
 
 program
   .name('plan-review')
@@ -60,9 +74,9 @@ program
 program
   .command('sessions')
   .description('List all saved review sessions')
-  .action(() => {
-    const sessions = listSessions();
-    const dir = getSessionDir();
+  .action(async () => {
+    const sessions = await listReviewSessions(sessionStore);
+    const dir = DEFAULT_SESSION_DIR;
     if (sessions.length === 0) {
       console.error(chalk.dim(`No saved sessions. (${dir})`));
       process.exit(0);
@@ -122,9 +136,9 @@ async function run(
   let restoredActiveSection: string | null = null;
   if (absPath) {
     if (opts.fresh) {
-      clearSession(absPath);
+      await sessionStore.clear(absPath);
     } else {
-      const session = loadSession(absPath, contentHash);
+      const session = await loadReviewSession(sessionStore, absPath, contentHash);
       if (session && session.comments.length > 0) {
         if (!session.stale) {
           console.error(chalk.green(`Resuming review (${session.comments.length} comment${session.comments.length !== 1 ? 's' : ''}).`));
@@ -141,7 +155,7 @@ async function run(
             doc.comments = session.comments;
             restoredActiveSection = session.activeSection;
           } else {
-            clearSession(absPath);
+            await sessionStore.clear(absPath);
           }
         }
       }
@@ -158,13 +172,18 @@ async function run(
     reviewed = doc;
   } else {
     const onCommentChange = absPath
-      ? () => saveSession(absPath, contentHash, doc.comments, null)
+      ? () => {
+          void saveReviewSession(sessionStore, absPath, contentHash, doc.comments, null).catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.warn(chalk.yellow(`Failed to save session: ${message}`));
+          });
+        }
       : undefined;
     reviewed = await navigate(doc, inputFromStdin, onCommentChange);
   }
 
   // Clear session after successful review completion
-  if (absPath) clearSession(absPath);
+  if (absPath) await sessionStore.clear(absPath);
 
   // Determine output target after review is complete
   let outputTarget: OutputTarget;
@@ -216,4 +235,62 @@ function formatRelativeTime(iso: string): string {
   if (days < 7) return `${days}d ago`;
   const weeks = Math.floor(days / 7);
   return `${weeks}w ago`;
+}
+
+async function saveReviewSession(
+  store: SessionStore,
+  planPath: string,
+  contentHash: string,
+  comments: ReviewComment[],
+  activeSection: string | null,
+): Promise<void> {
+  const data: SessionData = {
+    version: 1,
+    planPath,
+    contentHash,
+    comments,
+    activeSection,
+    lastModified: new Date().toISOString(),
+  };
+  await store.save(planPath, data);
+}
+
+async function loadReviewSession(
+  store: SessionStore,
+  planPath: string,
+  contentHash: string,
+): Promise<{ comments: ReviewComment[]; activeSection: string | null; stale: boolean } | null> {
+  const data = await store.load(planPath);
+  if (!data) return null;
+  return {
+    comments: data.comments,
+    activeSection: data.activeSection,
+    stale: data.contentHash !== contentHash,
+  };
+}
+
+async function listReviewSessions(
+  store: SessionStore,
+): Promise<Array<{ planPath: string; commentCount: number; lastModified: string; stale: boolean | null }>> {
+  const metas = await store.list();
+  const sessions = [];
+  for (const meta of metas) {
+    const data = await store.load(meta.key);
+    const planPath = data?.planPath ?? meta.key;
+    let stale: boolean | null = null;
+    if (existsSync(planPath) && data) {
+      try {
+        stale = computeContentHash(readFileSync(planPath, 'utf-8')) !== data.contentHash;
+      } catch {
+        stale = null;
+      }
+    }
+    sessions.push({
+      planPath,
+      commentCount: meta.commentCount,
+      lastModified: meta.lastModified,
+      stale,
+    });
+  }
+  return sessions;
 }

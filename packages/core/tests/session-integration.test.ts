@@ -1,83 +1,117 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import {
+  FileSessionStore,
+  computeContentHash,
+  type ReviewComment,
+  type SessionData,
+} from '../src/index.js';
 
-let testDir: string;
+let dir: string;
 
-beforeEach(() => {
-  testDir = mkdtempSync(join(tmpdir(), 'plan-review-integration-'));
+beforeEach(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'plan-review-integration-'));
 });
 
-afterEach(() => {
-  rmSync(testDir, { recursive: true, force: true });
+afterEach(async () => {
+  await rm(dir, { recursive: true, force: true });
 });
 
-vi.mock('node:os', async () => {
-  const actual = await vi.importActual('node:os');
-  return { ...actual, homedir: () => testDir };
-});
-
-import { saveSession, loadSession, clearSession, computeContentHash, listSessions } from '../src/session.js';
+function makeSession(
+  planPath: string,
+  contentHash: string,
+  comments: ReviewComment[],
+  activeSection: string | null,
+): SessionData {
+  return {
+    version: 1,
+    planPath,
+    contentHash,
+    comments,
+    activeSection,
+    lastModified: new Date('2026-01-15T10:00:00.000Z').toISOString(),
+  };
+}
 
 describe('session integration', () => {
   const planPath = '/tmp/integration-test-plan.md';
   const planContent = '# Test Plan\n\n## Task 1\n\nDo something.';
   const hash = computeContentHash(planContent);
 
-  it('full round-trip: save → load → modify → load stale → clear', () => {
-    const comments = [
-      { sectionId: '1.1', text: 'Fix this', timestamp: new Date() },
-      { sectionId: '1.2', text: 'Check that', timestamp: new Date() },
+  it('round-trips, lets host code detect stale content, lists metadata, and clears', async () => {
+    const store = new FileSessionStore({ dir });
+    const comments: ReviewComment[] = [
+      { sectionId: '1.1', text: 'Fix this', timestamp: new Date('2026-01-15T10:00:00Z') },
+      { sectionId: '1.2', text: 'Check that', timestamp: new Date('2026-01-15T10:01:00Z') },
     ];
-    saveSession(planPath, hash, comments, '1.1');
 
-    // Load — not stale
-    const result = loadSession(planPath, hash);
+    await store.save(planPath, makeSession(planPath, hash, comments, '1.1'));
+
+    const result = await store.load(planPath);
     expect(result).not.toBeNull();
-    expect(result!.stale).toBe(false);
-    expect(result!.comments).toHaveLength(2);
-    expect(result!.activeSection).toBe('1.1');
+    expect(result?.contentHash).toBe(hash);
+    expect(result?.contentHash).not.toBe(computeContentHash('modified plan'));
+    expect(result?.comments).toHaveLength(2);
+    expect(result?.comments[0].timestamp).toBeInstanceOf(Date);
+    expect(result?.activeSection).toBe('1.1');
 
-    // Load with different hash — stale
-    const staleResult = loadSession(planPath, computeContentHash('modified plan'));
-    expect(staleResult).not.toBeNull();
-    expect(staleResult!.stale).toBe(true);
-    expect(staleResult!.comments).toHaveLength(2);
+    await expect(store.list()).resolves.toEqual([
+      {
+        key: planPath,
+        commentCount: 2,
+        lastModified: '2026-01-15T10:00:00.000Z',
+      },
+    ]);
 
-    // List
-    const sessions = listSessions();
-    expect(sessions).toHaveLength(1);
-    expect(sessions[0].commentCount).toBe(2);
-
-    // Clear
-    clearSession(planPath);
-    expect(loadSession(planPath, hash)).toBeNull();
-    expect(listSessions()).toHaveLength(0);
+    await store.clear(planPath);
+    await expect(store.load(planPath)).resolves.toBeNull();
+    await expect(store.list()).resolves.toEqual([]);
   });
 
-  it('same file at two paths = two independent sessions', () => {
-    const path1 = '/tmp/plan-copy-1.md';
-    const path2 = '/tmp/plan-copy-2.md';
-    saveSession(path1, hash, [{ sectionId: '1.1', text: 'A', timestamp: new Date() }], null);
-    saveSession(path2, hash, [{ sectionId: '2.1', text: 'B', timestamp: new Date() }], null);
+  it('stores the same file at two paths as independent sessions', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save(
+      '/tmp/plan-copy-1.md',
+      makeSession('/tmp/plan-copy-1.md', hash, [
+        { sectionId: '1.1', text: 'A', timestamp: new Date('2026-01-15T10:00:00Z') },
+      ], null),
+    );
+    await store.save(
+      '/tmp/plan-copy-2.md',
+      makeSession('/tmp/plan-copy-2.md', hash, [
+        { sectionId: '2.1', text: 'B', timestamp: new Date('2026-01-15T10:00:00Z') },
+      ], null),
+    );
 
-    const s1 = loadSession(path1, hash);
-    const s2 = loadSession(path2, hash);
-    expect(s1!.comments[0].text).toBe('A');
-    expect(s2!.comments[0].text).toBe('B');
-    expect(listSessions()).toHaveLength(2);
+    await expect(store.load('/tmp/plan-copy-1.md')).resolves.toMatchObject({
+      comments: [{ text: 'A' }],
+    });
+    await expect(store.load('/tmp/plan-copy-2.md')).resolves.toMatchObject({
+      comments: [{ text: 'B' }],
+    });
+    await expect(store.list()).resolves.toHaveLength(2);
   });
 
-  it('auto-save overwrites previous session', () => {
-    saveSession(planPath, hash, [{ sectionId: '1.1', text: 'First', timestamp: new Date() }], null);
-    saveSession(planPath, hash, [
-      { sectionId: '1.1', text: 'First', timestamp: new Date() },
-      { sectionId: '1.2', text: 'Second', timestamp: new Date() },
-    ], '1.2');
+  it('overwrites previous session for the same key', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save(
+      planPath,
+      makeSession(planPath, hash, [
+        { sectionId: '1.1', text: 'First', timestamp: new Date('2026-01-15T10:00:00Z') },
+      ], null),
+    );
+    await store.save(
+      planPath,
+      makeSession(planPath, hash, [
+        { sectionId: '1.1', text: 'First', timestamp: new Date('2026-01-15T10:00:00Z') },
+        { sectionId: '1.2', text: 'Second', timestamp: new Date('2026-01-15T10:01:00Z') },
+      ], '1.2'),
+    );
 
-    const result = loadSession(planPath, hash);
-    expect(result!.comments).toHaveLength(2);
-    expect(result!.activeSection).toBe('1.2');
+    const result = await store.load(planPath);
+    expect(result?.comments).toHaveLength(2);
+    expect(result?.activeSection).toBe('1.2');
   });
 });

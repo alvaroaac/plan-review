@@ -1,17 +1,30 @@
 {
   "name": "@plan-review/core",
-  "version": "0.0.0",
-  "private": true,
+  "version": "0.1.0",
   "type": "module",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
   "exports": {
-    ".": "./dist/index.js"
+    ".": "./dist/index.js",
+    "./formatter": {
+      "types": "./dist/formatter.d.ts",
+      "default": "./dist/formatter.js"
+    },
+    "./autosave": {
+      "types": "./dist/autosave.d.ts",
+      "default": "./dist/autosave.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
     "marked": "^15.0.12"

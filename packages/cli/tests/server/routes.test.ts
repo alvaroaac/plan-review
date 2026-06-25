@@ -285,33 +285,26 @@ describe('server routes', () => {
     await stopTestServer(server);
   });
 
-  it('PUT /api/session calls onSessionSave with comments and activeSection', async () => {
-    const onSessionSave = vi.fn();
+  it('PUT /api/session awaits async onSessionSave before responding', async () => {
+    const onSessionSave = vi.fn().mockResolvedValue(undefined);
     const { server, port } = await startTestServer({
       getDocument: () => mockDoc,
       onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
       onSessionSave,
+      getAssetHtml: () => '<html></html>',
     });
-
-    const comments = [
-      { sectionId: '1.1', text: 'In progress', timestamp: new Date().toISOString() },
+    const comments: ReviewComment[] = [
+      { sectionId: '1.1', text: 'Save me', timestamp: new Date('2026-04-13') },
     ];
-
     const res = await fetch(`http://localhost:${port}/api/session`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ comments, activeSection: '1.1' }),
     });
-    const data = await res.json();
-
     expect(res.status).toBe(200);
-    expect(data.success).toBe(true);
-    expect(onSessionSave).toHaveBeenCalledOnce();
-    expect(onSessionSave.mock.calls[0][0]).toHaveLength(1);
-    expect(onSessionSave.mock.calls[0][0][0].sectionId).toBe('1.1');
-    expect(onSessionSave.mock.calls[0][1]).toBe('1.1');
-
+    expect(onSessionSave).toHaveBeenCalledWith(expect.arrayContaining([
+      expect.objectContaining({ sectionId: '1.1', text: 'Save me' }),
+    ]), '1.1');
     await stopTestServer(server);
   });
 
@@ -332,6 +325,29 @@ describe('server routes', () => {
     expect(res.status).toBe(400);
     const data = await res.json();
     expect(data.error).toContain('comments must be an array');
+
+    await stopTestServer(server);
+  });
+
+  it('PUT /api/session returns 500 when onSessionSave rejects', async () => {
+    const { server, port } = await startTestServer({
+      getDocument: () => mockDoc,
+      onSubmit: vi.fn(),
+      getAssetHtml: () => '<html></html>',
+      onSessionSave: vi.fn().mockRejectedValue(new Error('disk full')),
+    });
+
+    const comments: ReviewComment[] = [
+      { sectionId: '1.1', text: 'Save me', timestamp: new Date('2026-04-13') },
+    ];
+    const res = await fetch(`http://localhost:${port}/api/session`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comments, activeSection: '1.1' }),
+    });
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({ error: 'Failed to save session' });
 
     await stopTestServer(server);
   });
