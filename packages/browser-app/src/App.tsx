@@ -54,8 +54,9 @@ export function App({ client }: { client: ReviewClient }) {
   // Auto-save session on comment change
   useEffect(() => {
     if (!initialLoadDone.current) {
-      initialLoadDone.current = comments.length > 0 || doc !== null;
-      if (!initialLoadDone.current) return;
+      if (doc === null) return;
+      initialLoadDone.current = true;
+      return;
     }
     if (contentHash === null) return;
 

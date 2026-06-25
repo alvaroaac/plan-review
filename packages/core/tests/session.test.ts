@@ -169,6 +169,20 @@ describe('FileSessionStore', () => {
     consoleSpy.mockRestore();
   });
 
+  it('auto-deletes malformed session objects on load and returns null', async () => {
+    const store = new FileSessionStore({ dir });
+    await store.save('/tmp/plan.md', makeSession());
+    const [file] = await filesInSessionDir();
+    const filePath = join(dir, file);
+    await writeFile(filePath, JSON.stringify({ not: 'a session' }));
+
+    const consoleSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await expect(store.load('/tmp/plan.md')).resolves.toBeNull();
+    expect(existsSync(filePath)).toBe(false);
+    expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Malformed session file'));
+    consoleSpy.mockRestore();
+  });
+
   it('clears an existing session and treats missing sessions as a no-op', async () => {
     const store = new FileSessionStore({ dir });
     await store.save('/tmp/plan.md', makeSession());

@@ -117,6 +117,25 @@ describe('App', () => {
     }
   });
 
+  it('does not create an empty saved session for an untouched document load', async () => {
+    vi.useFakeTimers();
+
+    try {
+      const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-abc' });
+
+      render(<App client={client} />);
+      await waitFor(() => screen.getByText('Test Plan'));
+
+      await vi.advanceTimersByTimeAsync(600);
+      window.dispatchEvent(new Event('beforeunload'));
+      await Promise.resolve();
+
+      expect(client.sessionSaves).toHaveLength(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('autosaves the first user comment after stale restored hydration', async () => {
     vi.useFakeTimers();
 

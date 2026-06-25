@@ -38,6 +38,19 @@ export interface FileSessionStoreOptions {
   keyHashLength?: number;
 }
 
+function isSessionData(value: unknown): value is SessionData {
+  if (typeof value !== 'object' || value === null) return false;
+  const data = value as Record<string, unknown>;
+  return (
+    typeof data.version === 'number' &&
+    typeof data.planPath === 'string' &&
+    typeof data.contentHash === 'string' &&
+    Array.isArray(data.comments) &&
+    (typeof data.activeSection === 'string' || data.activeSection === null) &&
+    typeof data.lastModified === 'string'
+  );
+}
+
 export class FileSessionStore implements SessionStore {
   private readonly dir: string;
   private readonly keyHashLength: number;
@@ -70,11 +83,21 @@ export class FileSessionStore implements SessionStore {
       return null;
     }
 
-    let data: SessionData;
+    let data: unknown;
     try {
-      data = JSON.parse(raw) as SessionData;
+      data = JSON.parse(raw);
     } catch {
       console.warn(`[plan-review] Corrupt session file, removing: ${path}`);
+      try {
+        await unlink(path);
+      } catch {
+        // Best-effort cleanup.
+      }
+      return null;
+    }
+
+    if (!isSessionData(data)) {
+      console.warn(`[plan-review] Malformed session file, removing: ${path}`);
       try {
         await unlink(path);
       } catch {
@@ -116,7 +139,11 @@ export class FileSessionStore implements SessionStore {
 
       const path = join(this.dir, file);
       try {
-        const data = JSON.parse(await readFile(path, 'utf-8')) as SessionData;
+        const data = JSON.parse(await readFile(path, 'utf-8'));
+        if (!isSessionData(data)) {
+          console.warn(`[plan-review] Skipping malformed session file: ${path}`);
+          continue;
+        }
         sessions.push({
           key: data.planPath,
           commentCount: data.comments.length,

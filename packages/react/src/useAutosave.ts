@@ -3,7 +3,7 @@ import {
   createAutosave,
   type Autosave,
   type AutosaveOptions,
-} from '@plan-review/core';
+} from '@plan-review/core/autosave';
 
 export function useAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
   const autosave = useMemo(
