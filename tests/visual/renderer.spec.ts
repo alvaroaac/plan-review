@@ -1,8 +1,8 @@
 import { test, expect, type Page } from '@playwright/test';
 import { readFileSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
-import { HttpTransport } from '../../src/transport.js';
-import { parse } from '../../src/parser.js';
+import { parse } from '../../packages/core/src/parser.js';
+import { HttpTransport } from '../../packages/cli/src/transport.js';
 
 // Boot the real HttpTransport against examples/renderer-fixture.md once per
 // suite. Playwright drives headless Chromium against it. We assert post-mount
