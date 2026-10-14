@@ -266,6 +266,34 @@ describe('renderToLineBlocks', () => {
     expect(inlineBlock!.innerHtml).toContain('a=b');
   });
 
+  describe('currency amounts are not inline math', () => {
+    const cases: Record<string, string> = {
+      paragraph: 'Delta $63,334.52-$50,386.55 today.',
+      'table row': '| step | n | total |\n|---|---|---|\n| open | 18 | $50,386.55 |\n| close | 19 | $63,334.52/$50,386.55 |',
+      'list item': '- Delta $63,334.52-$50,386.55 today.',
+      blockquote: '> Delta $63,334.52-$50,386.55 today.',
+    };
+    for (const [name, md] of Object.entries(cases)) {
+      it(`in a ${name}`, () => {
+        const blocks = renderToLineBlocks(md);
+        expect(blocks).toHaveLength(1);
+        expect(blocks[0].innerHtml).not.toContain('math-inline');
+        expect(blocks[0].innerHtml).toContain('$63,334.52');
+        expect(blocks[0].innerHtml).toContain('$50,386.55');
+      });
+    }
+  });
+
+  it('renders inline and display math inside list items and blockquotes', () => {
+    const blocks = renderToLineBlocks(
+      '- Energy $E=mc^2$ here.\n\n  $$\n  x^2\n  $$\n\n> Quoted $a=b$ math.',
+    );
+    expect(blocks).toHaveLength(2);
+    expect(blocks[0].innerHtml).toContain('<span class="math-inline">E=mc^2</span>');
+    expect(blocks[0].innerHtml).toContain('<div class="math-display">x^2</div>');
+    expect(blocks[1].innerHtml).toContain('<span class="math-inline">a=b</span>');
+  });
+
   it('expands known emoji shortcodes in paragraphs and headings', () => {
     const blocks = renderToLineBlocks('Ship it :rocket:\n\n## :warning: Heads up');
     expect(blocks[0].innerHtml).toContain('🚀');

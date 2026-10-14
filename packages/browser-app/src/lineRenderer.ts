@@ -43,10 +43,14 @@ function replaceEmojiShortcodes(html: string): string {
   );
 }
 
-// Inline math: `$...$` (single-line, non-greedy, no leading/trailing whitespace).
-// Rendered client-side by KaTeX — we just wrap the LaTeX in a span. Inline
-// extensions compose naturally: the span lands inside whatever paragraph /
-// heading / table cell contained the math.
+// Inline math: `$...$` (single-line, non-greedy). Rendered client-side by
+// KaTeX — we just wrap the LaTeX in a span. Inline extensions compose
+// naturally: the span lands inside whatever paragraph / heading / table cell
+// contained the math.
+//
+// The opening `$` must not be followed by whitespace or a digit, and the
+// closing `$` must not be preceded by whitespace. The digit rule keeps
+// currency like `$63,334.52-$50,386.55` from being read as math.
 const mathInlineExt: TokenizerExtension & RendererExtension = {
   name: 'mathInline',
   level: 'inline',
@@ -57,7 +61,7 @@ const mathInlineExt: TokenizerExtension & RendererExtension = {
   tokenizer(src: string) {
     // Let the block tokenizer claim display math first.
     if (src.startsWith('$$')) return undefined;
-    const match = /^\$(?!\s)([^\n$]+?)(?<!\s)\$/.exec(src);
+    const match = /^\$(?![\s\d])([^\n$]+?)(?<!\s)\$/.exec(src);
     if (!match) return undefined;
     return { type: 'mathInline', raw: match[0], text: match[1] };
   },
@@ -65,6 +69,29 @@ const mathInlineExt: TokenizerExtension & RendererExtension = {
     return `<span class="math-inline">${escapeForKatex((token as MathInlineToken).text)}</span>`;
   },
 };
+
+// Block-level display math: `$$...$$`. This plain variant returns the HTML;
+// renderToLineBlocks overrides the renderer to push a top-level LineBlock.
+const mathBlockExt: TokenizerExtension & RendererExtension = {
+  name: 'mathBlock',
+  level: 'block',
+  start(src: string) {
+    const idx = src.indexOf('$$');
+    return idx === -1 ? undefined : idx;
+  },
+  tokenizer(src: string) {
+    const match = /^\$\$([\s\S]+?)\$\$/.exec(src);
+    if (!match) return undefined;
+    return { type: 'mathBlock', raw: match[0], text: match[1].trim() };
+  },
+  renderer(token) {
+    return mathDisplayHtml((token as MathBlockToken).text);
+  },
+};
+
+function mathDisplayHtml(latex: string): string {
+  return `<div class="math-display">${escapeForKatex(latex)}</div>`;
+}
 
 export interface LineBlock {
   index: number;     // 0-based, sequential within the section
@@ -78,9 +105,12 @@ function stripHtml(html: string): string {
   return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
-// A plain Marked instance used only for rendering sub-content (no custom renderer).
-// Shared across calls — stateless.
-const _plainMarked = new Marked();
+// A plain Marked instance used only for rendering sub-content (no custom
+// block-pushing renderers). Shared across calls — stateless. It still needs
+// the math extensions: list items and blockquotes are lexed by the main
+// instance, so their tokens can contain mathInline / mathBlock, and marked
+// throws on a token type with no renderer.
+const _plainMarked = new Marked({ extensions: [mathInlineExt, mathBlockExt] });
 
 // Internal type for the renderer context that marked injects via use().
 // Does NOT extend Renderer — that would conflict with _Renderer's stricter parser type.
@@ -103,24 +133,13 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
   // up front so we can pop those polluted blocks off after the parse.
   const footnoteDefCount = (markdown.match(/^\[\^[^\]\n]+\]:/gm) ?? []).length;
 
-  // Block-level display math. Defined inside the closure so it can push a
-  // LineBlock directly, matching the pattern used by the block renderers below.
-  const mathBlockExt: TokenizerExtension & RendererExtension = {
-    name: 'mathBlock',
-    level: 'block',
-    start(src: string) {
-      const idx = src.indexOf('$$');
-      return idx === -1 ? undefined : idx;
-    },
-    tokenizer(src: string) {
-      const match = /^\$\$([\s\S]+?)\$\$/.exec(src);
-      if (!match) return undefined;
-      return { type: 'mathBlock', raw: match[0], text: match[1].trim() };
-    },
+  // Top-level display math pushes its own LineBlock, matching the pattern
+  // used by the block renderers below.
+  const lineMathBlockExt: TokenizerExtension & RendererExtension = {
+    ...mathBlockExt,
     renderer(token) {
       const latex = (token as MathBlockToken).text;
-      const html = `<div class="math-display">${escapeForKatex(latex)}</div>`;
-      blocks.push({ index: i++, innerHtml: html, text: latex });
+      blocks.push({ index: i++, innerHtml: mathDisplayHtml(latex), text: latex });
       return '';
     },
   };
@@ -163,7 +182,7 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
 
   const instance = new Marked();
   instance.use(markedFootnote());
-  instance.use({ extensions: [mathInlineExt, mathBlockExt, docusaurusAdmExt] });
+  instance.use({ extensions: [mathInlineExt, lineMathBlockExt, docusaurusAdmExt] });
   instance.use({
     renderer: {
       // Regular functions (not arrows) so `this` is the renderer with parser attached.
