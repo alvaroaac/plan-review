@@ -469,7 +469,16 @@ describe('formatReviewOutput (v2)', () => {
       },
     });
     expect(formatPausedNotice(review, [retry, legacy, cookie, latency])).toBe(
-      'Review `rv_8f3a` paused at round 2 (2/4 items answered). The user has not finished reviewing — wait for them. Resume with: plan-review --review rv_8f3a',
+      'Review `rv_8f3a` paused at round 2 (2/4 items answered). The user has not finished reviewing — wait for them. Resume with: plan-review --review rv_8f3a (pipe the plan on stdin)',
+    );
+  });
+
+  it('includes the plan path in the resume command when the review has one', () => {
+    expect(formatPausedNotice(makeReview({ planPath: '/w/plan.md' }), [])).toContain(
+      'Resume with: plan-review /w/plan.md --review rv_8f3a',
+    );
+    expect(formatPausedNotice(makeReview({ planPath: '/w/my plan.md' }), [])).toContain(
+      "Resume with: plan-review '/w/my plan.md' --review rv_8f3a",
     );
   });
 

@@ -250,6 +250,12 @@ export function formatPausedNotice(review: Review, items: ReviewItem[]): string 
   }).length;
   return (
     `Review \`${review.id}\` paused at round ${round.n} (${answered}/${items.length} items answered). ` +
-    `The user has not finished reviewing — wait for them. Resume with: plan-review --review ${review.id}`
+    `The user has not finished reviewing — wait for them. Resume with: ${resumeCommand(review)}`
   );
+}
+
+function resumeCommand(review: Review): string {
+  if (!review.planPath) return `plan-review --review ${review.id} (pipe the plan on stdin)`;
+  const path = /\s/.test(review.planPath) ? `'${review.planPath}'` : review.planPath;
+  return `plan-review ${path} --review ${review.id}`;
 }
