@@ -5,6 +5,7 @@ import { ReviewProvider, useReview } from './state/ReviewContext.js';
 import { TopBar } from './components/TopBar.js';
 import { TocPanel } from './components/TocPanel.js';
 import { DocView } from './components/DocView.js';
+import { Rail } from './components/Rail.js';
 import { useScrollSpy } from './scroll.js';
 import { useHeartbeat } from './heartbeat.js';
 import { applyTheme, detectTheme } from './theme.js';
@@ -48,7 +49,7 @@ function ReviewShell() {
         <div class="scroll" ref={scrollRef}>
           <DocView />
         </div>
-        <aside class="side" />
+        <Rail />
       </div>
     </div>
   );
