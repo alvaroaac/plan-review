@@ -11,7 +11,7 @@ export interface NavigateOptions {
 export async function navigate(
   doc: PlanDocument,
   inputFromStdin: boolean = false,
-  onCommentChange?: () => void,
+  onCommentChange?: () => void | Promise<void>,
   { items = [], onApprove }: NavigateOptions = {},
 ): Promise<PlanDocument> {
   // When input was read from stdin, stdin is exhausted.
@@ -37,7 +37,7 @@ export async function navigate(
   while (running) {
     console.error(renderToc(doc));
     const input = await ask(
-      chalk.cyan('> Enter section (e.g. 1.1), \'all\' for linear review, \'done\' to finish, or \'approve\': '),
+      chalk.cyan('> Enter section (e.g. 1.1), \'all\' for linear review, \'done\' to submit as changes requested, \'approve\' to approve: '),
     );
 
     if (input === 'done' || input === 'q') {
@@ -68,7 +68,7 @@ async function linearReview(
   sections: Section[],
   ask: (prompt: string) => Promise<string>,
   items: ReviewItem[],
-  onCommentChange?: () => void,
+  onCommentChange?: () => void | Promise<void>,
 ): Promise<void> {
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
@@ -89,7 +89,7 @@ async function linearReview(
         text: input,
         timestamp: new Date(),
       });
-      onCommentChange?.();
+      await onCommentChange?.();
     }
   }
 }

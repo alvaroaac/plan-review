@@ -19,21 +19,34 @@ export async function terminalReview(
   const { loaded } = await openReview(store, { ...opts, now: new Date() });
   const round = loaded.review.round;
 
+  const itemIds = new Set(loaded.items.map((item) => item.id));
+  const commentThreads = new Map<string, Thread>();
+  let pending = Promise.resolve();
+  const persistComments = (): Promise<void> => {
+    const threads = [...loaded.review.threads, ...loaded.document.comments.map((comment, index) => {
+      const key = `${comment.sectionId}:${index}`;
+      let thread = commentThreads.get(key);
+      if (!thread) {
+        thread = toThread(comment, round);
+        commentThreads.set(key, thread);
+      }
+      return thread;
+    })];
+    pending = pending.then(async () => {
+      await saveProgress(store, loaded.review.id, { answers: loaded.review.answers, threads }, new Date(), itemIds);
+    });
+    return pending;
+  };
+
   let approved = false;
-  const reviewed = await navigate(loaded.document, inputFromStdin, undefined, {
+  await navigate(loaded.document, inputFromStdin, persistComments, {
     items: loaded.items,
     onApprove: () => { approved = true; },
   });
+  await pending;
+  await persistComments();
 
   const now = new Date();
-  const threads = [...loaded.review.threads, ...reviewed.comments.map((c) => toThread(c, round))];
-  await saveProgress(
-    store,
-    loaded.review.id,
-    { answers: loaded.review.answers, threads },
-    now,
-    new Set(loaded.items.map((item) => item.id)),
-  );
   const review = await submitRound(
     store,
     loaded.review.id,

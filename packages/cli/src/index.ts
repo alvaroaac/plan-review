@@ -7,12 +7,10 @@ import { fileURLToPath } from 'node:url';
 import chalk from 'chalk';
 import {
   parse,
-  formatReview,
   extractItems,
   itemCounts,
 } from '@plan-review/core';
 import type { OutputTarget } from '@plan-review/core';
-import { navigate } from './navigator.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
 import { createRequire } from 'node:module';
 import { promptOutputTarget } from './prompts.js';
@@ -79,7 +77,7 @@ program
   .action(async (opts: { all?: boolean }) => {
     const reviews = await createReviewStore().list(opts.all ? undefined : { status: 'open' });
     if (reviews.length === 0) {
-      process.stdout.write('No open reviews.\n');
+      process.stdout.write(opts.all ? 'No reviews.\n' : 'No open reviews.\n');
       return;
     }
     const rows = reviews.map((review) => {
@@ -88,7 +86,7 @@ program
       const { decisions: d, assumptions: a } = itemCounts(items, review.answers);
       const answered = d.answered + a.holds + a.unsure + a.no;
       const counts = `${answered}/${d.deferred + a.deferred}/${d.open + a.open}`;
-      return [review.id, review.title, String(round.n), review.updatedAt, counts,
+      return [review.id, review.title, String(round.n), formatLocalDate(review.updatedAt), counts,
         ...(opts.all ? [review.status] : [])];
     });
     const header = ['ID', 'TITLE', 'ROUND', 'UPDATED', 'ANSWERED/DEFERRED/OPEN',
@@ -99,12 +97,22 @@ program
     }
   });
 
+function formatLocalDate(timestamp: string): string {
+  const date = new Date(timestamp);
+  const pad = (value: number): string => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+}
+
 program.parse();
 
 async function run(
   file: string | undefined,
   opts: ReviewOptions,
 ): Promise<void> {
+  if (opts.review && opts.fresh) {
+    process.stderr.write('--fresh cannot be combined with --review\n');
+    process.exit(1);
+  }
   // Validate explicit output target early, before the review starts
   const validTargets: OutputTarget[] = ['stdout', 'clipboard', 'file', 'claude'];
   if (opts.output !== undefined) {

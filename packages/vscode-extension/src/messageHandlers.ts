@@ -9,6 +9,7 @@ import {
   type ReviewStore,
   type SubmitRequest,
 } from '@plan-review/core';
+import type { SubmitTarget } from './settings.js';
 
 export interface MessageHandlers {
   loadDocument(params: { planFsPath: string; markdown: string }): Promise<LoadedReview>;
@@ -20,7 +21,8 @@ export interface MessageHandlers {
 export function createMessageHandlers(deps?: {
   reviewStore?: ReviewStore;
   now?: () => Date;
-  submit?: (args: { planFsPath: string; output: string }) => Promise<void>;
+  chooseTargets?: () => Promise<SubmitTarget[] | undefined>;
+  deliver?: (args: { planFsPath: string; output: string; targets: SubmitTarget[] }) => Promise<void>;
 }): MessageHandlers {
   const store = deps?.reviewStore ?? new FileReviewStore();
   const now = deps?.now ?? (() => new Date());
@@ -50,9 +52,11 @@ export function createMessageHandlers(deps?: {
     },
     async submitReview(req) {
       const currentLoaded = current();
+      const targets = await deps?.chooseTargets?.();
+      if (!targets?.length) throw new Error('Submit cancelled — no destination chosen.');
       const review = await submitRound(store, currentLoaded.review.id, req, now());
       const output = formatReviewOutput(review, currentLoaded.items, currentLoaded.document);
-      await deps?.submit?.({ planFsPath, output });
+      await deps?.deliver?.({ planFsPath, output, targets });
       return { ok: true, output };
     },
   };

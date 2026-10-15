@@ -46,32 +46,56 @@ export async function browserReview(opts: BrowserReviewOptions): Promise<Browser
     clearTimeout(idleTimer);
     clearTimeout(heartbeatTimer);
   };
+  const drain = async (): Promise<void> => {
+    let drained: Promise<void>;
+    do {
+      drained = pending;
+      await drained;
+    } while (drained !== pending);
+  };
+  let responseFinished!: () => void;
+  const submitResponseFinished = new Promise<void>((resolve) => { responseFinished = resolve; });
   let ending = false;
   let submitted: BrowserReviewResult | undefined;
   let finish!: () => void;
-  const outcome = new Promise<BrowserReviewResult>((resolve) => {
+  const outcome = new Promise<BrowserReviewResult>((resolve, reject) => {
     finish = () => {
       if (ending) return;
       ending = true;
       clearTimers();
-      void pending.then(() => {
-        // Let the route send its response before closing HTTP connections.
-        setImmediate(() => resolve(submitted ?? {
+      void (async () => {
+        await drain();
+        if (!submitted) {
+          // A cancel beacon can arrive before the webview's final autosave.
+          await new Promise<void>((done) => setTimeout(done, 750));
+          await drain();
+        }
+        if (submitted) await submitResponseFinished;
+        await transport.stop();
+        // Include saves accepted by requests already in flight during close.
+        await drain();
+        resolve(submitted ?? {
           kind: 'paused', output: formatPausedNotice(review, loaded.items),
-        }));
-      });
+        });
+      })().catch(reject);
     };
   });
+  const resetIdleTimer = (): void => {
+    if (ending || submitted) return;
+    clearTimeout(idleTimer);
+    idleTimer = setTimeout(finish, IDLE_TIMEOUT_MS);
+  };
 
   transport.onProgress((update) => {
-    if (ending) return Promise.reject(new Error('Review is no longer active'));
+    if (submitted) return Promise.resolve();
+    resetIdleTimer();
     return enqueue(async () => {
+      if (submitted) return;
       try {
-        if (submitted) throw new Error('Round already submitted');
         review = await saveProgress(store, review.id, update, new Date(), itemIds);
         loaded = {
           ...loaded,
-          review: { ...loaded.review, answers: update.answers, threads: review.threads },
+          review: { ...loaded.review, answers: review.answers, threads: review.threads },
         };
         transport.setLoaded(loaded);
       } catch (err) {
@@ -87,13 +111,16 @@ export async function browserReview(opts: BrowserReviewOptions): Promise<Browser
       review = await submitRound(store, review.id, request, new Date());
       const output = formatReviewOutput(review, loaded.items, loaded.document);
       submitted = { kind: 'submitted', output };
-      // finish waits on this queued operation, so do not await it here.
-      finish();
       return output;
     });
   });
+  transport.onSubmitFinished(() => {
+    responseFinished();
+    finish();
+  });
   transport.onHeartbeat(() => {
     if (ending) return;
+    resetIdleTimer();
     clearTimeout(heartbeatTimer);
     heartbeatTimer = setTimeout(finish, HEARTBEAT_TIMEOUT_MS);
   });
@@ -105,7 +132,7 @@ export async function browserReview(opts: BrowserReviewOptions): Promise<Browser
 
   try {
     const { url } = await transport.start(0);
-    idleTimer = setTimeout(finish, IDLE_TIMEOUT_MS);
+    resetIdleTimer();
     process.stderr.write(`Review server running at ${url}\n`);
 
     try {

@@ -9,10 +9,7 @@ interface SubmitPickItem extends vscode.QuickPickItem {
   target: SubmitTarget;
 }
 
-export async function runSubmit(args: {
-  planFsPath: string;
-  output: string;
-}): Promise<{ submitted: boolean }> {
+export async function chooseSubmitTargets(): Promise<SubmitTarget[] | undefined> {
   const settings = getSettings();
 
   let targets: SubmitTarget[];
@@ -26,12 +23,22 @@ export async function runSubmit(args: {
       placeHolder: 'Where to send the review?',
       canPickMany: true,
     });
-    if (!picked || picked.length === 0) return { submitted: false };
+    if (!picked || picked.length === 0) return undefined;
     targets = picked.map((p) => p.target);
   } else {
     targets = settings.submitTargets;
   }
 
+  return targets.length === 0 ? undefined : targets;
+}
+
+export async function deliverReview(args: {
+  planFsPath: string;
+  output: string;
+  targets: SubmitTarget[];
+}): Promise<void> {
+  const settings = getSettings();
+  const { targets } = args;
   const results = await Promise.allSettled(
     targets.map(async (t: SubmitTarget) => {
       if (t === 'clipboard') return submitToClipboard(args.output);
@@ -67,6 +74,4 @@ export async function runSubmit(args: {
       `Review failed: ${failed.map((f) => `${f.target} (${f.reason})`).join('; ')}`,
     );
   }
-
-  return { submitted: true };
 }

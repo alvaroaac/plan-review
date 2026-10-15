@@ -42,7 +42,15 @@ vi.mock('../../src/settings.js', () => ({
   getSettings: () => ({ ...mockSettings }),
 }));
 
-import { runSubmit } from '../../src/submit/index.js';
+import { chooseSubmitTargets, deliverReview } from '../../src/submit/index.js';
+
+// Mirrors the host flow: choose destinations, then deliver.
+async function runSubmit(args: { planFsPath: string; output: string }): Promise<{ submitted: boolean }> {
+  const targets = await chooseSubmitTargets();
+  if (!targets) return { submitted: false };
+  await deliverReview({ ...args, targets });
+  return { submitted: true };
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -56,6 +64,28 @@ const fakeArgs = {
   planFsPath: '/w/plan.md',
   output: '# Formatted Review\nsome content',
 };
+
+describe('split submit flow', () => {
+  it('selects configured destinations without delivering output', async () => {
+    expect(await chooseSubmitTargets()).toEqual(['clipboard', 'claudeCode']);
+    expect(clipboardWriteText).not.toHaveBeenCalled();
+  });
+
+  it('returns no targets for picker cancellation or an empty selection', async () => {
+    mockSettings.askBeforeSubmit = true;
+    showQuickPick.mockResolvedValueOnce(undefined).mockResolvedValueOnce([]);
+    expect(await chooseSubmitTargets()).toBeUndefined();
+    expect(await chooseSubmitTargets()).toBeUndefined();
+  });
+
+  it('delivers to preselected destinations without asking again', async () => {
+    mockSettings.askBeforeSubmit = true;
+    clipboardWriteText.mockResolvedValueOnce(undefined);
+    await deliverReview({ ...fakeArgs, targets: ['clipboard'] });
+    expect(showQuickPick).not.toHaveBeenCalled();
+    expect(clipboardWriteText).toHaveBeenCalledWith(fakeArgs.output);
+  });
+});
 
 describe('runSubmit', () => {
   it('shows error toast when all targets fail', async () => {

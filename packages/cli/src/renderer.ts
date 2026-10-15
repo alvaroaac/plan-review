@@ -2,7 +2,6 @@ import { marked } from 'marked';
 import type { Tokens } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 import chalk from 'chalk';
-import { ITEM_FENCE_RE } from '@plan-review/core';
 import type { Section, PlanDocument, ReviewItem } from '@plan-review/core';
 
 marked.use(markedTerminal());
@@ -16,7 +15,7 @@ export function renderSection(section: Section, items: ReviewItem[] = []): strin
   }
 
   const heading = `${'#'.repeat(section.level)} ${section.heading}`;
-  parts.push(renderBody(`${heading}\n\n${section.body || ''}`, items));
+  parts.push(renderBody(`${heading}\n\n${section.body || ''}`, items.filter((item) => item.sectionId === section.id)));
 
   return parts.join('\n');
 }
@@ -44,9 +43,14 @@ function renderBody(markdown: string, items: ReviewItem[]): string {
 }
 
 function itemForFence(token: Tokens.Code, itemsById: Map<string, ReviewItem>): ReviewItem | undefined {
-  if (token.codeBlockStyle === 'indented' || !ITEM_FENCE_RE.test(token.lang ?? '')) return undefined;
-  const id = token.lang!.split(/\s+/).find((part) => part.startsWith('id='))?.slice(3);
-  return id === undefined ? undefined : itemsById.get(id);
+  const info = (token.lang ?? '').trim().split(/\s+/);
+  if (token.codeBlockStyle === 'indented' || (info[0] !== 'decision' && info[0] !== 'assumption')) return undefined;
+  const id = info.find((part) => part.startsWith('id='))?.slice(3);
+  if (id === undefined) return undefined;
+  const item = itemsById.get(id);
+  // The extractor accepts at most the first occurrence of an id.
+  if (item) itemsById.delete(id);
+  return item;
 }
 
 function renderItem(item: ReviewItem): string {

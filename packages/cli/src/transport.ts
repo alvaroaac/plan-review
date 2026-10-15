@@ -7,6 +7,7 @@ export interface Transport {
   setLoaded(loaded: LoadedReview): void;
   onProgress(handler: (update: ProgressUpdate) => Promise<void>): void;
   onSubmit(handler: (request: SubmitRequest) => Promise<string>): void;
+  onSubmitFinished(handler: () => void): void;
   start(port: number): Promise<{ url: string }>;
   stop(): Promise<void>;
 }
@@ -16,6 +17,7 @@ export class HttpTransport implements Transport {
   private assetBaseDir: string | null = null;
   private progressHandler: ((update: ProgressUpdate) => Promise<void>) | null = null;
   private submitHandler: ((request: SubmitRequest) => Promise<string>) | null = null;
+  private submitFinishedHandler: (() => void) | null = null;
   private heartbeatHandler: (() => void) | null = null;
   private pauseHandler: (() => void) | null = null;
   private cancelHandler: (() => void) | null = null;
@@ -37,6 +39,10 @@ export class HttpTransport implements Transport {
 
   onSubmit(handler: (request: SubmitRequest) => Promise<string>): void {
     this.submitHandler = handler;
+  }
+
+  onSubmitFinished(handler: () => void): void {
+    this.submitFinishedHandler = handler;
   }
 
   onHeartbeat(handler: () => void): void {
@@ -62,6 +68,7 @@ export class HttpTransport implements Transport {
         await this.progressHandler?.(update);
       },
       onSubmit: async (request) => (await this.submitHandler?.(request)) ?? '',
+      onSubmitFinished: () => this.submitFinishedHandler?.(),
       onHeartbeat: () => this.heartbeatHandler?.(),
       onPause: () => this.pauseHandler?.(),
       onCancel: () => this.cancelHandler?.(),

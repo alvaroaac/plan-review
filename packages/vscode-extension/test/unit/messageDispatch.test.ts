@@ -13,7 +13,7 @@ let f: Awaited<ReturnType<typeof fixture>>;
 beforeEach(async () => { f = await fixture(); });
 afterEach(async () => { await f.cleanup(); });
 function setup() {
-  const handlers = createMessageHandlers({ reviewStore: f.store, now: () => now });
+  const handlers = createMessageHandlers({ reviewStore: f.store, now: () => now, chooseTargets: async () => ['clipboard'], deliver: vi.fn() });
   return { handlers, planFsPath: f.planFsPath, getMarkdown: vi.fn(async () => markdown), postMessage: vi.fn() };
 }
 
@@ -42,6 +42,17 @@ describe('handleWebviewMessage', () => {
     const result = await handleWebviewMessage({ id: 'r3', kind: 'req', method: 'submitReview', params: { verdict: 'approved', summary: 'LGTM' } }, opts);
     expect(opts.postMessage).toHaveBeenLastCalledWith({ id: 'r3', kind: 'res', result: { ok: true, output: expect.stringContaining('LGTM') } });
     expect(result).toEqual({ action: 'close' });
+  });
+
+  it('posts a cancellation error and keeps the panel open without submitting the round', async () => {
+    const opts = setup();
+    opts.handlers = createMessageHandlers({ reviewStore: f.store, chooseTargets: async () => undefined, deliver: vi.fn() });
+    await handleWebviewMessage({ id: 'load', kind: 'req', method: 'loadDocument' }, opts);
+    const id = opts.postMessage.mock.calls[0][0].result.review.id;
+    const result = await handleWebviewMessage({ id: 'submit', kind: 'req', method: 'submitReview', params: { verdict: 'approved', summary: '' } }, opts);
+    expect(result).toEqual({});
+    expect(opts.postMessage).toHaveBeenLastCalledWith({ id: 'submit', kind: 'err', error: 'Submit cancelled — no destination chosen.' });
+    expect((await f.store.get(id))?.rounds[0].submittedAt).toBeUndefined();
   });
 
   it.each(invalidProgress)('returns an error without any store write for %s', async (_name, params) => {

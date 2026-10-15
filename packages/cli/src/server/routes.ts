@@ -30,6 +30,7 @@ export interface RouteContext {
   getAssetHtml: () => string;
   onProgress: (update: ProgressUpdate) => Promise<void>;
   onSubmit: (request: SubmitRequest) => Promise<string>;
+  onSubmitFinished?: () => void;
   onHeartbeat?: () => void;
   onPause?: () => void;
   onCancel?: () => void;
@@ -162,6 +163,8 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
         }
         try {
           const output = await ctx.onSubmit(parsed);
+          // 'close' also fires when the client disconnects before the response is flushed.
+          res.once('close', () => ctx.onSubmitFinished?.());
           sendJson(res, 200, { ok: true, output });
         } catch (err) {
           sendHandlerError(res, err, 'Failed to submit review');

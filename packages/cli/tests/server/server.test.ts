@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createReviewServer, startServer, stopServer } from '../../src/server/server.js';
+import type { Server } from 'node:http';
 import type { LoadedReview } from '@plan-review/core';
 
 const loaded: LoadedReview = {
@@ -16,6 +17,38 @@ const loaded: LoadedReview = {
 };
 
 describe('server lifecycle', () => {
+  it('closes idle connections gracefully without forcing active connections', async () => {
+    const server = createReviewServer({ getLoaded: () => loaded, onProgress: vi.fn(), onSubmit: vi.fn(), getAssetHtml: () => '' });
+    await startServer(server, 0);
+    const force = vi.spyOn(server, 'closeAllConnections');
+    const idle = vi.spyOn(server, 'closeIdleConnections');
+    await stopServer(server);
+    expect(idle).toHaveBeenCalled();
+    expect(force).not.toHaveBeenCalled();
+  });
+
+  it('forces lingering connections only after the 2000 ms shutdown deadline', async () => {
+    vi.useFakeTimers();
+    let closed!: () => void;
+    const server = {
+      close: vi.fn((callback: () => void) => { closed = callback; }),
+      closeIdleConnections: vi.fn(),
+      closeAllConnections: vi.fn(() => closed()),
+    };
+    try {
+      const stopped = stopServer(server as unknown as Server);
+      expect(server.closeAllConnections).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1999);
+      expect(server.closeAllConnections).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      await stopped;
+      expect(server.closeAllConnections).toHaveBeenCalledOnce();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('createReviewServer returns an http.Server', () => {
     const server = createReviewServer({
       getLoaded: () => loaded,

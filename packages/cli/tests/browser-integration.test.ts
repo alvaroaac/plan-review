@@ -47,6 +47,7 @@ beforeEach(() => {
 afterEach(async () => {
   if (active) {
     await send(active.url, '/api/cancel').catch(() => {});
+    if (vi.isFakeTimers()) await vi.advanceTimersByTimeAsync(750);
     await active.result.catch(() => {});
     active = undefined;
   }
@@ -147,6 +148,107 @@ describe('browser review integration', () => {
     expect(outcome.output).toContain('Explain the migration.');
   });
 
+  it('accepts a final autosave immediately after cancel and counts it in the paused notice', async () => {
+    const { url, result, loaded } = await start();
+    expect((await send(url, '/api/cancel')).status).toBe(204);
+    expect((await send(url, '/api/session', progress(loaded))).status).toBe(204);
+    const outcome = await result;
+    const saved = (await store.get(loaded.review.id))!;
+    expect(saved.answers.storage.choice).toBe('B');
+    expect(saved.threads).toHaveLength(1);
+    expect(outcome).toEqual({ kind: 'paused', output: formatPausedNotice(saved, loaded.items) });
+    expect(outcome.output).toContain('1/1 items answered');
+  });
+
+  it('receives the complete submit HTTP response with output larger than 1 MB', async () => {
+    const { url, result, loaded } = await start();
+    const saved = (await store.get(loaded.review.id))!;
+    const update = progress(loaded);
+    update.threads[0].comments[0].body = 'large output '.repeat(100_000);
+    await store.save({ ...saved, ...update });
+    const response = await send(url, '/api/review', { verdict: 'changes_requested', summary: '' });
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.output.length).toBeGreaterThan(1024 * 1024);
+    expect(body.output).toContain(update.threads[0].comments[0].body);
+    expect(body.output).toBe((await result).output);
+  });
+
+  it('waits for the submit response to finish even when cancel arrives during submit', async () => {
+    const register = HttpTransport.prototype.onSubmit;
+    let release!: () => void;
+    let committed!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const ready = new Promise<void>((resolve) => { committed = resolve; });
+    vi.spyOn(HttpTransport.prototype, 'onSubmit').mockImplementation(function (handler) {
+      register.call(this, async (req) => {
+        const output = await handler(req);
+        committed();
+        await gate;
+        return output;
+      });
+    });
+    const stop = vi.spyOn(HttpTransport.prototype, 'stop');
+    const { url, result } = await start();
+    const response = send(url, '/api/review', { verdict: 'approved', summary: '' });
+    try {
+      await ready;
+      await send(url, '/api/cancel');
+      expect(stop).not.toHaveBeenCalled();
+    } finally {
+      release();
+      expect((await response).status).toBe(200);
+      await result;
+    }
+  });
+
+  it('quietly returns 204 for autosave after successful submit without changing the store', async () => {
+    const originalStop = HttpTransport.prototype.stop;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    const stop = vi.spyOn(HttpTransport.prototype, 'stop').mockImplementation(async function () {
+      await gate;
+      await originalStop.call(this);
+    });
+    const { url, result, loaded } = await start();
+    const stderr = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    try {
+      expect((await send(url, '/api/review', { verdict: 'approved', summary: '' })).status).toBe(200);
+      expect((await send(url, '/api/session', progress(loaded))).status).toBe(204);
+      expect(stderr).not.toHaveBeenCalled();
+      expect((await store.get(loaded.review.id))?.answers).toEqual({});
+    } finally {
+      release();
+      await result;
+      stop.mockRestore();
+    }
+  });
+
+  it('exposes the answers returned by persistence rather than unfiltered input', async () => {
+    const { url, loaded } = await start();
+    const update = progress(loaded);
+    update.answers.unknown = { ...update.answers.storage };
+    expect((await send(url, '/api/session', update)).status).toBe(204);
+    const current = await (await http(`${url}/api/doc`)).json() as LoadedReview;
+    expect(current.review.answers).toEqual((await store.get(loaded.review.id))?.answers);
+    expect(current.review.answers).not.toHaveProperty('unknown');
+  });
+
+  it.each(['save', 'heartbeat'] as const)('restarts the idle timer on each accepted %s', async (activity) => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    const { url, result, loaded } = await start();
+    await vi.advanceTimersByTimeAsync(29 * 60_000);
+    if (activity === 'save') await send(url, '/api/session', progress(loaded));
+    else {
+      await send(url, '/api/heartbeat');
+      await send(url, '/api/pause');
+    }
+    await vi.advanceTimersByTimeAsync(2 * 60_000);
+    expect((await http(`${url}/api/doc`)).status).toBe(200);
+    await vi.advanceTimersByTimeAsync(28 * 60_000 + 750);
+    expect((await result).kind).toBe('paused');
+  });
+
   it('opens the next round after submission and carries state across plan revisions', async () => {
     const opened = await openReview(store, { markdown, now });
     await saveProgress(store, opened.review.id, progress(opened.loaded), now, new Set(opened.loaded.items.map((item) => item.id)));
@@ -174,7 +276,7 @@ describe('browser review integration', () => {
     vi.setSystemTime(now);
     const { url, result, loaded } = await start();
     if (reason === 'heartbeat lost') await send(url, '/api/heartbeat');
-    await vi.advanceTimersByTimeAsync(reason === 'heartbeat lost' ? 30_000 : 30 * 60_000);
+    await vi.advanceTimersByTimeAsync((reason === 'heartbeat lost' ? 30_000 : 30 * 60_000) + 750);
     expect(await result).toEqual({ kind: 'paused', output: formatPausedNotice((await store.get(loaded.review.id))!, loaded.items) });
     await expect(http(`${url}/api/doc`)).rejects.toThrow();
   });
@@ -188,7 +290,7 @@ describe('browser review integration', () => {
     await vi.advanceTimersByTimeAsync(60_000);
     expect((await http(`${url}/api/doc`)).status).toBe(200);
     await send(url, '/api/heartbeat');
-    await vi.advanceTimersByTimeAsync(30_000);
+    await vi.advanceTimersByTimeAsync(30_750);
     expect((await result).kind).toBe('paused');
   });
 

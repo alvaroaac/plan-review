@@ -16,7 +16,7 @@ beforeEach(() => {
 });
 afterEach(() => rmSync(home, { recursive: true, force: true }));
 const run = (args: string[]) => spawnSync(process.execPath, ['--import', 'tsx', join(root, 'src/index.ts'), ...args], {
-  cwd: root, encoding: 'utf8', env: { ...process.env, PLAN_REVIEW_HOME: home, NO_COLOR: '1' }, timeout: 15000,
+  cwd: root, encoding: 'utf8', env: { ...process.env, PLAN_REVIEW_HOME: home, NO_COLOR: '1', TZ: 'America/Sao_Paulo' }, timeout: 15000,
 });
 
 async function seed() {
@@ -32,6 +32,19 @@ async function seed() {
 }
 
 describe('list command', () => {
+  it('prints No reviews. for an empty list --all', () => {
+    const result = run(['list', '--all']);
+    expect(result.status).toBe(0);
+    expect(result.stdout.trim()).toBe('No reviews.');
+  });
+
+  it('rejects --fresh together with --review before reading a plan', () => {
+    const result = run(['missing.md', '--review', 'rv_test', '--fresh']);
+    expect(result.status).toBe(1);
+    expect(result.stderr.trim()).toBe('--fresh cannot be combined with --review');
+    expect(result.stdout).toBe('');
+  });
+
   it('prints No open reviews. when the review store is empty', () => {
     const result = run(['list']);
     expect(result.status).toBe(0);
@@ -46,7 +59,7 @@ describe('list command', () => {
     expect(result.stdout).not.toContain('STATUS');
     expect(result.stdout).not.toContain(approved.review.id);
     expect(result.stdout.indexOf(newer.review.id)).toBeLessThan(result.stdout.indexOf(older.review.id));
-    expect(result.stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+1\\s+${now.toISOString()}\\s+1/1/1`));
+    expect(result.stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+1\\s+2026-10-15 09:00\\s+1/1/1`));
   });
 
   it('--all includes approved reviews and a STATUS column', async () => {
@@ -65,12 +78,12 @@ describe('list command', () => {
     const lastPlan = '# Older plan\n\n## Section\n\n```decision id=storage\nquestion: Which NEW storage?\n- A: Files\n- B: Database\n```\n\n```assumption id=current\nstatement: Current assumption.\n```';
     await openReview(store, { markdown: lastPlan, reviewId: older.review.id, now: new Date('2026-10-15T15:00:00Z') });
     const result = run(['list']);
-    expect(result.stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+2\\s+\\S+\\s+0/0/2`));
+    expect(result.stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+2\\s+\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}\\s+0/0/2`));
     // All three assumption verdicts count as answered.
     const item = extractItems(parse(lastPlan)).items[1];
     const review = (await store.get(older.review.id))!;
     await saveProgress(store, review.id, { answers: { ...review.answers, current: { choice: 'no', note: '', itemHash: item.hash, round: 2, updatedAt: now.toISOString() } }, threads: [] }, new Date('2026-10-15T15:00:00Z'), new Set(extractItems(parse(lastPlan)).items.map((item) => item.id)));
-    expect(run(['list']).stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+2\\s+\\S+\\s+1/0/1`));
+    expect(run(['list']).stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+2\\s+\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}\\s+1/0/1`));
   });
 
   it('sessions is an alias of list, including --all, and ignores legacy session files', async () => {

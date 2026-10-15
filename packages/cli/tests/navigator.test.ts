@@ -182,6 +182,24 @@ describe('navigate', () => {
     vi.clearAllMocks();
   });
 
+  it('explains both submit verdicts in the TOC prompt', async () => {
+    const rl = await getReadlineMock();
+    rl._reset(['done']);
+    await navigate(makePlanDoc());
+    expect(rl.question.mock.calls[0][0]).toContain("'done' to submit as changes requested, 'approve' to approve");
+  });
+
+  it('awaits incremental persistence before asking for the next comment', async () => {
+    const rl = await getReadlineMock();
+    rl._reset(['all', 'comment', '', 'done']);
+    let questionsDuringSave = 0;
+    await navigate(makePlanDoc(), false, async () => {
+      await new Promise((resolve) => setImmediate(resolve));
+      questionsDuringSave = rl.question.mock.calls.length;
+    });
+    expect(questionsDuringSave).toBe(2);
+  });
+
   it("exits immediately when user types 'done'", async () => {
     const rl = await getReadlineMock();
     // First question is the main menu; respond 'done'

@@ -6,7 +6,7 @@ import { WebviewPanelManager } from './webviewPanelManager.js';
 import { createMessageHandlers, type MessageHandlers } from './messageHandlers.js';
 import { isRequest, isProgressUpdate, isSubmitRequest } from './protocol.js';
 import type { HostEvent } from './protocol.js';
-import { runSubmit } from './submit/index.js';
+import { chooseSubmitTargets, deliverReview } from './submit/index.js';
 import { disposeChannel } from './submit/outputChannel.js';
 import { PlanReviewCodeLensProvider } from './codeLensProvider.js';
 
@@ -102,7 +102,8 @@ function openOrFocusPanel(context: vscode.ExtensionContext, planUri: vscode.Uri)
   panelManager.track(key, panel);
 
   const handlers = createMessageHandlers({
-    submit: async (args) => { await runSubmit(args); },
+    chooseTargets: chooseSubmitTargets,
+    deliver: deliverReview,
   });
 
   const watcher = vscode.workspace.createFileSystemWatcher(planUri.fsPath, true, false, true);

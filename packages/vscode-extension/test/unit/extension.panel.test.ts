@@ -55,6 +55,11 @@ describe('panel lifecycle', () => {
     await receive({ id: 'r1', kind: 'req', method: 'loadDocument' });
     expect(mocks.openTextDocument).toHaveBeenCalledWith(uri);
     expect(handlers.loadDocument).toHaveBeenLastCalledWith({ planFsPath: uri.fsPath, markdown: '# Current editor text' });
+    handlers.submitReview.mockRejectedValueOnce(new Error('Submit cancelled — no destination chosen.'));
+    await receive({ id: 'cancelled', kind: 'req', method: 'submitReview', params: { verdict: 'approved', summary: '' } });
+    expect(first.dispose).not.toHaveBeenCalled();
+    expect(first.webview.postMessage).toHaveBeenLastCalledWith({ id: 'cancelled', kind: 'err', error: 'Submit cancelled — no destination chosen.' });
+    handlers.submitReview.mockClear();
     handlers.loadDocument.mockClear();
     first.webview.postMessage.mockClear();
     await watchers[0].onDidChange.mock.calls[0][0]();
