@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { formatReview } from '../src/formatter.js';
-import type { PlanDocument } from '../src/types.js';
+import { formatPausedNotice, formatReview, formatReviewOutput } from '../src/formatter.js';
+import { hashItem } from '../src/reviewModel.js';
+import type { Answer, PlanDocument, Review, ReviewItem, Thread } from '../src/types.js';
 
 function makeDoc(overrides: Partial<PlanDocument> = {}): PlanDocument {
   return {
@@ -245,5 +246,230 @@ describe('formatReview', () => {
     expect(out).toContain('**Verdict:** Approved');
     expect(out).toContain('**Comments:** 0');
     expect(out).not.toContain('## Section');
+  });
+});
+
+describe('formatReviewOutput (v2)', () => {
+  function makeItem(
+    partial: Pick<ReviewItem, 'id' | 'kind' | 'label' | 'question'> & Partial<ReviewItem>,
+  ): ReviewItem {
+    const item = { sectionId: '1.1', ...partial } as ReviewItem;
+    return { ...item, hash: hashItem(item) };
+  }
+
+  function answer(item: ReviewItem, choice: string, note = '', itemHash = item.hash): Answer {
+    return { choice, note, itemHash, round: 2, updatedAt: '2026-10-15T00:00:00.000Z' };
+  }
+
+  function makeThread(partial: Partial<Thread> & Pick<Thread, 'id'>): Thread {
+    return {
+      sectionId: '1.1',
+      anchor: null,
+      resolved: false,
+      outdated: false,
+      createdRound: 2,
+      comments: [],
+      ...partial,
+    };
+  }
+
+  function makeReview(overrides: Partial<Review> = {}): Review {
+    return {
+      version: 2,
+      id: 'rv_8f3a',
+      title: 'Test Plan',
+      status: 'open',
+      createdAt: '2026-10-15T00:00:00.000Z',
+      updatedAt: '2026-10-15T00:00:00.000Z',
+      answers: {},
+      threads: [],
+      rounds: [
+        {
+          n: 2,
+          plan: '',
+          contentHash: 'x',
+          startedAt: '2026-10-15T00:00:00.000Z',
+          submittedAt: '2026-10-15T01:00:00.000Z',
+          verdict: 'changes_requested',
+        },
+      ],
+      ...overrides,
+    };
+  }
+
+  const NEXT_FOOTER = [
+    '---',
+    '**Next:** revise the plan and re-run with `--review rv_8f3a`. Keep item ids stable.',
+    'Re-emit deferred items unchanged unless you resolve them. Answer threads with',
+    '```reply thread=<id>``` blocks.',
+  ];
+
+  const retry = makeItem({
+    id: 'retry-backoff',
+    kind: 'decision',
+    label: 'Retry backoff',
+    question: 'Which backoff?',
+    options: [
+      { key: 'A', text: 'Exponential', pick: true },
+      { key: 'B', text: 'Circuit breaker after 90 s', pick: false },
+    ],
+  });
+  const legacy = makeItem({
+    id: 'legacy-window',
+    kind: 'decision',
+    label: 'Legacy callback window',
+    question: 'How long?',
+    options: [{ key: 'A', text: '30 days', pick: false }],
+  });
+  const cookie = makeItem({
+    id: 'cookie-scope',
+    kind: 'decision',
+    label: 'Refresh cookie scope',
+    question: 'Scope?',
+    options: [{ key: 'A', text: 'Host only', pick: false }],
+  });
+  const latency = makeItem({
+    id: 'auth-latency',
+    kind: 'assumption',
+    label: 'Auth server latency',
+    question: 'p99 under 200 ms',
+  });
+
+  it('formats a changes-requested review with every item state', () => {
+    const doc = makeDoc();
+    doc.sections[0]!.heading = '04 Token exchange';
+    const review = makeReview({
+      answers: {
+        'retry-backoff': answer(retry, 'B', 'rationale note\nsecond line'),
+        'legacy-window': answer(legacy, 'deferred', 'Needs mobile-team input'),
+        'auth-latency': answer(latency, 'no', 'p99 spikes to 900 ms during deploys'),
+      },
+      threads: [
+        makeThread({
+          id: 't_4k2',
+          anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['never leaves the client'] },
+          comments: [
+            { id: 'c_1', author: 'reviewer', body: 'It does leave the client…', createdAt: '' },
+            { id: 'c_2', author: 'agent', body: 'Reworded…', createdAt: '' },
+          ],
+        }),
+        makeThread({ id: 't_old', createdRound: 1, resolved: true }),
+      ],
+    });
+    review.rounds[0]!.summary = 'Mostly good.';
+
+    expect(formatReviewOutput(review, [retry, legacy, cookie, latency], doc)).toBe(
+      [
+        '# Plan Review: Test Plan',
+        'Review `rv_8f3a` · Round 2 · **Changes requested**',
+        '',
+        '## Summary',
+        'Mostly good.',
+        "- Decisions: 1 answered, 1 deferred, 1 unanswered · Assumptions: 1 doesn't hold",
+        '- Threads: 1 open (1 new this round), 1 resolved',
+        '',
+        '## Decisions',
+        '### `retry-backoff` · Retry backoff — **B**: Circuit breaker after 90 s (your pick was A)',
+        '> rationale note',
+        '> second line',
+        '### `legacy-window` · Legacy callback window — **Deferred**',
+        '> Needs mobile-team input',
+        '### `cookie-scope` · Refresh cookie scope — *Unanswered*',
+        '',
+        '## Assumptions',
+        "### `auth-latency` · Auth server latency — **Doesn't hold**",
+        '> p99 spikes to 900 ms during deploys',
+        '',
+        '## Open threads',
+        '### `t_4k2` · § 04 Token exchange',
+        '> never leaves the client',
+        '- **Reviewer:** It does leave the client…',
+        '- **Agent:** Reworded…',
+        '',
+        ...NEXT_FOOTER,
+      ].join('\n'),
+    );
+  });
+
+  it('renders other, matching pick, changed and outdated cases', () => {
+    const review = makeReview({
+      answers: {
+        'retry-backoff': answer(retry, 'other', 'Use jitter'),
+        'legacy-window': answer(legacy, 'A'),
+        'cookie-scope': answer(cookie, 'A', 'old', 'stale-hash'),
+        'auth-latency': answer(latency, 'unsure'),
+      },
+      threads: [
+        makeThread({
+          id: 't_out',
+          outdated: true,
+          anchor: { type: 'lines', startLine: 0, endLine: 1, lineTexts: ['a', 'b'] },
+        }),
+      ],
+    });
+    const out = formatReviewOutput(review, [retry, legacy, cookie, latency], makeDoc());
+    expect(out).toContain('`retry-backoff` · Retry backoff — **Other**\n> Use jitter');
+    expect(out).toContain('Legacy callback window — **A**: 30 days\n');
+    expect(out).toContain('Refresh cookie scope — *Unanswered* (plan changed since your answer)\n');
+    expect(out).not.toContain('> old');
+    expect(out).toContain('Auth server latency — **Not sure**');
+    expect(out).toContain('## Outdated threads\n### `t_out` · § Create schema\n> a b');
+    expect(out).not.toContain('## Open threads');
+  });
+
+  it('formats an approved review with deferred items', () => {
+    const review = makeReview({
+      status: 'approved',
+      answers: { 'legacy-window': answer(legacy, 'deferred'), 'auth-latency': answer(latency, 'holds') },
+    });
+    review.rounds[0]!.verdict = 'approved';
+    expect(formatReviewOutput(review, [legacy, latency], makeDoc())).toBe(
+      [
+        '# Plan Review: Test Plan',
+        'Review `rv_8f3a` · Round 2 · **Approved**',
+        '',
+        '## Summary',
+        '- Decisions: 1 deferred · Assumptions: 1 holds',
+        '',
+        '## Decisions',
+        '### `legacy-window` · Legacy callback window — **Deferred**',
+        '',
+        '## Assumptions',
+        '### `auth-latency` · Auth server latency — **Holds**',
+        '',
+        '---',
+        'Approved. 1 deferred items remain open — track them during implementation.',
+      ].join('\n'),
+    );
+  });
+
+  it('says plain Approved when nothing is deferred', () => {
+    const review = makeReview({ status: 'approved' });
+    review.rounds[0]!.verdict = 'approved';
+    expect(formatReviewOutput(review, [], makeDoc()).endsWith('---\nApproved.')).toBe(true);
+  });
+
+  it('prints only header and footer when there are no items or threads', () => {
+    expect(formatReviewOutput(makeReview(), [], makeDoc())).toBe(
+      [
+        '# Plan Review: Test Plan',
+        'Review `rv_8f3a` · Round 2 · **Changes requested**',
+        '',
+        ...NEXT_FOOTER,
+      ].join('\n'),
+    );
+  });
+
+  it('formats the paused notice counting done and deferred as answered', () => {
+    const review = makeReview({
+      answers: {
+        'retry-backoff': answer(retry, 'A'),
+        'legacy-window': answer(legacy, 'deferred'),
+        'cookie-scope': answer(cookie, 'A', '', 'stale'),
+      },
+    });
+    expect(formatPausedNotice(review, [retry, legacy, cookie, latency])).toBe(
+      'Review `rv_8f3a` paused at round 2 (2/4 items answered). The user has not finished reviewing — wait for them. Resume with: plan-review --review rv_8f3a',
+    );
   });
 });
