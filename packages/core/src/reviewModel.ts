@@ -38,7 +38,7 @@ export function itemCounts(items: ReviewItem[], answers: Record<string, Answer>)
     assumptions: { holds: 0, unsure: 0, no: 0, deferred: 0, open: 0 },
   };
   for (const item of items) {
-    const answer = answers[item.id];
+    const answer = Object.hasOwn(answers, item.id) ? answers[item.id] : undefined;
     const state = itemState(item, answer);
     if (item.kind === 'decision') {
       if (state === 'done') counts.decisions.answered++;

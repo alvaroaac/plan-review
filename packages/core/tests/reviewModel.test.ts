@@ -126,3 +126,13 @@ describe('id generators', () => {
     expect(new Set(Array.from({ length: 20 }, newReviewId)).size).toBeGreaterThan(1);
   });
 });
+
+
+describe('own-property answer lookups', () => {
+  it('counts constructor and inherited answers as open', () => {
+    const item = makeItem({ id: 'constructor', kind: 'assumption' });
+    const answers: Record<string, Answer> = Object.create({ constructor: answer(item, 'holds') });
+    expect(itemCounts([item], answers).assumptions).toEqual({ holds: 0, unsure: 0, no: 0, deferred: 0, open: 1 });
+    expect(itemCounts([item], {}).assumptions.open).toBe(1);
+  });
+});

@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { marked } from 'marked';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import * as core from '../src/index.js';
 import { extractItems, ITEM_FENCE_RE } from '../src/items.js';
 import type { AgentReply, ExtractResult } from '../src/items.js';
@@ -311,5 +311,33 @@ describe('items public API', () => {
   it('keeps items browser-safe', () => {
     const source = readFileSync(new URL('../src/items.ts', import.meta.url), 'utf8');
     expect(source).not.toMatch(/node:/);
+  });
+});
+
+
+describe('item extraction regressions', () => {
+  it('skips an empty reply body and warns with its line number', () => {
+    const result = extractItems(makeDoc(`Before\n\n${fence('reply thread=t_empty', '  \n  ')}\n\nAfter`));
+    expect(result.replies).toEqual([]);
+    expect(result.warnings).toEqual(['Reply at line 3: empty body']);
+    expect(result.doc.sections[0].body).toBe('Before\n\n\n\nAfter');
+  });
+
+  it('uses a private lexer independent of the global marked singleton', () => {
+    const tokens = marked.lexer('');
+    const lexer = vi.spyOn(marked, 'lexer').mockReturnValue(tokens);
+    try {
+      expect(extractItems(makeDoc(decision())).items).toHaveLength(1);
+      expect(lexer).not.toHaveBeenCalled();
+    } finally {
+      lexer.mockRestore();
+    }
+  });
+
+  it.each(['label', 'quote', 'context'])('treats an empty %s field as absent', (field) => {
+    const plain = extractItems(makeDoc(fence('assumption id=browser-crypto', 'statement: Supported.')));
+    const empty = extractItems(makeDoc(fence('assumption id=browser-crypto', `statement: Supported.\n${field}:   `)));
+    expect(empty.items).toEqual(plain.items);
+    expect(empty.warnings).toEqual([]);
   });
 });

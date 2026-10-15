@@ -438,7 +438,7 @@ describe('formatReviewOutput (v2)', () => {
         '### `auth-latency` · Auth server latency — **Holds**',
         '',
         '---',
-        'Approved. 1 deferred items remain open — track them during implementation.',
+        'Approved. 1 deferred item remains open — track them during implementation.',
       ].join('\n'),
     );
   });
@@ -472,4 +472,31 @@ describe('formatReviewOutput (v2)', () => {
       'Review `rv_8f3a` paused at round 2 (2/4 items answered). The user has not finished reviewing — wait for them. Resume with: plan-review --review rv_8f3a',
     );
   });
+
+  it('formats an unanswered constructor item without reading inherited answers', () => {
+    const item = makeItem({ id: 'constructor', kind: 'decision', label: 'Constructor', question: 'Which?' });
+    const review = makeReview();
+    expect(formatReviewOutput(review, [item], makeDoc())).toContain('Constructor — *Unanswered*');
+    expect(formatReviewOutput(review, [item], makeDoc())).not.toContain('plan changed since your answer');
+    expect(formatPausedNotice(review, [item])).toContain('(0/1 items answered)');
+    review.rounds[0]!.verdict = 'approved';
+    expect(formatReviewOutput(review, [item], makeDoc()).endsWith('Approved.')).toBe(true);
+  });
+
+  it('keeps the plural wording for multiple deferred items', () => {
+    const review = makeReview({ answers: { [legacy.id]: answer(legacy, 'deferred'), [latency.id]: answer(latency, 'deferred') } });
+    review.rounds[0]!.verdict = 'approved';
+    expect(formatReviewOutput(review, [legacy, latency], makeDoc()))
+      .toContain('Approved. 2 deferred items remain open — track them during implementation.');
+  });
+
+  it('indents continuation lines in multiline reviewer and agent comments', () => {
+    const review = makeReview({ threads: [makeThread({ id: 't_multi', comments: [
+      { id: 'c_review', author: 'reviewer', body: 'First.\nSecond.\n\nLast.', createdAt: '2026-10-15T00:00:00.000Z' },
+      { id: 'c_agent', author: 'agent', body: 'Reply.\nMore.', createdAt: '2026-10-15T00:00:00.000Z' },
+    ] })] });
+    expect(formatReviewOutput(review, [], makeDoc()))
+      .toContain('- **Reviewer:** First.\n  Second.\n  \n  Last.\n- **Agent:** Reply.\n  More.');
+  });
+
 });

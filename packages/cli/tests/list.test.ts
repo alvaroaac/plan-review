@@ -24,7 +24,7 @@ async function seed() {
   const answers = Object.fromEntries(older.loaded.items.slice(0, 2).map((item, index) => [item.id, {
     choice: index === 0 ? 'A' : 'deferred', note: '', itemHash: item.hash, round: 1, updatedAt: now.toISOString(),
   }]));
-  await saveProgress(store, older.review.id, { answers, threads: [] }, now);
+  await saveProgress(store, older.review.id, { answers, threads: [] }, now, new Set(older.loaded.items.map((item) => item.id)));
   const newer = await openReview(store, { markdown: '# Newer plan', now: new Date('2026-10-15T13:00:00Z') });
   const approved = await openReview(store, { markdown: '# Approved plan', now: new Date('2026-10-15T14:00:00Z') });
   await submitRound(store, approved.review.id, { verdict: 'approved', summary: '' }, new Date('2026-10-15T14:01:00Z'));
@@ -69,7 +69,7 @@ describe('list command', () => {
     // All three assumption verdicts count as answered.
     const item = extractItems(parse(lastPlan)).items[1];
     const review = (await store.get(older.review.id))!;
-    await saveProgress(store, review.id, { answers: { ...review.answers, current: { choice: 'no', note: '', itemHash: item.hash, round: 2, updatedAt: now.toISOString() } }, threads: [] }, new Date('2026-10-15T15:00:00Z'));
+    await saveProgress(store, review.id, { answers: { ...review.answers, current: { choice: 'no', note: '', itemHash: item.hash, round: 2, updatedAt: now.toISOString() } }, threads: [] }, new Date('2026-10-15T15:00:00Z'), new Set(extractItems(parse(lastPlan)).items.map((item) => item.id)));
     expect(run(['list']).stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+2\\s+\\S+\\s+1/0/1`));
   });
 

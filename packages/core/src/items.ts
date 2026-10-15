@@ -1,4 +1,4 @@
-import { marked } from 'marked';
+import { Marked } from 'marked';
 import { hashItem } from './reviewModel.js';
 import type { PlanDocument, ReviewItem } from './types.js';
 
@@ -14,6 +14,8 @@ export interface ExtractResult {
   replies: AgentReply[];
   warnings: string[];
 }
+
+const marked = new Marked();
 
 export const ITEM_FENCE_RE = /^(?:decision|assumption)\s+id=[^\s]+(?:\s|$)/;
 
@@ -44,7 +46,9 @@ export function extractItems(doc: PlanDocument): ExtractResult {
         body += section.body.slice(keptFrom, start);
         keptFrom = offsets[offset];
         const threadId = info.find((part) => part.startsWith('thread='))?.slice(7);
-        if (threadId) replies.push({ threadId, body: token.text.trim(), sectionId: section.id });
+        const replyBody = token.text.trim();
+        if (!replyBody) warnings.push(`Reply at line ${line}: empty body`);
+        else if (threadId) replies.push({ threadId, body: replyBody, sectionId: section.id });
         else warnings.push(`Reply at line ${line}: missing thread`);
         continue;
       }
@@ -131,10 +135,10 @@ function parseItem(
   const item: ReviewItem = {
     id,
     kind,
-    label: fields.get('label') ?? humanized.charAt(0).toUpperCase() + humanized.slice(1),
+    label: fields.get('label') || humanized.charAt(0).toUpperCase() + humanized.slice(1),
     question,
-    ...(fields.has('context') ? { context: fields.get('context')! } : {}),
-    ...(fields.has('quote') ? { quote: fields.get('quote')! } : {}),
+    ...(fields.get('context') ? { context: fields.get('context')! } : {}),
+    ...(fields.get('quote') ? { quote: fields.get('quote')! } : {}),
     ...(kind === 'decision' ? { options } : {}),
     sectionId,
     hash: '',

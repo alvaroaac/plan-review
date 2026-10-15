@@ -121,7 +121,8 @@ describe('openReview resolution', () => {
             expect(review.planPath).toBe(planPath);
             expect(review.rounds).toEqual([makeRound(PLAN, { startedAt: NOW.toISOString() })]);
           }
-          expect(store.get).not.toHaveBeenCalled();
+          if (resumes) expect(store.get).toHaveBeenCalledExactlyOnceWith(existing.id);
+          else expect(store.get).not.toHaveBeenCalled();
           if (planPath && !fresh) expect(store.findOpenByPlanPath).toHaveBeenCalledExactlyOnceWith(planPath);
           else expect(store.findOpenByPlanPath).not.toHaveBeenCalled();
           expect(store.save).toHaveBeenCalledExactlyOnceWith(review);
@@ -310,13 +311,14 @@ describe('carryForward', () => {
   });
 
   for (const duplicate of [false, true]) {
-    it(`reopens a resolved thread on a reply, duplicate=${duplicate}`, () => {
+    it(`only reopens a resolved thread on a new reply, duplicate=${duplicate}`, () => {
       const thread = makeThread({ resolved: true, ...(duplicate ? {
         comments: [{ id: 'c_old', author: 'agent', body: 'Fixed.', createdAt: BEFORE }],
       } : {}) });
       const current = extract(`${PLAN}\n\n${fence('reply thread=t_abc123', 'Fixed.')}`);
       const carried = carryForward(makeReview({ threads: [thread] }), current, NOW);
-      expect(carried.threads[0].resolved).toBe(false);
+      expect(carried.threads[0].resolved).toBe(duplicate);
+      if (duplicate) expect(carried.threads[0]).toEqual(thread);
       expect(carried.threads[0].comments).toHaveLength(duplicate ? 1 : 2);
     });
   }
@@ -339,11 +341,11 @@ describe('carryForward', () => {
 });
 
 describe('saveProgress', () => {
-  it('replaces answers and threads wholesale and persists with the injected timestamp', async () => {
+  it('replaces current answers and threads and persists with the injected timestamp', async () => {
     const existing = makeReview({ answers: { removed: makeAnswer() }, threads: [makeThread()] });
     const store = makeStore(existing);
     const update = { answers: { replacement: makeAnswer() }, threads: [makeThread({ id: 't_new123' })] };
-    const review = await saveProgress(store, existing.id, update, NOW);
+    const review = await saveProgress(store, existing.id, update, NOW, new Set(['removed', 'replacement']));
     expect(review).toEqual({ ...existing, ...update, updatedAt: NOW.toISOString() });
     expect(store.save).toHaveBeenCalledExactlyOnceWith(review);
     expect(await store.get(existing.id)).toEqual(review);
@@ -351,14 +353,14 @@ describe('saveProgress', () => {
 
   it('allows replacing all progress with empty collections', async () => {
     const existing = makeReview({ answers: { removed: makeAnswer() }, threads: [makeThread()] });
-    const review = await saveProgress(makeStore(existing), existing.id, { answers: {}, threads: [] }, NOW);
+    const review = await saveProgress(makeStore(existing), existing.id, { answers: {}, threads: [] }, NOW, new Set(['removed']));
     expect(review.answers).toEqual({});
     expect(review.threads).toEqual([]);
   });
 
   it('rejects missing reviews without saving', async () => {
     const store = makeStore();
-    await expect(saveProgress(store, 'rv_missing', { answers: {}, threads: [] }, NOW))
+    await expect(saveProgress(store, 'rv_missing', { answers: {}, threads: [] }, NOW, new Set(['removed'])))
       .rejects.toThrow(new ReviewNotFoundError('rv_missing'));
     expect(store.save).not.toHaveBeenCalled();
   });
@@ -366,7 +368,7 @@ describe('saveProgress', () => {
   it('rejects approved reviews without saving', async () => {
     const existing = makeReview({ status: 'approved' });
     const store = makeStore(existing);
-    await expect(saveProgress(store, existing.id, { answers: {}, threads: [] }, NOW))
+    await expect(saveProgress(store, existing.id, { answers: {}, threads: [] }, NOW, new Set(['removed'])))
       .rejects.toThrow(new ReviewApprovedError(existing.id));
     expect(store.save).not.toHaveBeenCalled();
   });
@@ -430,5 +432,145 @@ describe('rounds public API', () => {
     const source = readFileSync(new URL('../src/rounds.ts', import.meta.url), 'utf8');
     expect(source).not.toMatch(/node:/);
     expect(source).toMatch(/import type \{ ReviewStore \} from '\.\/reviewStore\.js'/);
+  });
+});
+
+
+describe('round regressions', () => {
+  it('leaves threads and answers exactly stored on unchanged resume while warning on unknown replies', async () => {
+    const markdown = `${PLAN}\n\n${fence('reply thread=t_abc123', 'New reply.')}\n\n${fence('reply thread=t_unknown', 'Unknown.')}`;
+    const existing = makeReview({ rounds: [makeRound(markdown)], answers: { hidden: makeAnswer() },
+      threads: [makeThread({ resolved: true }), makeThread({ id: 't_outdated', outdated: true })] });
+    const store = makeStore(existing);
+    const { review, loaded } = await openReview(store, { markdown, reviewId: existing.id, now: NOW });
+    expect(review.threads).toEqual(existing.threads);
+    expect(review.answers).toEqual(existing.answers);
+    expect(review.updatedAt).toBe(NOW.toISOString());
+    expect(loaded.warnings).toEqual(['Reply to unknown thread t_unknown ignored']);
+    expect(await store.get(existing.id)).toEqual(review);
+  });
+
+  it.each(['[docs](https://example.com/x)', '![docs](https://example.com/x)', '[docs][ref]', '![docs][ref]'])(
+    're-anchors plain text against markdown %s on changed-plan open', async (link) => {
+      const existing = makeReview({ threads: [makeThread({
+        anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['See docs now.'] },
+      })] });
+      const { review } = await openReview(makeStore(existing), {
+        markdown: `# Test Plan\n\n## Original\n\nSee ${link} now.`, reviewId: existing.id, now: NOW,
+      });
+      expect(review.threads[0]).toEqual(existing.threads[0]);
+    },
+  );
+
+  it('re-anchors a resolved thread after a new reply reopens it', async () => {
+    const existing = makeReview({ threads: [makeThread({ resolved: true })] });
+    const markdown = `# Test Plan\n\n## Inserted\n\nDifferent content.\n\n## Original\n\nKeep these words. Second line.\n\n${fence('reply thread=t_abc123', 'Fixed.')}`;
+    const { review } = await openReview(makeStore(existing), { markdown, reviewId: existing.id, now: NOW });
+    expect(review.threads[0]).toMatchObject({ sectionId: 'section-2', resolved: false, outdated: false });
+    expect(review.threads[0].comments).toHaveLength(2);
+  });
+
+  for (const anchored of [false, true]) {
+    it(`keeps the second duplicate heading on identical-plan carry-forward, anchored=${anchored}`, () => {
+      const plan = '# Plan\n\n### Tests\n\nShared anchor.\n\n### Tests\n\nShared anchor.';
+      const thread = makeThread({ sectionId: 'section-2', anchor: anchored
+        ? { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['Shared anchor.'] } : null });
+      const review = makeReview({ rounds: [makeRound(plan)], threads: [thread] });
+      expect(carryForward(review, extract(plan), NOW).threads[0]).toEqual(thread);
+    });
+
+    it(`uses duplicate-heading ordinal when ids shift, anchored=${anchored}`, () => {
+      const old = '# Plan\n\n### Tests\n\nShared anchor.\n\n### Other\n\nOther content.\n\n### Tests\n\nShared anchor.';
+      const plan = `# Plan\n\n### Inserted\n\nNew content.\n\n${old.slice('# Plan\n\n'.length)}`;
+      const thread = makeThread({ sectionId: 'section-3', anchor: anchored
+        ? { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['Shared anchor.'] } : null });
+      const review = makeReview({ rounds: [makeRound(old)], threads: [thread] });
+      expect(carryForward(review, extract(plan), NOW).threads[0]).toEqual({ ...thread, sectionId: 'section-4' });
+    });
+  }
+
+  it('keeps an unanchored outdated thread outdated across subsequent opens', async () => {
+    const existing = makeReview({ threads: [makeThread({ anchor: null })] });
+    const store = makeStore(existing);
+    const markdown = '# Plan\n\n## Replacement\n\nDifferent content.';
+    const first = await openReview(store, { markdown, reviewId: existing.id, now: NOW });
+    expect(first.review.threads[0].outdated).toBe(true);
+    const second = await openReview(store, { markdown: `${markdown}\nMore content.`, reviewId: existing.id, now: NOW });
+    expect(second.review.threads[0]).toEqual(first.review.threads[0]);
+  });
+
+  it('keeps hidden answers while removing cleared current answers', async () => {
+    const hidden = makeAnswer();
+    const existing = makeReview({ answers: { hidden, cleared: makeAnswer(), replaced: makeAnswer() } });
+    const replacement = makeAnswer({ choice: 'B' });
+    const store = makeStore(existing);
+    const review = await saveProgress(store, existing.id, { answers: { replaced: replacement }, threads: [] },
+      NOW, new Set(['cleared', 'replaced']));
+    expect(review.answers).toEqual({ hidden, replaced: replacement });
+    expect((await store.get(existing.id))?.answers).toEqual(review.answers);
+  });
+
+  it('rejects progress after a changes-requested round is submitted', async () => {
+    const existing = makeReview({ rounds: [makeRound(PLAN, { submittedAt: BEFORE, verdict: 'changes_requested' })] });
+    const store = makeStore(existing);
+    await expect(saveProgress(store, existing.id, { answers: {}, threads: [] }, NOW, new Set()))
+      .rejects.toThrow('Round already submitted');
+    expect(store.save).not.toHaveBeenCalled();
+  });
+
+  const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+  function delayedStore(existing: Review) {
+    const store = makeStore(existing);
+    const get = store.get.getMockImplementation()!;
+    const save = store.save.getMockImplementation()!;
+    store.get.mockImplementation(async (id) => { await tick(); return get(id); });
+    store.save.mockImplementation(async (review) => {
+      await tick();
+      if (review.status === 'open') await tick();
+      await save(review);
+    });
+    return store;
+  }
+
+  for (const submitFirst of [false, true]) {
+    it(`serializes concurrent progress and submission, submitFirst=${submitFirst}`, async () => {
+      const existing = makeReview();
+      const store = delayedStore(existing);
+      const save = () => saveProgress(store, existing.id, { answers: { current: makeAnswer() }, threads: [] }, NOW, new Set(['current']));
+      const submit = () => submitRound(store, existing.id, { verdict: 'approved', summary: 'Done.' }, NOW);
+      const operations = submitFirst ? [submit(), save()] : [save(), submit()];
+      const results = await Promise.allSettled(operations);
+      expect(results[submitFirst ? 0 : 1].status).toBe('fulfilled');
+      const saved = (await store.get(existing.id))!;
+      expect(saved.status).toBe('approved');
+      expect(saved.rounds[0].submittedAt).toBe(NOW.toISOString());
+      if (submitFirst) expect(results[1].status).toBe('rejected');
+      else expect(saved.answers).toEqual({ current: makeAnswer() });
+    });
+  }
+
+  for (const byPath of [false, true]) {
+    it(`serializes open with submission after resolution, byPath=${byPath}`, async () => {
+      const existing = makeReview();
+      const store = delayedStore(existing);
+      const results = await Promise.allSettled([
+        submitRound(store, existing.id, { verdict: 'approved', summary: '' }, NOW),
+        openReview(store, { markdown: `${PLAN}\nChanged.`, ...(byPath ? { planPath: PATH } : { reviewId: existing.id }), now: NOW }),
+      ]);
+      expect(results[0].status).toBe('fulfilled');
+      expect(results[1].status).toBe('rejected');
+      const saved = (await store.get(existing.id))!;
+      expect(saved.status).toBe('approved');
+      expect(saved.rounds[0].submittedAt).toBe(NOW.toISOString());
+    });
+  }
+
+  it('adopts a supplied planPath when resuming a stdin review by id', async () => {
+    const existing = makeReview();
+    delete existing.planPath;
+    const store = makeStore(existing);
+    const { review } = await openReview(store, { markdown: PLAN, reviewId: existing.id, planPath: PATH, now: NOW });
+    expect(review.planPath).toBe(PATH);
+    expect((await store.get(existing.id))?.planPath).toBe(PATH);
   });
 });

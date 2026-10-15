@@ -68,13 +68,7 @@ export async function browserReview(opts: BrowserReviewOptions): Promise<Browser
     return enqueue(async () => {
       try {
         if (submitted) throw new Error('Round already submitted');
-        // Removed items stay in storage for later rounds, but not in the UI.
-        const hiddenAnswers = Object.fromEntries(
-          Object.entries(review.answers).filter(([id]) => !itemIds.has(id)),
-        );
-        review = await saveProgress(store, review.id, {
-          ...update, answers: { ...hiddenAnswers, ...update.answers },
-        }, new Date());
+        review = await saveProgress(store, review.id, update, new Date(), itemIds);
         loaded = {
           ...loaded,
           review: { ...loaded.review, answers: update.answers, threads: review.threads },

@@ -135,7 +135,7 @@ function assumptionResult(item: ReviewItem, answer: Answer | undefined): string 
 }
 
 function itemBlock(item: ReviewItem, answers: Record<string, Answer>): string[] {
-  const answer = answers[item.id];
+  const answer = Object.hasOwn(answers, item.id) ? answers[item.id] : undefined;
   const result =
     item.kind === 'decision' ? decisionResult(item, answer) : assumptionResult(item, answer);
   const lines = [`### \`${item.id}\` · ${item.label} — ${result}`];
@@ -185,7 +185,7 @@ function threadBlock(thread: Thread, doc: PlanDocument): string[] {
   if (thread.anchor) lines.push(`> ${thread.anchor.lineTexts.join(' ')}`);
   for (const comment of thread.comments) {
     const author = comment.author === 'reviewer' ? 'Reviewer' : 'Agent';
-    lines.push(`- **${author}:** ${comment.body}`);
+    lines.push(`- **${author}:** ${comment.body.replace(/\n/g, '\n  ')}`);
   }
   return lines;
 }
@@ -196,10 +196,10 @@ function section(title: string, blocks: string[][]): string[] {
 
 function footer(review: Review, items: ReviewItem[], approved: boolean): string[] {
   if (approved) {
-    const deferred = items.filter((i) => itemState(i, review.answers[i.id]) === 'deferred').length;
+    const deferred = items.filter((i) => itemState(i, Object.hasOwn(review.answers, i.id) ? review.answers[i.id] : undefined) === 'deferred').length;
     return deferred === 0
       ? ['Approved.']
-      : [`Approved. ${deferred} deferred items remain open — track them during implementation.`];
+      : [`Approved. ${deferred} deferred item${deferred === 1 ? ' remains' : 's remain'} open — track them during implementation.`];
   }
   return [
     `**Next:** revise the plan and re-run with \`--review ${review.id}\`. Keep item ids stable.`,
@@ -245,7 +245,7 @@ export function formatReviewOutput(
 export function formatPausedNotice(review: Review, items: ReviewItem[]): string {
   const round = review.rounds[review.rounds.length - 1]!;
   const answered = items.filter((i) => {
-    const state = itemState(i, review.answers[i.id]);
+    const state = itemState(i, Object.hasOwn(review.answers, i.id) ? review.answers[i.id] : undefined);
     return state === 'done' || state === 'deferred';
   }).length;
   return (

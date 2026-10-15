@@ -41,15 +41,36 @@ async function getReview(store: ReviewStore, id: string): Promise<Review> {
   return review;
 }
 
-export async function openReview(store: ReviewStore, input: OpenReviewInput): Promise<OpenedReview> {
-  let review: Review | null = null;
-  if (input.reviewId !== undefined) {
-    review = await getReview(store, input.reviewId);
-    if (review.status === 'approved') throw new ReviewApprovedError(review.id);
-  } else if (input.planPath !== undefined && !input.fresh) {
-    review = await store.findOpenByPlanPath(input.planPath);
-  }
+const reviewOperations = new Map<string, Promise<void>>();
 
+function serializeReview<T>(id: string, operation: () => Promise<T>): Promise<T> {
+  const result = (reviewOperations.get(id) ?? Promise.resolve()).then(operation);
+  const pending = result.then(() => {}, () => {});
+  reviewOperations.set(id, pending);
+  void pending.then(() => {
+    if (reviewOperations.get(id) === pending) reviewOperations.delete(id);
+  });
+  return result;
+}
+
+export async function openReview(store: ReviewStore, input: OpenReviewInput): Promise<OpenedReview> {
+  if (input.reviewId !== undefined) {
+    const id = input.reviewId;
+    return serializeReview(id, async () => openResolvedReview(store, input, await getReview(store, id)));
+  }
+  if (input.planPath !== undefined && !input.fresh) {
+    const review = await store.findOpenByPlanPath(input.planPath);
+    if (review) {
+      return serializeReview(review.id, async () => openResolvedReview(store, input, await getReview(store, review.id)));
+    }
+  }
+  return openResolvedReview(store, input, null);
+}
+
+async function openResolvedReview(
+  store: ReviewStore, input: OpenReviewInput, review: Review | null,
+): Promise<OpenedReview> {
+  if (review?.status === 'approved') throw new ReviewApprovedError(review.id);
   const extract = extractItems(parse(input.markdown, input.splitBy));
   const timestamp = input.now.toISOString();
   if (!review) {
@@ -67,10 +88,16 @@ export async function openReview(store: ReviewStore, input: OpenReviewInput): Pr
     };
   }
 
+  if (review.planPath === undefined && input.planPath !== undefined) {
+    review = { ...review, planPath: input.planPath };
+  }
+
   const lastRound = review.rounds.at(-1);
   const hash = contentHash(input.markdown);
   // Carry-forward reads the old snapshot; replace/append rounds only afterwards.
-  review = carryForward(review, extract, input.now, input.splitBy);
+  if (!lastRound || lastRound.submittedAt || lastRound.contentHash !== hash) {
+    review = carryForward(review, extract, input.now, input.splitBy);
+  }
   let banner: Banner | undefined;
   if (lastRound && !lastRound.submittedAt) {
     if (lastRound.contentHash !== hash) {
@@ -121,18 +148,42 @@ export async function openReview(store: ReviewStore, input: OpenReviewInput): Pr
 }
 
 function normalize(text: string): string {
-  return text.toLowerCase().replace(/[^a-z0-9]/g, '');
+  return text.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, '$1')
+    .toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
 export function carryForward(review: Review, extract: ExtractResult, now: Date, splitBy?: SplitStrategy): Review {
   const previousPlan = review.rounds.at(-1)?.plan;
   const previousSections = previousPlan === undefined ? [] : parse(previousPlan, splitBy).sections;
   const sections = extract.doc.sections;
-  const threads = review.threads.map((thread) => {
+  const threads = [...review.threads];
+
+  for (const reply of extract.replies) {
+    const index = threads.findIndex((thread) => thread.id === reply.threadId);
+    if (index === -1) continue;
+    const thread = threads[index];
+    const body = reply.body.trim();
+    const duplicate = thread.comments.some((comment) => comment.author === 'agent' && comment.body.trim() === body);
+    if (duplicate) continue;
+    threads[index] = {
+      ...thread,
+      resolved: false,
+      comments: [...thread.comments, {
+        id: newCommentId(), author: 'agent', body, createdAt: now.toISOString(),
+      }],
+    };
+  }
+  const reanchored = threads.map((thread) => {
     if (thread.resolved) return thread;
     const heading = previousSections.find((section) => section.id === thread.sectionId)?.heading;
-    const sameHeading = sections.find((section) => section.heading === heading);
+    const candidates = sections.filter((section) => section.heading === heading);
+    const ordinal = previousSections.filter((section) => section.heading === heading)
+      .findIndex((section) => section.id === thread.sectionId);
+    const sameHeading = candidates.find((section) => section.id === thread.sectionId)
+      ?? candidates[ordinal] ?? candidates[0];
     if (!thread.anchor) {
+      if (thread.outdated) return thread;
       return { ...thread, sectionId: sameHeading?.id ?? thread.sectionId, outdated: !sameHeading };
     }
 
@@ -143,48 +194,43 @@ export function carryForward(review: Review, extract: ExtractResult, now: Date, 
     return { ...thread, sectionId: match?.id ?? thread.sectionId, outdated: !match };
   });
 
-  for (const reply of extract.replies) {
-    const index = threads.findIndex((thread) => thread.id === reply.threadId);
-    if (index === -1) continue;
-    const thread = threads[index];
-    const body = reply.body.trim();
-    const duplicate = thread.comments.some((comment) => comment.author === 'agent' && comment.body.trim() === body);
-    threads[index] = {
-      ...thread,
-      resolved: false,
-      comments: duplicate ? thread.comments : [...thread.comments, {
-        id: newCommentId(), author: 'agent', body, createdAt: now.toISOString(),
-      }],
-    };
-  }
-  return { ...review, threads };
+  return { ...review, threads: reanchored };
 }
 
 export async function saveProgress(
-  store: ReviewStore, reviewId: string, update: ProgressUpdate, now: Date,
+  store: ReviewStore, reviewId: string, update: ProgressUpdate, now: Date, currentItemIds: ReadonlySet<string>,
 ): Promise<Review> {
-  const review = await getReview(store, reviewId);
-  if (review.status === 'approved') throw new ReviewApprovedError(review.id);
-  const updated = { ...review, answers: update.answers, threads: update.threads, updatedAt: now.toISOString() };
-  await store.save(updated);
-  return updated;
+  return serializeReview(reviewId, async () => {
+    const review = await getReview(store, reviewId);
+    if (review.status === 'approved') throw new ReviewApprovedError(review.id);
+    if (review.rounds.at(-1)?.submittedAt) throw new Error('Round already submitted');
+    const answers = Object.fromEntries([
+      ...Object.entries(review.answers).filter(([id]) => !currentItemIds.has(id)),
+      ...Object.entries(update.answers).filter(([id]) => currentItemIds.has(id)),
+    ]);
+    const updated = { ...review, answers, threads: update.threads, updatedAt: now.toISOString() };
+    await store.save(updated);
+    return updated;
+  });
 }
 
 export async function submitRound(
   store: ReviewStore, reviewId: string, req: SubmitRequest, now: Date,
 ): Promise<Review> {
-  const review = await getReview(store, reviewId);
-  const round = review.rounds[review.rounds.length - 1];
-  if (round.submittedAt) throw new Error('Round already submitted');
-  const timestamp = now.toISOString();
-  const updated: Review = {
-    ...review,
-    status: req.verdict === 'approved' ? 'approved' : review.status,
-    updatedAt: timestamp,
-    rounds: [...review.rounds.slice(0, -1), {
-      ...round, submittedAt: timestamp, verdict: req.verdict, summary: req.summary,
-    }],
-  };
-  await store.save(updated);
-  return updated;
+  return serializeReview(reviewId, async () => {
+    const review = await getReview(store, reviewId);
+    const round = review.rounds[review.rounds.length - 1];
+    if (round.submittedAt) throw new Error('Round already submitted');
+    const timestamp = now.toISOString();
+    const updated: Review = {
+      ...review,
+      status: req.verdict === 'approved' ? 'approved' : review.status,
+      updatedAt: timestamp,
+      rounds: [...review.rounds.slice(0, -1), {
+        ...round, submittedAt: timestamp, verdict: req.verdict, summary: req.summary,
+      }],
+    };
+    await store.save(updated);
+    return updated;
+  });
 }

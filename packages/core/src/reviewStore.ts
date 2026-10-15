@@ -16,7 +16,7 @@ export const DEFAULT_REVIEW_DIR = join(homedir(), '.plan-review', 'reviews');
 const REVIEW_ID_PATTERN = /^rv_[0-9a-z]+$/;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function isRound(value: unknown): boolean {
@@ -24,7 +24,18 @@ function isRound(value: unknown): boolean {
     isRecord(value) &&
     typeof value.n === 'number' &&
     typeof value.plan === 'string' &&
-    typeof value.contentHash === 'string'
+    typeof value.contentHash === 'string' &&
+    typeof value.startedAt === 'string'
+  );
+}
+
+function isThread(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.sectionId === 'string' &&
+    typeof value.resolved === 'boolean' &&
+    Array.isArray(value.comments)
   );
 }
 
@@ -34,9 +45,12 @@ export function isReview(value: unknown): value is Review {
     value.version === 2 &&
     typeof value.id === 'string' &&
     typeof value.title === 'string' &&
+    typeof value.createdAt === 'string' &&
+    typeof value.updatedAt === 'string' &&
     (value.status === 'open' || value.status === 'approved') &&
     isRecord(value.answers) &&
     Array.isArray(value.threads) &&
+    value.threads.every(isThread) &&
     Array.isArray(value.rounds) &&
     value.rounds.length > 0 &&
     value.rounds.every(isRound)

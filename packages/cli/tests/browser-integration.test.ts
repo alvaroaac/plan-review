@@ -149,7 +149,7 @@ describe('browser review integration', () => {
 
   it('opens the next round after submission and carries state across plan revisions', async () => {
     const opened = await openReview(store, { markdown, now });
-    await saveProgress(store, opened.review.id, progress(opened.loaded), now);
+    await saveProgress(store, opened.review.id, progress(opened.loaded), now, new Set(opened.loaded.items.map((item) => item.id)));
     await submitRound(store, opened.review.id, { verdict: 'changes_requested', summary: '' }, now);
     const second = await start({ markdown, reviewId: opened.review.id });
     expect(second.loaded.review).toMatchObject({ round: 2, banner: 'planUnchanged' });
@@ -206,7 +206,7 @@ describe('browser review integration', () => {
 
   it('keeps answers for removed items when the browser saves current progress', async () => {
     const opened = await openReview(store, { markdown, now });
-    await saveProgress(store, opened.review.id, progress(opened.loaded), now);
+    await saveProgress(store, opened.review.id, progress(opened.loaded), now, new Set(opened.loaded.items.map((item) => item.id)));
     await submitRound(store, opened.review.id, { verdict: 'changes_requested', summary: '' }, now);
     const { url, result } = await start({ markdown: '# Plan without items', reviewId: opened.review.id });
     await send(url, '/api/session', { answers: {}, threads: [] });

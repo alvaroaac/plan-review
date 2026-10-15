@@ -92,6 +92,7 @@ describe('FileReviewStore', () => {
     await store.save(makeReview({ id: 'rv_old', updatedAt: '2026-10-15T09:00:00.000Z' }));
     await store.save(makeReview({ id: 'rv_new', updatedAt: '2026-10-15T11:00:00.000Z' }));
     await writeFile(join(dir, 'rv_bad.json'), 'garbage', 'utf-8');
+    await writeFile(join(dir, 'rv_malformed.json'), JSON.stringify({ ...makeReview(), updatedAt: null }), 'utf-8');
     await writeFile(join(dir, 'notes.txt'), 'x', 'utf-8');
     expect((await store.list()).map((r) => r.id)).toEqual(['rv_new', 'rv_old']);
   });
@@ -127,6 +128,19 @@ describe('isReview', () => {
 
   it.each([
     ['null', null],
+    ['missing createdAt', { ...makeReview(), createdAt: undefined }],
+    ['non-string createdAt', { ...makeReview(), createdAt: 1 }],
+    ['missing updatedAt', { ...makeReview(), updatedAt: undefined }],
+    ['non-string updatedAt', { ...makeReview(), updatedAt: 1 }],
+    ['array answers', { ...makeReview(), answers: [] }],
+    ['null thread', { ...makeReview(), threads: [null] }],
+    ['array thread', { ...makeReview(), threads: [[]] }],
+    ...['id', 'sectionId', 'resolved', 'comments'].flatMap<[string, unknown]>((field) => [
+      [`thread missing ${field}`, { ...makeReview(), threads: [{ ...makeReview().threads[0], [field]: undefined }] }],
+      [`thread invalid ${field}`, { ...makeReview(), threads: [{ ...makeReview().threads[0], [field]: 1 }] }],
+    ]),
+    ['round missing startedAt', { ...makeReview(), rounds: [{ ...makeReview().rounds[0], startedAt: undefined }] }],
+    ['round invalid startedAt', { ...makeReview(), rounds: [{ ...makeReview().rounds[0], startedAt: 1 }] }],
     ['wrong version', { ...makeReview(), version: 1 }],
     ['non-string id', { ...makeReview(), id: 1 }],
     ['non-string title', { ...makeReview(), title: undefined }],
