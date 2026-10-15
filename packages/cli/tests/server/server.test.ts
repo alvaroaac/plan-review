@@ -1,19 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import { createReviewServer, startServer, stopServer } from '../../src/server/server.js';
-import type { PlanDocument } from '@plan-review/core';
+import type { LoadedReview } from '@plan-review/core';
 
-const mockDoc: PlanDocument = {
-  title: 'Test',
-  metadata: {},
-  mode: 'generic',
-  sections: [{ id: 'section-1', heading: 'S1', level: 2, body: 'content' }],
-  comments: [],
+const loaded: LoadedReview = {
+  document: {
+    title: 'Test',
+    metadata: {},
+    mode: 'generic',
+    sections: [{ id: 'section-1', heading: 'S1', level: 2, body: 'content' }],
+    comments: [],
+  },
+  items: [],
+  warnings: [],
+  review: { id: 'rv_1', round: 1, status: 'open', answers: {}, threads: [] },
 };
 
 describe('server lifecycle', () => {
   it('createReviewServer returns an http.Server', () => {
     const server = createReviewServer({
-      getDocument: () => mockDoc,
+      getLoaded: () => loaded,
+      onProgress: vi.fn(),
       onSubmit: vi.fn(),
       getAssetHtml: () => '<html></html>',
     });
@@ -23,7 +29,8 @@ describe('server lifecycle', () => {
 
   it('startServer binds to port and returns url', async () => {
     const server = createReviewServer({
-      getDocument: () => mockDoc,
+      getLoaded: () => loaded,
+      onProgress: vi.fn(),
       onSubmit: vi.fn(),
       getAssetHtml: () => '<html></html>',
     });
@@ -36,7 +43,8 @@ describe('server lifecycle', () => {
 
   it('stopServer closes the server', async () => {
     const server = createReviewServer({
-      getDocument: () => mockDoc,
+      getLoaded: () => loaded,
+      onProgress: vi.fn(),
       onSubmit: vi.fn(),
       getAssetHtml: () => '<html></html>',
     });
@@ -49,7 +57,8 @@ describe('server lifecycle', () => {
 
   it('server responds to requests after start', async () => {
     const server = createReviewServer({
-      getDocument: () => mockDoc,
+      getLoaded: () => loaded,
+      onProgress: vi.fn(),
       onSubmit: vi.fn(),
       getAssetHtml: () => '<html></html>',
     });
