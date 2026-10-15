@@ -13,6 +13,10 @@
       "types": "./dist/formatter.d.ts",
       "default": "./dist/formatter.js"
     },
+    "./items": {
+      "types": "./dist/items.d.ts",
+      "default": "./dist/items.js"
+    },
     "./review": {
       "types": "./dist/reviewModel.d.ts",
       "default": "./dist/reviewModel.js"
