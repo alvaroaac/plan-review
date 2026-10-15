@@ -76,6 +76,24 @@ describe('createAutosave', () => {
     expect(save).not.toHaveBeenCalled();
   });
 
+  it('cancel also drops a snapshot queued behind an in-flight save', async () => {
+    let finishFirst!: () => void;
+    const save = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { finishFirst = resolve; }))
+      .mockResolvedValue(undefined);
+    const autosave = createAutosave<string>({ delayMs: 500, save });
+
+    autosave.schedule('first');
+    await vi.advanceTimersByTimeAsync(500);
+    autosave.schedule('queued');
+    await vi.advanceTimersByTimeAsync(500);
+    autosave.cancel();
+    finishFirst();
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(save.mock.calls).toEqual([['first']]);
+  });
+
   it('flush resolves without saving after cancel drops the pending snapshot', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const autosave = createAutosave<string>({ delayMs: 500, save });

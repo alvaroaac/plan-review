@@ -2,7 +2,7 @@ import { createContext, type ComponentChildren } from 'preact';
 import {
   useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef,
 } from 'preact/hooks';
-import type { LoadedReview, ProgressUpdate } from '@plan-review/core';
+import type { LoadedReview, ProgressUpdate, ReviewItem } from '@plan-review/core';
 import type { ReviewClient } from '@plan-review/core/client';
 import { createAutosave } from '@plan-review/core/autosave';
 import { applyTheme, storeTheme, vscodeTheme, type Theme } from '../theme.js';
@@ -44,11 +44,14 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
   const synced = useRef<ProgressUpdate>(progress.current);
 
   // While a host reload runs, progress edits wait and are replayed on the new round,
-  // so no pre-reload snapshot can be saved over it.
+  // so no pre-reload snapshot can be saved over it. A held answer keeps the hash of the
+  // item the reviewer saw, so a revised item still shows as changed.
+  const items = useRef(state.items);
+  items.current = state.items;
   const held = useRef<ReviewAction[] | null>(null);
   const dispatch = useCallback((action: ReviewAction) => {
     if (held.current && isProgressAction(action)) {
-      held.current.push(action);
+      held.current.push(pinItemHash(action, items.current));
       return;
     }
     // A reload is the server's truth: never echo it back as a save.
@@ -126,6 +129,11 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
     [state, dispatch, client, flushAutosave],
   );
   return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
+}
+
+function pinItemHash(action: ReviewAction, items: ReviewItem[]): ReviewAction {
+  if (action.type !== 'answer' && action.type !== 'defer') return action;
+  return { ...action, itemHash: items.find((item) => item.id === action.itemId)?.hash };
 }
 
 function progressOf({ answers, threads }: ProgressUpdate): ProgressUpdate {

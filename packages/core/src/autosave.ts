@@ -18,6 +18,8 @@ export function createAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
   let pendingPromise: Promise<void> | null = null;
   let inFlightPromise: Promise<void> | null = null;
   let saveQueue: Promise<void> | null = null;
+  // Bumped by cancel() so snapshots queued behind an in-flight save are dropped too.
+  let generation = 0;
 
   function ensurePendingPromise(): Promise<void> {
     if (!pendingPromise) {
@@ -40,7 +42,9 @@ export function createAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
     pendingResolve = null;
     pendingPromise = null;
 
+    const queuedIn = generation;
     const runSave = async (): Promise<void> => {
+      if (queuedIn !== generation) return;
       try {
         await opts.save(snapshot);
       } catch (err) {
@@ -92,6 +96,7 @@ export function createAutosave<T>(opts: AutosaveOptions<T>): Autosave<T> {
     },
 
     cancel(): void {
+      generation++;
       if (timer !== null) clearTimeout(timer);
       timer = null;
       hasPendingSnapshot = false;

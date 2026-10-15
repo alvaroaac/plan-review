@@ -215,6 +215,24 @@ describe('ReviewProvider reload ordering', () => {
     expect(client.progressSaves[0].threads.map((t) => t.comments[0].body)).toEqual(['mid-reload']);
   });
 
+  it('keeps a held answer tied to the item revision it was given for', async () => {
+    const first = mockLoaded();
+    const revised = first.items.map((item) => (item.id === 'retry-backoff' ? { ...item, hash: 'h-revised' } : item));
+    const second = mockLoaded({ items: revised, review: { ...first.review, round: 3 } });
+    const client = new FakeReviewClient({ loaded: first });
+    let finishLoad!: (loaded: LoadedReview) => void;
+    client.loadDocument = vi.fn(() => new Promise<LoadedReview>((resolve) => { finishLoad = resolve; }));
+    renderProvider(client, first);
+    window.dispatchEvent(new MessageEvent('message', { data: { kind: 'event', type: 'planChanged' } }));
+    await waitFor(() => expect(client.loadDocument).toHaveBeenCalled());
+
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    await act(async () => { finishLoad(second); });
+    await waitFor(() => expect(current.state.review.round).toBe(3));
+    const oldHash = first.items.find((item) => item.id === 'retry-backoff')!.hash;
+    expect(current.state.review.answers['retry-backoff'].itemHash).toBe(oldHash);
+  });
+
   it('replays held edits when the reload fails', async () => {
     const client = new FakeReviewClient({ loaded: mockLoaded() });
     let failLoad!: (err: Error) => void;

@@ -64,6 +64,13 @@ describe('reviewReducer — answers', () => {
     });
   });
 
+  it('answer keeps a pinned item hash instead of the current one', () => {
+    const next = reviewReducer(stateWith(), {
+      type: 'answer', itemId: 'retry-backoff', choice: 'B', note: '', itemHash: 'h-earlier',
+    });
+    expect(next.review.answers['retry-backoff'].itemHash).toBe('h-earlier');
+  });
+
   it('answer for an unknown item leaves state unchanged', () => {
     const state = stateWith();
     expect(reviewReducer(state, { type: 'answer', itemId: 'nope', choice: 'A', note: '' })).toBe(state);

@@ -39,8 +39,9 @@ export interface ReviewState {
 }
 
 export type ReviewAction =
-  | { type: 'answer'; itemId: string; choice: string; note: string }
-  | { type: 'defer'; itemId: string; note?: string }
+  // `itemHash` pins the item revision an answer was given for (see ReviewProvider's held edits).
+  | { type: 'answer'; itemId: string; choice: string; note: string; itemHash?: string }
+  | { type: 'defer'; itemId: string; note?: string; itemHash?: string }
   | { type: 'clearAnswer'; itemId: string }
   | { type: 'startCompose'; sectionId: string; anchor: LineAnchor | null }
   | { type: 'cancelCompose' }
@@ -89,9 +90,9 @@ export function initReviewState(loaded: LoadedReview, theme: Theme): ReviewState
 export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewState {
   switch (action.type) {
     case 'answer':
-      return setAnswer(state, action.itemId, action.choice, action.note);
+      return setAnswer(state, action.itemId, action.choice, action.note, action.itemHash);
     case 'defer':
-      return setAnswer(state, action.itemId, 'deferred', action.note ?? '');
+      return setAnswer(state, action.itemId, 'deferred', action.note ?? '', action.itemHash);
     case 'clearAnswer': {
       const { [action.itemId]: _removed, ...answers } = state.review.answers;
       return withReview(state, { answers });
@@ -182,13 +183,13 @@ function withUi(state: ReviewState, patch: Partial<ReviewState['ui']>): ReviewSt
   return { ...state, ui: { ...state.ui, ...patch } };
 }
 
-function setAnswer(state: ReviewState, itemId: string, choice: string, note: string): ReviewState {
+function setAnswer(state: ReviewState, itemId: string, choice: string, note: string, itemHash?: string): ReviewState {
   const item = state.items.find((i) => i.id === itemId);
   if (!item) return state;
   const answer: Answer = {
     choice,
     note,
-    itemHash: item.hash,
+    itemHash: itemHash ?? item.hash,
     round: state.review.round,
     updatedAt: new Date().toISOString(),
   };

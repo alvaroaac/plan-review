@@ -21,7 +21,9 @@ export function contentHash(markdown: string): string {
   return fnv1a(markdown);
 }
 
+/** Checks an answer against the item revision it answers; answers to an earlier revision are `changed`, not invalid. */
 export function validateAnswer(item: ReviewItem, answer: Answer): string | null {
+  if (answer.itemHash !== item.hash) return null;
   const validChoice = answer.choice === 'deferred' || (item.kind === 'decision'
     ? answer.choice === 'other' || item.options?.some((option) => option.key === answer.choice)
     : isVerdict(answer.choice));

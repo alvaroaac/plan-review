@@ -52,13 +52,23 @@ it.each([
 ])('rejects invalid answers without saving: %j', async (invalid) => {
   const panel = createMessageHandlers({ reviewStore: f.store });
   const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
-  await expect(panel.saveProgress({ answers: { storage: { ...answer, ...invalid } }, threads: [] })).rejects.toThrow();
+  const current = { ...answer, ...invalid, itemHash: loaded.items[0].hash };
+  await expect(panel.saveProgress({ answers: { storage: current }, threads: [] })).rejects.toThrow();
   expect((await f.store.get(loaded.review.id))?.answers).toEqual({});
 });
 
 it('validates answers against items from the latest load', async () => {
   const panel = createMessageHandlers({ reviewStore: f.store });
   await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
-  await panel.loadDocument({ planFsPath: f.planFsPath, markdown: markdown.replace('- A: Files', '- C: Cloud') });
-  await expect(panel.saveProgress({ answers: { storage: answer }, threads: [] })).rejects.toThrow();
+  const reloaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: markdown.replace('- A: Files', '- C: Cloud') });
+  const stale = { ...answer, itemHash: reloaded.items[0].hash };
+  await expect(panel.saveProgress({ answers: { storage: stale }, threads: [] })).rejects.toThrow();
+});
+
+it('accepts a carried-over answer to an earlier revision of the item', async () => {
+  const panel = createMessageHandlers({ reviewStore: f.store });
+  const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+  const earlier = { ...answer, choice: 'C', itemHash: 'earlier-revision' };
+  await panel.saveProgress({ answers: { storage: earlier }, threads: [] });
+  expect((await f.store.get(loaded.review.id))?.answers).toEqual({ storage: earlier });
 });

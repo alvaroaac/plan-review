@@ -162,6 +162,10 @@ describe('validateAnswer', () => {
     expect(validateAnswer(assumption, answer(assumption, 'no', { note }))).toEqual(expect.any(String));
   });
 
+  it('accepts a carried-over answer to an earlier revision of the item', () => {
+    expect(validateAnswer(decision, { ...answer(decision, 'C', { note: '' }), itemHash: 'old-hash' })).toBeNull();
+  });
+
   it('checks the current option keys', () => {
     const changed = { ...decision, options: [{ key: 'C', text: 'New option', pick: false }] };
     expect(validateAnswer(changed, answer(decision, 'A'))).toEqual(expect.any(String));

@@ -384,6 +384,11 @@ describe('renderToLineBlocks plain text', () => {
     const blocks = renderToLineBlocks('Use `a<b>` & "c" isn\'t &#x263A;<!-- hidden -->\n\n<div>\n  <p>Raw  &amp; html</p>\n</div>');
     expect(blocks.map((b) => b.text)).toEqual(['Use a<b> & "c" isn\'t \u263A', 'Raw & html']);
   });
+
+  it('matches textContent for named entities and quoted > in attributes', () => {
+    const blocks = renderToLineBlocks('Copyright &copy; 2026 &mdash; <span title="a>b">x</span>');
+    expect(blocks.map((b) => b.text)).toEqual(['Copyright \u00A9 2026 \u2014 x']);
+  });
 });
 
 describe('renderToLineBlocks item fences', () => {

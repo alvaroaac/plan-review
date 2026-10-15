@@ -1,6 +1,7 @@
 import { Marked } from 'marked';
 import type { Tokens, TokenizerExtension, RendererExtension } from 'marked';
 import markedFootnote from 'marked-footnote';
+import { decodeHTML } from 'entities';
 
 // Typed shapes for the custom marked extensions defined below. Each extends
 // Tokens.Generic (which has a string index signature), so a plain `as`
@@ -102,20 +103,10 @@ export interface LineBlock {
   itemId?: string;   // set on an item's decision/assumption fence: a marker, not rendered as code
 }
 
-const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
-
-function decodeEntities(text: string): string {
-  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (whole, dec?: string, hex?: string, name?: string) => {
-    if (name !== undefined) return NAMED_ENTITIES[name] ?? whole;
-    const code = dec !== undefined ? parseInt(dec, 10) : parseInt(hex!, 16);
-    return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
-  });
-}
-
 // DOM-free textContent: core computes the same block texts in Node (carry-forward)
 // as the browser does when rendering, so this must not depend on `document`.
 function stripHtml(html: string): string {
-  return decodeEntities(html.replace(/<!--[\s\S]*?-->|<\/?[a-z][^>]*>/gi, '')).replace(/\s+/g, ' ').trim();
+  return decodeHTML(html.replace(/<!--[\s\S]*?-->|<\/?[a-z](?:"[^"]*"|'[^']*'|[^'">])*>/gi, '')).replace(/\s+/g, ' ').trim();
 }
 
 // A plain Marked instance used only for rendering sub-content (no custom
