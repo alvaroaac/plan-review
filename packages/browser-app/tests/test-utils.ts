@@ -1,4 +1,4 @@
-import type { PlanDocument } from '@plan-review/core';
+import type { LoadedReview, PlanDocument, ReviewItem } from '@plan-review/core';
 
 export const mockPlanDoc: PlanDocument = {
   title: 'Test Plan',
@@ -20,13 +20,34 @@ export const mockPlanDoc: PlanDocument = {
   comments: [],
 };
 
-export const mockGenericDoc: PlanDocument = {
-  title: 'Generic Doc',
-  metadata: {},
-  mode: 'generic',
-  sections: [
-    { id: 'section-1', heading: 'Section One', level: 2, body: 'First section' },
-    { id: 'section-2', heading: 'Section Two', level: 2, body: 'Second section' },
+export const decisionItem: ReviewItem = {
+  id: 'retry-backoff',
+  kind: 'decision',
+  label: 'Retry backoff',
+  question: 'How should retries back off?',
+  options: [
+    { key: 'A', text: 'Exponential', pick: true },
+    { key: 'B', text: 'Circuit breaker', detail: 'after 90 s', pick: false },
   ],
-  comments: [],
+  sectionId: '1.1',
+  hash: 'h-retry',
 };
+
+export const assumptionItem: ReviewItem = {
+  id: 'auth-latency',
+  kind: 'assumption',
+  label: 'Auth server latency',
+  question: 'The auth server answers within 200 ms.',
+  sectionId: '1.2',
+  hash: 'h-latency',
+};
+
+export function mockLoaded(overrides: Partial<LoadedReview> = {}): LoadedReview {
+  return {
+    document: mockPlanDoc,
+    items: [decisionItem, assumptionItem],
+    warnings: [],
+    review: { id: 'rv_abc12345', round: 2, status: 'open', answers: {}, threads: [] },
+    ...overrides,
+  };
+}

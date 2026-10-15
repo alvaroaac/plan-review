@@ -1,5 +1,5 @@
 import { render } from 'preact';
-import type { ReviewClient } from '@plan-review/core';
+import type { ReviewClient } from '@plan-review/core/client';
 import { App } from './App.js';
 import { HttpReviewClient } from './httpClient.js';
 
