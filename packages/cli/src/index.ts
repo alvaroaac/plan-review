@@ -1,5 +1,5 @@
 import { Command } from 'commander';
-import { readFileSync, mkdirSync, copyFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join, resolve as resolvePath } from 'node:path';
@@ -16,6 +16,7 @@ import { createRequire } from 'node:module';
 import { promptOutputTarget } from './prompts.js';
 import { browserReview, createReviewStore } from './browser-review.js';
 import { terminalReview } from './terminal-review.js';
+import { installSkill } from './install-skill.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -54,18 +55,16 @@ program
 
 program
   .command('install-skill')
-  .description('Install Claude Code skill to ~/.claude/skills/plan-review/')
+  .description('Install the Claude Code skill and its CLAUDE.md note into ~/.claude/')
   .action(() => {
-    const __dirname = dirname(fileURLToPath(import.meta.url));
-    const src = join(__dirname, '..', 'skills', 'plan-review', 'SKILL.md');
+    const src = join(dirname(fileURLToPath(import.meta.url)), 'skills', 'plan-review', 'SKILL.md');
     if (!existsSync(src)) {
       console.error(chalk.red('Skill file not found in package. Expected at: ' + src));
       process.exit(1);
     }
-    const dest = join(homedir(), '.claude', 'skills', 'plan-review');
-    mkdirSync(dest, { recursive: true });
-    copyFileSync(src, join(dest, 'SKILL.md'));
-    console.error(chalk.green(`Skill installed to ${dest}/SKILL.md`));
+    const { skillPath, claudeMdPath } = installSkill(src, join(homedir(), '.claude'));
+    console.error(chalk.green(`Skill installed to ${skillPath}`));
+    console.error(chalk.green(`Plan-review note added to ${claudeMdPath}`));
     console.error(chalk.dim('Claude Code will auto-discover it. Try: "I want to review this plan"'));
   });
 

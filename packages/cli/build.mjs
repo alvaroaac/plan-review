@@ -33,5 +33,6 @@ if (!existsSync(browserSrc)) {
   process.exit(1);
 }
 cpSync(browserSrc, join(dist, 'browser'), { recursive: true });
+cpSync(join(root, '../../skills/plan-review'), join(dist, 'skills/plan-review'), { recursive: true });
 
 console.error('[build] cli build complete');
