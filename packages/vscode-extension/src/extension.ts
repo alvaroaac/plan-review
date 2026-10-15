@@ -1,27 +1,19 @@
 import * as vscode from 'vscode';
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { WebviewPanelManager } from './webviewPanelManager.js';
 import { createMessageHandlers, type MessageHandlers } from './messageHandlers.js';
-import { isRequest, isSaveSessionParams, isSubmitReviewParams } from './protocol.js';
-import type { WebviewRequest } from './protocol.js';
-import type { PlanDocument } from '@plan-review/core';
-import { computeContentHash, parse } from '@plan-review/core';
+import { isRequest, isProgressUpdate, isSubmitRequest } from './protocol.js';
+import type { HostEvent } from './protocol.js';
 import { runSubmit } from './submit/index.js';
 import { disposeChannel } from './submit/outputChannel.js';
 import { PlanReviewCodeLensProvider } from './codeLensProvider.js';
 
 let panelManager: WebviewPanelManager;
-let handlers: MessageHandlers;
 
 export function activate(context: vscode.ExtensionContext): void {
   panelManager = new WebviewPanelManager();
-  handlers = createMessageHandlers({
-    submit: async ({ planFsPath, document, comments, verdict, summary }) =>
-      runSubmit({ planFsPath, document, comments, verdict, summary }),
-  });
 
   // Register panelManager for automatic disposal on deactivation
   context.subscriptions.push(panelManager);
@@ -55,59 +47,34 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 }
 
-/**
- * Handle a webview message. Extracted for testability — the full dispatch logic
- * (cachedDoc caching, contentHash fallback, error→err mapping) is unit-testable
- * without a real VS Code panel.
- */
+/** Dispatch validated webview requests to the panel's review handlers. */
 export async function handleWebviewMessage(
   raw: unknown,
   opts: {
     handlers: MessageHandlers;
     planFsPath: string;
-    getCachedDoc: () => PlanDocument | null;
-    setCachedDoc: (doc: PlanDocument) => void;
+    getMarkdown: () => Promise<string>;
     postMessage: (msg: unknown) => void;
   },
 ): Promise<{ action?: 'close' }> {
   if (!isRequest(raw)) return {};
-  const req = raw as WebviewRequest;
+  const req = raw;
   try {
     if (req.method === 'loadDocument') {
-      const r = await opts.handlers.loadDocument({ planFsPath: opts.planFsPath });
-      opts.setCachedDoc(r.document);
-      opts.postMessage({ id: req.id, kind: 'res', result: r });
-    } else if (req.method === 'saveSession') {
-      if (!isSaveSessionParams(req.params)) throw new Error('invalid saveSession params');
-      const params = req.params;
-      // Prefer the webview-supplied hash so we preserve stale detection.
-      // Fall back to an async file-read hash only for defensive compat with old clients.
-      let contentHash = params.contentHash;
-      if (!contentHash) {
-        const content = await readFile(opts.planFsPath, 'utf-8');
-        contentHash = computeContentHash(content);
-      }
-      await opts.handlers.saveSession({
+      const loaded = await opts.handlers.loadDocument({
         planFsPath: opts.planFsPath,
-        contentHash,
-        comments: params.comments,
-        activeSection: params.activeSection,
+        markdown: await opts.getMarkdown(),
       });
+      opts.postMessage({ id: req.id, kind: 'res', result: loaded });
+    } else if (req.method === 'saveProgress') {
+      if (!isProgressUpdate(req.params)) throw new Error('invalid saveProgress params');
+      await opts.handlers.saveProgress(req.params);
       opts.postMessage({ id: req.id, kind: 'res', result: null });
     } else if (req.method === 'submitReview') {
-      if (!isSubmitReviewParams(req.params)) throw new Error('invalid submitReview params');
-      const params = req.params;
-      const doc = opts.getCachedDoc();
-      if (!doc) throw new Error('document not loaded');
-      const r = await opts.handlers.submitReview({
-        planFsPath: opts.planFsPath,
-        document: doc,
-        comments: params.comments,
-        verdict: params.verdict,
-        summary: params.summary,
-      });
-      opts.postMessage({ id: req.id, kind: 'res', result: r });
-      if (r.submitted) return { action: 'close' };
+      if (!isSubmitRequest(req.params)) throw new Error('invalid submitReview params');
+      const result = await opts.handlers.submitReview(req.params);
+      opts.postMessage({ id: req.id, kind: 'res', result });
+      return { action: 'close' };
     }
   } catch (err) {
     opts.postMessage({ id: req.id, kind: 'err', error: (err as Error).message });
@@ -134,17 +101,14 @@ function openOrFocusPanel(context: vscode.ExtensionContext, planUri: vscode.Uri)
   panel.webview.html = renderHtml(panel, context.extensionUri);
   panelManager.track(key, panel);
 
-  let cachedDoc: PlanDocument | null = null;
+  const handlers = createMessageHandlers({
+    submit: async (args) => { await runSubmit(args); },
+  });
 
   const watcher = vscode.workspace.createFileSystemWatcher(planUri.fsPath, true, false, true);
-  watcher.onDidChange(async () => {
-    try {
-      const content = await readFile(planUri.fsPath, 'utf-8');
-      const newContentHash = computeContentHash(content);
-      // Re-parse so cachedDoc stays current — prevents submitting stale doc structure.
-      cachedDoc = parse(content);
-      panel.webview.postMessage({ kind: 'event', type: 'planChanged', newContentHash });
-    } catch { /* file removed or unreadable — ignore */ }
+  watcher.onDidChange(() => {
+    // The webview flushes pending autosave before loadDocument re-anchors threads.
+    panel.webview.postMessage({ kind: 'event', type: 'planChanged' } satisfies HostEvent);
   });
   panel.onDidDispose(() => watcher.dispose());
 
@@ -152,8 +116,7 @@ function openOrFocusPanel(context: vscode.ExtensionContext, planUri: vscode.Uri)
     const result = await handleWebviewMessage(raw, {
       handlers,
       planFsPath: planUri.fsPath,
-      getCachedDoc: () => cachedDoc,
-      setCachedDoc: (doc) => { cachedDoc = doc; },
+      getMarkdown: async () => (await vscode.workspace.openTextDocument(planUri)).getText(),
       postMessage: (msg) => panel.webview.postMessage(msg),
     });
     if (result.action === 'close') {

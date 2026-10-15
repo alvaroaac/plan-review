@@ -1,79 +1,59 @@
-import { readFile } from 'node:fs/promises';
 import {
-  parse,
-  computeContentHash,
-  DEFAULT_SESSION_DIR,
-  FileSessionStore,
-  type PlanDocument,
-  type ReviewComment,
-  type ReviewVerdict,
-  type SessionData,
-  type SessionStore,
+  FileReviewStore,
+  formatReviewOutput,
+  openReview,
+  saveProgress,
+  submitRound,
+  type LoadedReview,
+  type ProgressUpdate,
+  type ReviewStore,
+  type SubmitRequest,
 } from '@plan-review/core';
 
 export interface MessageHandlers {
-  loadDocument(params: { planFsPath: string }): Promise<{
-    document: PlanDocument;
-    restoredSession?: { comments: ReviewComment[]; activeSection: string | null; stale: boolean };
-    contentHash: string;
-  }>;
-  saveSession(params: {
-    planFsPath: string;
-    contentHash: string;
-    comments: ReviewComment[];
-    activeSection: string | null;
-  }): Promise<void>;
-  submitReview(params: {
-    planFsPath: string;
-    document: PlanDocument;
-    comments: ReviewComment[];
-    verdict: ReviewVerdict;
-    summary: string;
-  }): Promise<{ ok: true; submitted: boolean }>;
+  loadDocument(params: { planFsPath: string; markdown: string }): Promise<LoadedReview>;
+  saveProgress(update: ProgressUpdate): Promise<void>;
+  submitReview(req: SubmitRequest): Promise<{ ok: true; output: string }>;
 }
 
+/** One handler set per panel: the review id stays fixed after the first load. */
 export function createMessageHandlers(deps?: {
-  sessionStore?: SessionStore;
-  submit?: (args: {
-    planFsPath: string;
-    document: PlanDocument;
-    comments: ReviewComment[];
-    verdict: ReviewVerdict;
-    summary: string;
-  }) => Promise<{ submitted: boolean }>;
+  reviewStore?: ReviewStore;
+  now?: () => Date;
+  submit?: (args: { planFsPath: string; output: string }) => Promise<void>;
 }): MessageHandlers {
-  const sessionStore = deps?.sessionStore ?? new FileSessionStore({ dir: DEFAULT_SESSION_DIR });
+  const store = deps?.reviewStore ?? new FileReviewStore();
+  const now = deps?.now ?? (() => new Date());
+  let loaded: LoadedReview | undefined;
+  let planFsPath: string;
+
+  function current(): LoadedReview {
+    if (!loaded) throw new Error('document not loaded');
+    return loaded;
+  }
 
   return {
-    async loadDocument({ planFsPath }) {
-      const content = await readFile(planFsPath, 'utf-8');
-      const document = parse(content);
-      const contentHash = computeContentHash(content);
-      const data = await sessionStore.load(planFsPath);
-      const restoredSession = data
-        ? {
-            comments: data.comments,
-            activeSection: data.activeSection,
-            stale: data.contentHash !== contentHash,
-          }
-        : undefined;
-      return { document, contentHash, restoredSession };
+    async loadDocument(params) {
+      const opened = await openReview(store, {
+        markdown: params.markdown,
+        planPath: params.planFsPath,
+        reviewId: loaded?.review.id,
+        now: now(),
+      });
+      loaded = opened.loaded;
+      planFsPath = params.planFsPath;
+      return loaded;
     },
-    async saveSession({ planFsPath, contentHash, comments, activeSection }) {
-      const data: SessionData = {
-        version: 1,
-        planPath: planFsPath,
-        contentHash,
-        comments,
-        activeSection,
-        lastModified: new Date().toISOString(),
-      };
-
-      await sessionStore.save(planFsPath, data);
+    async saveProgress(update) {
+      const currentLoaded = current();
+      await saveProgress(store, currentLoaded.review.id, update, now(), new Set(currentLoaded.items.map((item) => item.id)));
     },
-    async submitReview({ planFsPath, document, comments, verdict, summary }) {
-      const result = await deps?.submit?.({ planFsPath, document, comments, verdict, summary });
-      return { ok: true as const, submitted: result?.submitted ?? true };
+    async submitReview(req) {
+      const currentLoaded = current();
+      const review = await submitRound(store, currentLoaded.review.id, req, now());
+      const output = formatReviewOutput(review, currentLoaded.items, currentLoaded.document);
+      await deps?.submit?.({ planFsPath, output });
+      return { ok: true, output };
     },
   };
 }

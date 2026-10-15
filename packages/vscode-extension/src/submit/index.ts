@@ -1,5 +1,4 @@
 import * as vscode from 'vscode';
-import { formatReview, type PlanDocument, type ReviewComment, type ReviewVerdict } from '@plan-review/core';
 import { getSettings, type SubmitTarget } from '../settings.js';
 import { submitToClipboard } from './clipboard.js';
 import { submitToFile } from './file.js';
@@ -12,10 +11,7 @@ interface SubmitPickItem extends vscode.QuickPickItem {
 
 export async function runSubmit(args: {
   planFsPath: string;
-  document: PlanDocument;
-  comments: ReviewComment[];
-  verdict: ReviewVerdict;
-  summary: string;
+  output: string;
 }): Promise<{ submitted: boolean }> {
   const settings = getSettings();
 
@@ -36,22 +32,16 @@ export async function runSubmit(args: {
     targets = settings.submitTargets;
   }
 
-  const docWithComments: PlanDocument = { ...args.document, comments: args.comments };
-  const formatted = formatReview(docWithComments, {
-    verdict: args.verdict,
-    summary: args.summary,
-  });
-
   const results = await Promise.allSettled(
     targets.map(async (t: SubmitTarget) => {
-      if (t === 'clipboard') return submitToClipboard(formatted);
+      if (t === 'clipboard') return submitToClipboard(args.output);
       if (t === 'file')
-        return submitToFile(formatted, {
+        return submitToFile(args.output, {
           template: settings.outputFilePath,
           planFsPath: args.planFsPath,
         });
-      if (t === 'outputChannel') return submitToOutputChannel(formatted);
-      if (t === 'claudeCode') return submitToClaudeCode(formatted);
+      if (t === 'outputChannel') return submitToOutputChannel(args.output);
+      if (t === 'claudeCode') return submitToClaudeCode(args.output);
       return undefined;
     }),
   );

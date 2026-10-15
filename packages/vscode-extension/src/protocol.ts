@@ -1,6 +1,6 @@
-import type { ReviewComment, ReviewVerdict } from '@plan-review/core';
+import type { Answer, LineAnchor, ProgressUpdate, SubmitRequest, Thread, ThreadComment } from '@plan-review/core';
 
-export type WebviewRequestMethod = 'loadDocument' | 'saveSession' | 'submitReview';
+export type WebviewRequestMethod = 'loadDocument' | 'saveProgress' | 'submitReview';
 
 export interface WebviewRequest {
   id: string;
@@ -24,19 +24,7 @@ export interface WebviewResponseErr {
 export type WebviewResponse = WebviewResponseOk | WebviewResponseErr;
 
 // Extension → webview push (no response expected)
-export type HostEvent = { kind: 'event'; type: 'planChanged'; newContentHash: string };
-
-export interface SaveSessionParams {
-  comments: ReviewComment[];
-  activeSection: string | null;
-  contentHash?: string;
-}
-
-export interface SubmitReviewParams {
-  comments: ReviewComment[];
-  verdict: ReviewVerdict;
-  summary: string;
-}
+export type HostEvent = { kind: 'event'; type: 'planChanged' };
 
 export function isRequest(msg: unknown): msg is WebviewRequest {
   const m = msg as Record<string, unknown>;
@@ -46,18 +34,64 @@ export function isRequest(msg: unknown): msg is WebviewRequest {
     && typeof m.method === 'string';
 }
 
-export function isSaveSessionParams(p: unknown): p is SaveSessionParams {
-  if (typeof p !== 'object' || p === null) return false;
-  const o = p as Record<string, unknown>;
-  return Array.isArray(o.comments)
-    && (o.activeSection === null || typeof o.activeSection === 'string')
-    && (o.contentHash === undefined || typeof o.contentHash === 'string');
+const isRecord = (x: unknown): x is Record<string, unknown> => typeof x === 'object' && x !== null && !Array.isArray(x);
+
+function isAnswer(x: unknown): x is Answer {
+  return (
+    isRecord(x) &&
+    typeof x.choice === 'string' &&
+    typeof x.note === 'string' &&
+    typeof x.itemHash === 'string' &&
+    typeof x.round === 'number' &&
+    typeof x.updatedAt === 'string'
+  );
 }
 
-export function isSubmitReviewParams(p: unknown): p is SubmitReviewParams {
-  if (typeof p !== 'object' || p === null) return false;
-  const o = p as Record<string, unknown>;
-  return Array.isArray(o.comments)
-    && (o.verdict === 'approved' || o.verdict === null)
-    && typeof o.summary === 'string';
+function isLineAnchor(x: unknown): x is LineAnchor {
+  return (
+    isRecord(x) &&
+    x.type === 'lines' &&
+    typeof x.startLine === 'number' &&
+    typeof x.endLine === 'number' &&
+    Array.isArray(x.lineTexts) &&
+    x.lineTexts.every((t) => typeof t === 'string')
+  );
+}
+
+function isThreadComment(x: unknown): x is ThreadComment {
+  return (
+    isRecord(x) &&
+    typeof x.id === 'string' &&
+    (x.author === 'reviewer' || x.author === 'agent') &&
+    typeof x.body === 'string' &&
+    typeof x.createdAt === 'string'
+  );
+}
+
+function isThread(x: unknown): x is Thread {
+  return (
+    isRecord(x) &&
+    typeof x.id === 'string' &&
+    typeof x.sectionId === 'string' &&
+    (x.anchor === null || isLineAnchor(x.anchor)) &&
+    typeof x.resolved === 'boolean' &&
+    typeof x.outdated === 'boolean' &&
+    typeof x.createdRound === 'number' &&
+    Array.isArray(x.comments) &&
+    x.comments.every(isThreadComment)
+  );
+}
+
+export function isProgressUpdate(x: unknown): x is ProgressUpdate {
+  return (
+    isRecord(x) &&
+    isRecord(x.answers) &&
+    Object.values(x.answers).every(isAnswer) &&
+    Array.isArray(x.threads) &&
+    x.threads.every(isThread)
+  );
+}
+
+export function isSubmitRequest(x: unknown): x is SubmitRequest {
+  return isRecord(x) && (x.verdict === 'changes_requested' || x.verdict === 'approved') && typeof x.summary === 'string';
 }

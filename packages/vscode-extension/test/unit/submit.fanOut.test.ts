@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const {
   showInformationMessage, showWarningMessage, showErrorMessage,
   clipboardWriteText, showQuickPick, showTextDocument,
-  mockWriteFile, mockMkdir, mockFormatReview, mockSettings,
+  mockWriteFile, mockMkdir, mockSettings,
 } = vi.hoisted(() => ({
   showInformationMessage: vi.fn(),
   showWarningMessage: vi.fn(),
@@ -13,7 +13,6 @@ const {
   showTextDocument: vi.fn(),
   mockWriteFile: vi.fn().mockResolvedValue(undefined),
   mockMkdir: vi.fn().mockResolvedValue(undefined),
-  mockFormatReview: vi.fn().mockReturnValue('# Formatted Review\nsome content'),
   mockSettings: {
     submitTargets: ['clipboard', 'claudeCode'] as string[],
     outputFilePath: '${planDir}/${planName}.review.md',
@@ -39,11 +38,6 @@ vi.mock('node:fs/promises', () => ({
   mkdir: mockMkdir,
 }));
 
-vi.mock('@plan-review/core', async () => {
-  const actual = await vi.importActual<typeof import('@plan-review/core')>('@plan-review/core');
-  return { ...actual, formatReview: mockFormatReview };
-});
-
 vi.mock('../../src/settings.js', () => ({
   getSettings: () => ({ ...mockSettings }),
 }));
@@ -53,7 +47,6 @@ import { runSubmit } from '../../src/submit/index.js';
 beforeEach(() => {
   vi.clearAllMocks();
   clipboardWriteText.mockRejectedValue(new Error('clipboard boom'));
-  mockFormatReview.mockReturnValue('# Formatted Review\nsome content');
   mockSettings.askBeforeSubmit = false;
   mockSettings.submitTargets = ['clipboard', 'claudeCode'];
   mockSettings.outputFilePath = '${planDir}/${planName}.review.md';
@@ -61,10 +54,7 @@ beforeEach(() => {
 
 const fakeArgs = {
   planFsPath: '/w/plan.md',
-  document: { title: 't', metadata: {}, mode: 'generic', sections: [], comments: [] } as any,
-  comments: [],
-  verdict: null,
-  summary: '',
+  output: '# Formatted Review\nsome content',
 };
 
 describe('runSubmit', () => {
@@ -99,13 +89,18 @@ describe('runSubmit', () => {
     expect(result).toEqual({ submitted: true });
   });
 
-  it('passes verdict and summary to formatReview', async () => {
+  it('fans out the exact v2 output to all four targets', async () => {
     clipboardWriteText.mockResolvedValueOnce(undefined);
-    await runSubmit({ ...fakeArgs, verdict: 'approved', summary: 'LGTM' });
-    expect(mockFormatReview).toHaveBeenCalledWith(
-      expect.objectContaining({ comments: [] }),
-      { verdict: 'approved', summary: 'LGTM' },
-    );
+    mockSettings.submitTargets = ['clipboard', 'claudeCode', 'file', 'outputChannel'];
+    const vscode = await import('vscode');
+    const append = vi.fn();
+    (vscode.window.createOutputChannel as any).mockReturnValue({ append, show: vi.fn() });
+    (vscode.commands.getCommands as any).mockResolvedValue(['claude-code.sendToChat']);
+    await runSubmit(fakeArgs);
+    expect(clipboardWriteText).toHaveBeenCalledWith(fakeArgs.output);
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('claude-code.sendToChat', fakeArgs.output);
+    expect(mockWriteFile).toHaveBeenCalledWith('/w/plan.review.md', fakeArgs.output, 'utf-8');
+    expect(append).toHaveBeenCalledWith(fakeArgs.output + '\n\n');
   });
 });
 
@@ -138,16 +133,7 @@ describe('runSubmit with askBeforeSubmit', () => {
     expect(result).toEqual({ submitted: true });
   });
 
-  it('preserves verdict and summary when picker is enabled', async () => {
-    clipboardWriteText.mockResolvedValueOnce(undefined);
-    showQuickPick.mockResolvedValueOnce([{ label: '$(clippy) Clipboard', target: 'clipboard' }]);
-    const result = await runSubmit({ ...fakeArgs, verdict: 'approved', summary: 'Looks good.' });
-    expect(mockFormatReview).toHaveBeenCalledWith(
-      expect.objectContaining({ comments: [] }),
-      { verdict: 'approved', summary: 'Looks good.' },
-    );
-    expect(result).toEqual({ submitted: true });
-  });
+
 
   it('writes formatted review to file when file picked', async () => {
     showQuickPick.mockResolvedValueOnce([{ label: '$(file-add) Save to file', target: 'file' }]);
