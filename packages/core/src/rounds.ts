@@ -139,6 +139,7 @@ async function openResolvedReview(
         id: review.id,
         round: review.rounds[review.rounds.length - 1].n,
         status: review.status,
+        updatedAt: review.updatedAt,
         answers: Object.fromEntries(Object.entries(review.answers).filter(([id]) => currentIds.has(id))),
         threads: review.threads,
         ...(banner === undefined ? {} : { banner }),

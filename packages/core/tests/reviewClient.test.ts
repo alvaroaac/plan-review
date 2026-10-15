@@ -6,7 +6,7 @@ const loaded: LoadedReview = {
   document: { title: 'T', metadata: {}, mode: 'generic', sections: [], comments: [] },
   items: [],
   warnings: [],
-  review: { id: 'rv_abc12345', round: 1, status: 'open', answers: {}, threads: [] },
+  review: { id: 'rv_abc12345', round: 1, status: 'open', updatedAt: '2026-10-15T09:00:00.000Z', answers: {}, threads: [] },
 };
 
 describe('FakeReviewClient', () => {

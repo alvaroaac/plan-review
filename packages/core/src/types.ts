@@ -122,6 +122,7 @@ export interface ReviewView {
   id: string;
   round: number;
   status: Review['status'];
+  updatedAt: string;
   answers: Record<string, Answer>;
   threads: Thread[];
   banner?: Banner;

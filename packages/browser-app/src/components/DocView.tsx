@@ -28,7 +28,7 @@ export function DocView() {
       <div class="kicker">{doc.mode === 'plan' ? 'Plan' : 'Document'} · Round {review.round}</div>
       <h1 class="doc-title">{doc.title}</h1>
       <div class="doc-meta">
-        {updated && <><span>Updated {timeAgo(updated)}</span><span class="dot" /></>}
+        <span>Updated {timeAgo(updated)}</span><span class="dot" />
         <span>{review.id}</span>
       </div>
       <div class="legend">
@@ -82,13 +82,13 @@ function Callout({ icon, children }: { icon: string; children: ComponentChildren
   );
 }
 
-/** Latest answer or comment time, or null before any activity. */
-function lastActivity({ review }: ReviewState): string | null {
+/** Latest of the stored review time and any local answer or comment. */
+function lastActivity({ review }: ReviewState): string {
   const times = [
     ...Object.values(review.answers).map((a) => a.updatedAt),
     ...review.threads.flatMap((t) => t.comments.map((c) => c.createdAt)),
   ];
-  return times.length > 0 ? times.reduce((a, b) => (a > b ? a : b)) : null;
+  return times.reduce((a, b) => (a > b ? a : b), review.updatedAt);
 }
 
 function timeAgo(iso: string): string {

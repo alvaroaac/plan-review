@@ -34,9 +34,9 @@ describe('DocView', () => {
     expect(meta.textContent).toContain('rv_abc12345');
   });
 
-  it('leaves out the updated time before anything was answered or commented', () => {
+  it('falls back to the stored review time before anything was answered or commented', () => {
     const { container } = renderDoc();
-    expect(container.querySelector('.doc-meta')!.textContent).not.toContain('Updated');
+    expect(container.querySelector('.doc-meta')!.textContent).toContain('Updated 3h ago');
   });
 
   it('renders the legend', () => {

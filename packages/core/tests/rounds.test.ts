@@ -154,6 +154,7 @@ describe('openReview rounds and loaded view', () => {
     expect(review).toEqual({ ...existing, updatedAt: NOW.toISOString() });
     expect(loaded.review).not.toHaveProperty('banner');
     expect(loaded.review.round).toBe(3);
+    expect(loaded.review.updatedAt).toBe(NOW.toISOString());
     expect(store.save).toHaveBeenCalledExactlyOnceWith(review);
     expect(await store.get(review.id)).toEqual(review);
   });
