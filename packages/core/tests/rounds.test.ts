@@ -574,4 +574,13 @@ describe('round regressions', () => {
     expect(review.planPath).toBe(PATH);
     expect((await store.get(existing.id))?.planPath).toBe(PATH);
   });
+
+  it('adopts a new planPath when resuming a review by id after the plan moved', async () => {
+    const existing = makeReview();
+    const store = makeStore(existing);
+    const moved = '/tmp/moved/plan.md';
+    const { review } = await openReview(store, { markdown: PLAN, reviewId: existing.id, planPath: moved, now: NOW });
+    expect(review.planPath).toBe(moved);
+    expect((await store.findOpenByPlanPath(moved))?.id).toBe(existing.id);
+  });
 });

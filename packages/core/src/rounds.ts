@@ -88,7 +88,7 @@ async function openResolvedReview(
     };
   }
 
-  if (review.planPath === undefined && input.planPath !== undefined) {
+  if (input.planPath !== undefined && review.planPath !== input.planPath) {
     review = { ...review, planPath: input.planPath };
   }
 
