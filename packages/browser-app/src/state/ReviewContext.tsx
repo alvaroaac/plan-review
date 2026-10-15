@@ -35,12 +35,24 @@ interface ReviewProviderProps {
 
 export function ReviewProvider({ client, loaded, theme, children }: ReviewProviderProps) {
   const [state, rawDispatch] = useReducer(reviewReducer, undefined, () => initReviewState(loaded, theme));
-  const progressChanged = useRef(false);
 
+  // `progress` is the rendered answers and threads; `synced` is what the server is known
+  // to hold (as loaded, reloaded or last saved). A save is owed whenever they differ.
+  const { answers, threads } = state.review;
+  const progress = useRef<ProgressUpdate>({ answers, threads });
+  progress.current = { answers, threads };
+  const synced = useRef<ProgressUpdate>(progress.current);
+
+  // While a host reload runs, progress edits wait and are replayed on the new round,
+  // so no pre-reload snapshot can be saved over it.
+  const held = useRef<ReviewAction[] | null>(null);
   const dispatch = useCallback((action: ReviewAction) => {
+    if (held.current && isProgressAction(action)) {
+      held.current.push(action);
+      return;
+    }
     // A reload is the server's truth: never echo it back as a save.
-    if (action.type === 'reload') progressChanged.current = false;
-    else if (isProgressAction(action)) progressChanged.current = true;
+    if (action.type === 'reload') synced.current = progressOf(action.loaded.review);
     rawDispatch(action);
   }, []);
 
@@ -52,6 +64,7 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
       delayMs: 500,
       save: async (update) => {
         await client.saveProgress(update);
+        synced.current = update;
         saveError.current = null;
       },
       onError: (err) => { saveError.current = err; },
@@ -59,31 +72,53 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
     [client],
   );
 
-  const { answers, threads } = state.review;
-  const progress = useRef<ProgressUpdate>({ answers, threads });
-  progress.current = { answers, threads };
   useEffect(() => {
-    if (!progressChanged.current) return;
-    progressChanged.current = false;
-    autosave.schedule({ answers, threads });
+    if (isUnsaved(progress.current, synced.current)) autosave.schedule(progress.current);
   }, [autosave, answers, threads]);
 
   const flushAutosave = useCallback(async () => {
-    if (saveError.current) autosave.schedule(progress.current);
+    if (isUnsaved(progress.current, synced.current)) autosave.schedule(progress.current);
     await autosave.flush();
     if (saveError.current) throw saveError.current;
   }, [autosave]);
 
+  // A tab can close before the autosave effect has run, so compare the rendered progress
+  // itself and send it past the debounce queue, with keepalive so it outlives the page.
   useEffect(() => {
-    const flush = () => { void autosave.flush(); };
-    window.addEventListener('beforeunload', flush);
-    return () => {
-      window.removeEventListener('beforeunload', flush);
-      flush();
+    const saveOnUnload = () => {
+      if (!isUnsaved(progress.current, synced.current)) return;
+      autosave.cancel();
+      synced.current = progress.current;
+      void client.saveProgress(progress.current, { keepalive: true }).catch(() => {});
     };
-  }, [autosave]);
+    window.addEventListener('beforeunload', saveOnUnload);
+    return () => {
+      window.removeEventListener('beforeunload', saveOnUnload);
+      void autosave.flush();
+    };
+  }, [client, autosave]);
 
-  useHostPlanChanges(client, flushAutosave, dispatch);
+  // The VS Code host broadcasts `planChanged` when the plan file is saved; it has
+  // already re-opened the review, so save what we have and load the new round.
+  // If the save fails, the reload is skipped: it would replace unsaved local progress.
+  const reloads = useRef(Promise.resolve());
+  const reloadFromHost = useCallback(() => {
+    reloads.current = reloads.current.then(async () => {
+      held.current = [];
+      try {
+        await flushAutosave();
+        dispatch({ type: 'reload', loaded: await client.loadDocument() });
+      } catch {
+        // Local progress stays as it is; the held edits still apply below.
+      } finally {
+        const actions = held.current;
+        held.current = null;
+        actions.forEach(rawDispatch);
+      }
+    });
+  }, [client, flushAutosave, dispatch]);
+
+  useHostPlanChanges(reloadFromHost);
   useThemeSync(state.ui.theme, dispatch);
 
   const value = useMemo(
@@ -93,25 +128,23 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
   return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
 }
 
-// The VS Code host broadcasts `planChanged` when the plan file is saved; it has
-// already re-opened the review, so save what we have and load the new round.
-// If the save fails, the reload is skipped: it would replace unsaved local progress.
-function useHostPlanChanges(
-  client: ReviewClient,
-  flush: () => Promise<void>,
-  dispatch: (action: ReviewAction) => void,
-) {
+function progressOf({ answers, threads }: ProgressUpdate): ProgressUpdate {
+  return { answers, threads };
+}
+
+// The reducer returns new objects for every change, so identity tells saved from unsaved.
+function isUnsaved(progress: ProgressUpdate, synced: ProgressUpdate): boolean {
+  return progress.answers !== synced.answers || progress.threads !== synced.threads;
+}
+
+function useHostPlanChanges(onPlanChanged: () => void) {
   useEffect(() => {
     const onMessage = (ev: MessageEvent) => {
-      if (ev.data?.kind !== 'event' || ev.data?.type !== 'planChanged') return;
-      flush()
-        .then(() => client.loadDocument())
-        .then((loaded) => dispatch({ type: 'reload', loaded }))
-        .catch(() => {});
+      if (ev.data?.kind === 'event' && ev.data?.type === 'planChanged') onPlanChanged();
     };
     window.addEventListener('message', onMessage);
     return () => window.removeEventListener('message', onMessage);
-  }, [client, flush, dispatch]);
+  }, [onPlanChanged]);
 }
 
 // Applies the theme to <html>, remembers explicit toggles, and inside VS Code

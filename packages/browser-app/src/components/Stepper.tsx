@@ -1,7 +1,7 @@
 import { itemState } from '@plan-review/core/review';
 import { useReview } from '../state/ReviewContext.js';
 import { scrollDocTo } from '../scroll.js';
-import { RightIcon } from './icons.js';
+import { CheckIcon, RightIcon } from './icons.js';
 
 export function Stepper() {
   const { state, dispatch } = useReview();
@@ -39,10 +39,12 @@ export function Stepper() {
           />
         ))}
       </div>
-      {nextId && (
+      {nextId ? (
         <button type="button" class="btn sm ghost" onClick={() => jump(nextId)}>
-          Next<RightIcon />
+          Next open<RightIcon />
         </button>
+      ) : (
+        <span class="idx-all"><CheckIcon />All answered</span>
       )}
     </div>
   );

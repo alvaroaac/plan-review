@@ -17,7 +17,9 @@ export interface ExtractResult {
 
 const marked = new Marked();
 
-export const ITEM_FENCE_RE = /^(?:decision|assumption)\s+id=[^\s]+(?:\s|$)/;
+// Re-exported here so the browser bundle reaches the shared block splitter
+// through the browser-safe `@plan-review/core/items` entry.
+export { findLineRun, ITEM_FENCE_RE, renderToLineBlocks, type LineBlock } from './lineBlocks.js';
 
 export function extractItems(doc: PlanDocument): ExtractResult {
   const items: ReviewItem[] = [];

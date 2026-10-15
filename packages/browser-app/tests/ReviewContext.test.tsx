@@ -4,7 +4,7 @@ import { render, act, waitFor } from '@testing-library/preact';
 import { FakeReviewClient } from '@plan-review/core/client';
 import type { LoadedReview, ReviewClient } from '@plan-review/core';
 import { ReviewProvider, useReview } from '../src/state/ReviewContext.js';
-import { mockLoaded } from './test-utils.js';
+import { answer, decisionItem, mockLoaded } from './test-utils.js';
 
 let current: ReturnType<typeof useReview>;
 
@@ -65,6 +65,32 @@ describe('ReviewProvider autosave', () => {
     renderProvider(client);
     act(() => current.dispatch({ type: 'defer', itemId: 'auth-latency' }));
     await act(async () => { window.dispatchEvent(new Event('beforeunload')); });
+    expect(client.progressSaves).toHaveLength(1);
+  });
+
+  it('saves a just-posted change with keepalive on beforeunload, before the autosave effect has run', async () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    client.saveProgress = vi.fn(async () => {});
+    renderProvider(client);
+    // Outside act: the change renders, but the effect that schedules autosave has not run yet.
+    current.dispatch({ type: 'addThread', sectionId: '1.1', anchor: null, body: 'just posted' });
+    await Promise.resolve();
+    window.dispatchEvent(new Event('beforeunload'));
+    expect(client.saveProgress).toHaveBeenCalledTimes(1);
+    const [update, opts] = vi.mocked(client.saveProgress).mock.calls[0];
+    expect(update.threads.map((t) => t.comments[0].body)).toEqual(['just posted']);
+    expect(opts).toEqual({ keepalive: true });
+    // The unload save replaces the queued autosave instead of racing it.
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(client.saveProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends nothing on beforeunload once the latest progress has been saved', async () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    renderProvider(client);
+    act(() => current.dispatch({ type: 'defer', itemId: 'auth-latency' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    window.dispatchEvent(new Event('beforeunload'));
     expect(client.progressSaves).toHaveLength(1);
   });
 
@@ -160,6 +186,45 @@ describe('ReviewProvider planChanged', () => {
     expect(current.state.review.answers['retry-backoff'].choice).toBe('A');
     // The failure is still pending, so a submit flush rejects rather than sending over it.
     await expect(current.flushAutosave()).rejects.toThrow('offline');
+  });
+});
+
+describe('ReviewProvider reload ordering', () => {
+  it('holds progress edits made during a reload and saves them on top of the reloaded round', async () => {
+    const first = mockLoaded();
+    const second = mockLoaded({
+      review: { ...first.review, round: 3, answers: { 'retry-backoff': answer(decisionItem, 'B') } },
+    });
+    const client = new FakeReviewClient({ loaded: first });
+    let finishLoad!: (loaded: LoadedReview) => void;
+    client.loadDocument = vi.fn(() => new Promise<LoadedReview>((resolve) => { finishLoad = resolve; }));
+    renderProvider(client, first);
+    window.dispatchEvent(new MessageEvent('message', { data: { kind: 'event', type: 'planChanged' } }));
+    await waitFor(() => expect(client.loadDocument).toHaveBeenCalled());
+
+    act(() => current.dispatch({ type: 'addThread', sectionId: '1.1', anchor: null, body: 'mid-reload' }));
+    await new Promise((r) => setTimeout(r, 600));
+    // No pre-reload snapshot may be saved over the new round.
+    expect(client.progressSaves).toHaveLength(0);
+
+    await act(async () => { finishLoad(second); });
+    await waitFor(() => expect(current.state.review.round).toBe(3));
+    expect(current.state.review.threads.map((t) => t.comments[0].body)).toEqual(['mid-reload']);
+    await waitFor(() => expect(client.progressSaves).toHaveLength(1));
+    expect(client.progressSaves[0].answers['retry-backoff'].choice).toBe('B');
+    expect(client.progressSaves[0].threads.map((t) => t.comments[0].body)).toEqual(['mid-reload']);
+  });
+
+  it('replays held edits when the reload fails', async () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    let failLoad!: (err: Error) => void;
+    client.loadDocument = vi.fn(() => new Promise<LoadedReview>((_, reject) => { failLoad = reject; }));
+    renderProvider(client);
+    window.dispatchEvent(new MessageEvent('message', { data: { kind: 'event', type: 'planChanged' } }));
+    await waitFor(() => expect(client.loadDocument).toHaveBeenCalled());
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    await act(async () => { failLoad(new Error('gone')); });
+    await waitFor(() => expect(current.state.review.answers['retry-backoff']?.choice).toBe('A'));
   });
 });
 

@@ -48,7 +48,6 @@ test('closing the tab pauses round 1 and restores its autosaved answer and threa
   await pauseAndResume(page, context, cli, true);
 });
 
-test.fixme('closing immediately after commenting preserves the pending thread on resume', async ({ page, context, cli }) => {
-  // Bug: beforeunload can flush stale progress, losing a just-posted thread before the 500 ms autosave.
+test('closing immediately after commenting preserves the pending thread on resume', async ({ page, context, cli }) => {
   await pauseAndResume(page, context, cli, false);
 });

@@ -55,35 +55,36 @@ describe('Stepper', () => {
     expect(container.querySelector('.st-lab')!.textContent).toBe('0 of 3 answered');
   });
 
-  it('Next jumps to the first open item when nothing is focused', () => {
+  it('Next open jumps to the first open item when nothing is focused', () => {
     const { review } = renderStepper({ 'retry-backoff': answer(decisionItem, 'A') });
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next open' }));
     expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'auth-latency' });
   });
 
-  it('Next jumps to the next open or changed item after the focused one', () => {
+  it('Next open jumps to the next open or changed item after the focused one', () => {
     const { container, review } = renderStepper({
       'auth-latency': answer(assumptionItem, 'holds'),
       'cookie-scope': answer(cookieItem, 'A', 'old-hash'),
     });
     fireEvent.click(segs(container)[0]);
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next open' }));
     expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'cookie-scope' });
   });
 
-  it('Next wraps around to the start', () => {
+  it('Next open wraps around to the start', () => {
     const { container, review } = renderStepper();
     fireEvent.click(segs(container)[2]);
-    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next open' }));
     expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'retry-backoff' });
   });
 
-  it('hides Next when every item is answered or deferred', () => {
-    renderStepper({
+  it('shows All answered instead of Next open when every item is answered or deferred', () => {
+    const { container } = renderStepper({
       'retry-backoff': answer(decisionItem, 'A'),
       'auth-latency': answer(assumptionItem, 'holds'),
       'cookie-scope': answer(cookieItem, 'deferred'),
     });
-    expect(screen.queryByRole('button', { name: 'Next' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Next open' })).toBeNull();
+    expect(container.querySelector('.idx-all')!.textContent).toBe('All answered');
   });
 });

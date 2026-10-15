@@ -190,7 +190,7 @@ interface ReviewStore {
 ### Carry-forward (pure function in core, runs on every round open)
 
 1. Parse items. For each stored answer: item present and hash equal → kept; hash differs → item state `changed` (card reopens showing prior answer); item absent → answer kept in store, hidden in UI and output.
-2. Re-anchor every non-resolved thread with an anchor: find a block run whose texts equal `anchor.lineTexts` in the section with the same heading; else anywhere in the plan; on success update `sectionId`/`startLine`/`endLine` and clear `outdated`; else set `outdated = true`. Threads whose section heading disappeared and have no anchor → `outdated`.
+2. Re-anchor every thread with an anchor, resolved ones included (a later reply can reopen them): find the first run of rendered blocks (core `renderToLineBlocks`, the same splitter the browser uses) whose texts equal `anchor.lineTexts` ignoring whitespace differences only, in the section with the same heading; else anywhere in the plan; on success update `sectionId`/`startLine`/`endLine`/`lineTexts` and clear `outdated`; else set `outdated = true`. Threads whose section heading disappeared and have no anchor → `outdated`.
 3. Apply `reply` blocks: append `ThreadComment { author: 'agent' }` to the matching thread, deduplicated by body so re-emitted replies in later rounds are not duplicated.
 
 ### Outcomes

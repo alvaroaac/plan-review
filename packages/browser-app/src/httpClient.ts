@@ -10,12 +10,13 @@ export class HttpReviewClient implements ReviewClient {
     return res.json();
   }
 
-  async saveProgress(update: ProgressUpdate): Promise<void> {
+  async saveProgress(update: ProgressUpdate, opts: { keepalive?: boolean } = {}): Promise<void> {
     const res = await fetch('/api/session', {
       method: 'PUT',
       headers: JSON_HEADERS,
       body: JSON.stringify(update),
-      keepalive: true, // the beforeunload flush must survive the page closing
+      // Only the beforeunload save needs to outlive the page; keepalive caps bodies at 64 KB.
+      ...(opts.keepalive && { keepalive: true }),
     });
     await ensureOk(res, 'saveProgress');
   }

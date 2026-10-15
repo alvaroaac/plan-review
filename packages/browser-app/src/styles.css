@@ -108,6 +108,7 @@ svg.i { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-widt
 .stepper { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .st-lab { font-size: 12px; color: var(--ink-3); white-space: nowrap; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .st-lab b { color: var(--ink); font-weight: 600; }
+.idx-all { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--sage-ink); white-space: nowrap; }
 .def-ct { color: var(--amber-ink); }
 .segs { display: flex; gap: 3px; flex-shrink: 0; }
 .seg { width: 30px; height: 8px; border-radius: 2px; border: 0; padding: 0; background: color-mix(in srgb, var(--indigo) 28%, var(--bg-2)); }
