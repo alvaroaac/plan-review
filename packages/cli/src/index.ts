@@ -8,29 +8,28 @@ import chalk from 'chalk';
 import {
   parse,
   formatReview,
-  FileSessionStore,
-  DEFAULT_SESSION_DIR,
-  computeContentHash,
+  extractItems,
+  itemCounts,
 } from '@plan-review/core';
-import type {
-  OutputTarget,
-  PlanDocument,
-  ReviewComment,
-  ReviewSubmission,
-  SessionData,
-  SessionStore,
-} from '@plan-review/core';
+import type { OutputTarget } from '@plan-review/core';
 import { navigate } from './navigator.js';
 import { writeOutput, isClaudeAvailable } from './output.js';
 import { createRequire } from 'node:module';
-import { promptOutputTarget, promptYesNo } from './prompts.js';
-import { runBrowserReview } from './browser-review.js';
+import { promptOutputTarget } from './prompts.js';
+import { browserReview, createReviewStore } from './browser-review.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
 
 const program = new Command();
-const sessionStore = new FileSessionStore({ dir: DEFAULT_SESSION_DIR });
+interface ReviewOptions {
+  output?: string;
+  outputFile?: string;
+  splitBy?: string;
+  cli?: boolean;
+  fresh?: boolean;
+  review?: string;
+}
 
 program
   .name('plan-review')
@@ -40,15 +39,15 @@ program
   .option('-o, --output <target>', 'Output target: stdout, clipboard, file, claude')
   .option('--output-file <path>', 'Custom output file path (with --output file)')
   .option('--split-by <strategy>', 'Force split strategy: heading, separator')
-  .option('--fresh', 'Skip session resume, start clean review')
+  .option('--review <id>', 'Resume a review by id')
+  .option('--fresh', 'Start a new review even if one is open for this file')
   .option('--cli', 'Use the terminal review UI instead of the browser (SSH/CI/headless)')
-  .action(async (file: string | undefined, opts: { output?: string; outputFile?: string; splitBy?: string; cli?: boolean; fresh?: boolean }) => {
+  .action(async (file: string | undefined, opts: ReviewOptions) => {
     try {
       await run(file, opts);
     } catch (err) {
       if (err instanceof Error) {
-        const cancelled = err.message.startsWith('Review cancelled');
-        console.error(cancelled ? chalk.yellow(err.message) : chalk.red(`Error: ${err.message}`));
+        console.error(chalk.red(`Error: ${err.message}`));
       }
       process.exit(1);
     }
@@ -72,23 +71,30 @@ program
   });
 
 program
-  .command('sessions')
-  .description('List all saved review sessions')
-  .action(async () => {
-    const sessions = await listReviewSessions(sessionStore);
-    const dir = DEFAULT_SESSION_DIR;
-    if (sessions.length === 0) {
-      console.error(chalk.dim(`No saved sessions. (${dir})`));
-      process.exit(0);
+  .command('list')
+  .alias('sessions')
+  .description('List saved reviews')
+  .option('--all', 'Include approved reviews')
+  .action(async (opts: { all?: boolean }) => {
+    const reviews = await createReviewStore().list(opts.all ? undefined : { status: 'open' });
+    if (reviews.length === 0) {
+      process.stdout.write('No open reviews.\n');
+      return;
     }
-    console.error(chalk.bold(`Saved review sessions (${dir}):\n`));
-    for (const s of sessions) {
-      const age = formatRelativeTime(s.lastModified);
-      let status = '';
-      if (s.stale === true) status = chalk.yellow(' | plan file changed since last review');
-      else if (s.stale === null) status = chalk.red(' | plan file not found');
-      console.error(`  ${s.planPath}`);
-      console.error(chalk.dim(`    ${s.commentCount} comment${s.commentCount !== 1 ? 's' : ''} | last modified ${age}${status}\n`));
+    const rows = reviews.map((review) => {
+      const round = review.rounds[review.rounds.length - 1];
+      const { items } = extractItems(parse(round.plan));
+      const { decisions: d, assumptions: a } = itemCounts(items, review.answers);
+      const answered = d.answered + a.holds + a.unsure + a.no;
+      const counts = `${answered}/${d.deferred + a.deferred}/${d.open + a.open}`;
+      return [review.id, review.title, String(round.n), review.updatedAt, counts,
+        ...(opts.all ? [review.status] : [])];
+    });
+    const header = ['ID', 'TITLE', 'ROUND', 'UPDATED', 'ANSWERED/DEFERRED/OPEN',
+      ...(opts.all ? ['STATUS'] : [])];
+    const widths = header.map((label, index) => Math.max(label.length, ...rows.map((row) => row[index].length)));
+    for (const row of [header, ...rows]) {
+      process.stdout.write(row.map((value, index) => value.padEnd(widths[index])).join('  ').trimEnd() + '\n');
     }
   });
 
@@ -96,7 +102,7 @@ program.parse();
 
 async function run(
   file: string | undefined,
-  opts: { output?: string; outputFile?: string; splitBy?: string; cli?: boolean; fresh?: boolean },
+  opts: ReviewOptions,
 ): Promise<void> {
   // Validate explicit output target early, before the review starts
   const validTargets: OutputTarget[] = ['stdout', 'clipboard', 'file', 'claude'];
@@ -114,7 +120,7 @@ async function run(
   }
 
   // Read input — track whether it came from stdin
-  const inputFromStdin = !file && !process.stdin.isTTY;
+  const inputFromStdin = (!file || file === '-') && !process.stdin.isTTY;
   const input = readInput(file);
   if (!input.trim()) {
     console.error(chalk.yellow('Empty file, nothing to review.'));
@@ -129,61 +135,24 @@ async function run(
 
   console.error(chalk.dim(`Detected mode: ${doc.mode} | ${doc.sections.length} sections`));
 
-  // Session resume logic
-  const absPath = file ? resolvePath(file) : null;
-  const contentHash = computeContentHash(input);
-
-  let restoredActiveSection: string | null = null;
-  if (absPath) {
-    if (opts.fresh) {
-      await sessionStore.clear(absPath);
-    } else {
-      const session = await loadReviewSession(sessionStore, absPath, contentHash);
-      if (session && session.comments.length > 0) {
-        if (!session.stale) {
-          console.error(chalk.green(`Resuming review (${session.comments.length} comment${session.comments.length !== 1 ? 's' : ''}).`));
-          doc.comments = session.comments;
-          restoredActiveSection = session.activeSection;
-        } else {
-          // Prompt user for stale session
-          const answer = await promptYesNo(
-            `Plan file changed since last review (${session.comments.length} comment${session.comments.length !== 1 ? 's' : ''}). Resume anyway?`,
-            inputFromStdin,
-          );
-          if (answer) {
-            console.error(chalk.yellow('Resuming with stale session.'));
-            doc.comments = session.comments;
-            restoredActiveSection = session.activeSection;
-          } else {
-            await sessionStore.clear(absPath);
-          }
-        }
-      }
-    }
-  }
-
-  // Navigate (interactive review or browser)
-  let reviewed: PlanDocument;
-  let reviewMeta: Pick<ReviewSubmission, 'verdict' | 'summary'> = { verdict: null, summary: '' };
+  let output: string;
   if (!opts.cli) {
-    const submission = await runBrowserReview({ doc, absPath, contentHash, restoredActiveSection });
-    doc.comments = submission.comments;
-    reviewMeta = { verdict: submission.verdict, summary: submission.summary };
-    reviewed = doc;
+    const result = await browserReview({
+      markdown: input,
+      ...(file && file !== '-' ? { planPath: resolvePath(file) } : {}),
+      reviewId: opts.review,
+      fresh: opts.fresh,
+      splitBy: splitStrategy,
+    });
+    if (result.kind === 'paused') {
+      process.stdout.write(result.output + '\n');
+      return;
+    }
+    output = result.output;
   } else {
-    const onCommentChange = absPath
-      ? () => {
-          void saveReviewSession(sessionStore, absPath, contentHash, doc.comments, null).catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err);
-            console.warn(chalk.yellow(`Failed to save session: ${message}`));
-          });
-        }
-      : undefined;
-    reviewed = await navigate(doc, inputFromStdin, onCommentChange);
+    const reviewed = await navigate(doc, inputFromStdin);
+    output = formatReview(reviewed, { verdict: null, summary: '' });
   }
-
-  // Clear session after successful review completion
-  if (absPath) await sessionStore.clear(absPath);
 
   // Determine output target after review is complete
   let outputTarget: OutputTarget;
@@ -201,12 +170,11 @@ async function run(
   }
 
   // Format and output
-  const output = formatReview(reviewed, reviewMeta);
-  writeOutput(output, outputTarget, { outputFile: opts.outputFile, inputFile: file });
+  writeOutput(output, outputTarget, { outputFile: opts.outputFile, inputFile: file === '-' ? undefined : file });
 }
 
 function readInput(file: string | undefined): string {
-  if (file) {
+  if (file && file !== '-') {
     if (!existsSync(file)) {
       throw new Error(`File not found: ${file}`);
     }
@@ -221,76 +189,4 @@ function readInput(file: string | undefined): string {
   // No file, no stdin pipe — show help
   program.help();
   return ''; // unreachable
-}
-
-function formatRelativeTime(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const seconds = Math.floor(ms / 1000);
-  if (seconds < 60) return 'just now';
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  const weeks = Math.floor(days / 7);
-  return `${weeks}w ago`;
-}
-
-async function saveReviewSession(
-  store: SessionStore,
-  planPath: string,
-  contentHash: string,
-  comments: ReviewComment[],
-  activeSection: string | null,
-): Promise<void> {
-  const data: SessionData = {
-    version: 1,
-    planPath,
-    contentHash,
-    comments,
-    activeSection,
-    lastModified: new Date().toISOString(),
-  };
-  await store.save(planPath, data);
-}
-
-async function loadReviewSession(
-  store: SessionStore,
-  planPath: string,
-  contentHash: string,
-): Promise<{ comments: ReviewComment[]; activeSection: string | null; stale: boolean } | null> {
-  const data = await store.load(planPath);
-  if (!data) return null;
-  return {
-    comments: data.comments,
-    activeSection: data.activeSection,
-    stale: data.contentHash !== contentHash,
-  };
-}
-
-async function listReviewSessions(
-  store: SessionStore,
-): Promise<Array<{ planPath: string; commentCount: number; lastModified: string; stale: boolean | null }>> {
-  const metas = await store.list();
-  const sessions = [];
-  for (const meta of metas) {
-    const data = await store.load(meta.key);
-    const planPath = data?.planPath ?? meta.key;
-    let stale: boolean | null = null;
-    if (existsSync(planPath) && data) {
-      try {
-        stale = computeContentHash(readFileSync(planPath, 'utf-8')) !== data.contentHash;
-      } catch {
-        stale = null;
-      }
-    }
-    sessions.push({
-      planPath,
-      commentCount: meta.commentCount,
-      lastModified: meta.lastModified,
-      stale,
-    });
-  }
-  return sessions;
 }
