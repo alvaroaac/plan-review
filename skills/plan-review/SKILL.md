@@ -1,6 +1,6 @@
 ---
 name: plan-review
-description: Use when the user asks to review a plan, start plan review, or says "I want to review this plan". Triggers on plan review requests for markdown implementation plans, specs, or design docs — including plans produced on-the-fly in this conversation. Runs the plan-review browser UI, feeds the review back into the conversation, and continues the same review across revisions.
+description: Use when the user asks to review a plan, start plan review, or says "I want to review this plan", and when drafting a spec or implementation plan that still has open design choices. Triggers on plan review requests for markdown implementation plans, specs, or design docs — including plans produced on-the-fly in this conversation. Runs the plan-review browser UI, feeds the review back into the conversation, and continues the same review across revisions.
 ---
 
 # Plan Review
@@ -10,6 +10,13 @@ Open a markdown plan in the plan-review browser UI. The user answers your open d
 Two input sources:
 - **File branch:** a plan file on disk (a path the user gave, or the one recent match in `docs/superpowers/plans/*.md`). If there are several candidates, ask which one.
 - **Inline branch:** a plan written in this conversation, or markdown the user pasted. Pipe it in on stdin; no temp file needed.
+
+## Drafting specs and plans with open decisions
+
+When you write a spec or plan whose design still has real choices to make, settle purpose and scope in chat first, then write the document as a draft and ask the open choices in it instead of one at a time in chat:
+- Make the document complete around your recommended option, and add a `decision` block (with `[pick]` on that option) where each open choice comes up. Use an `assumption` block for anything you have not verified.
+- Ask only what the user must decide: choices with real trade-offs. Aim for 3–7 items per round; settle the rest yourself and say so in the text.
+- Run the review (section 2). Apply the answers, then continue the same review with `--review <id>` until it is approved. An approved review is the user's approval of the document.
 
 ## Prerequisites
 
