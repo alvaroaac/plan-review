@@ -14,6 +14,12 @@ export {
   type SessionStore,
 } from './session.js';
 export {
+  DEFAULT_REVIEW_DIR,
+  FileReviewStore,
+  isReview,
+  type ReviewStore,
+} from './reviewStore.js';
+export {
   createAutosave,
   type Autosave,
   type AutosaveOptions,
