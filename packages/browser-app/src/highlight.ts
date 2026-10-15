@@ -3,7 +3,7 @@
 // each text node the match touches gets its own span.
 
 export interface Mark {
-  id: string;                    // element id on the first span (scroll target)
+  id?: string;                   // element id on the first span (scroll target)
   className: string;
   data: Record<string, string>;  // data-* attributes on every span (click targets)
   badge?: string;                // trailing <sup class="q-badge"> on the last span
@@ -57,7 +57,7 @@ export function markAll(html: string, mark: Mark): string {
     return root.innerHTML;
   }
   const block = decorate(document.createElement('div'), mark);
-  block.id = mark.id;
+  if (mark.id) block.id = mark.id;
   block.classList.add('hl-block');
   block.innerHTML = html;
   return block.outerHTML;
@@ -89,7 +89,7 @@ function wrap(segments: { node: Text; start: number; end: number }[], mark: Mark
       span.append(target);
       return span;
     });
-  spans[0].id = mark.id;
+  if (mark.id) spans[0].id = mark.id;
   if (mark.badge !== undefined) {
     const badge = document.createElement('sup');
     badge.className = 'q-badge';

@@ -149,6 +149,23 @@ describe('CommentsList', () => {
       expect(listed(container)).toEqual(['Why bold?']);
     });
 
+    it('keeps the text when the target block changes', async () => {
+      const { container, review } = renderList([]);
+      startCompose(review.current.dispatch);
+      await vi.waitFor(() => expect(container.querySelector('.composer')).not.toBeNull());
+      fireEvent.input(container.querySelector('.composer textarea')!, { target: { value: 'Half a thought' } });
+      review.current.dispatch({ type: 'startCompose', sectionId: '1.2', anchor: lineAnchor(0, ['Second task content']) });
+      await vi.waitFor(() => expect(container.querySelector('.composer .lbl')!.textContent).toContain('1.2'));
+      expect(container.querySelector<HTMLTextAreaElement>('.composer textarea')!.value).toBe('Half a thought');
+    });
+
+    it('scrolls itself into view when it opens', async () => {
+      const { container, review } = renderList();
+      startCompose(review.current.dispatch);
+      await vi.waitFor(() => expect(Element.prototype.scrollIntoView).toHaveBeenCalledWith({ block: 'nearest' }));
+      expect(vi.mocked(Element.prototype.scrollIntoView).mock.contexts[0]).toBe(container.querySelector('.composer'));
+    });
+
     it('Cancel stops composing', async () => {
       const { container, review } = renderList();
       startCompose(review.current.dispatch);

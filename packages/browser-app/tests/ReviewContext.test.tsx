@@ -68,14 +68,16 @@ describe('ReviewProvider autosave', () => {
     expect(client.progressSaves).toHaveLength(1);
   });
 
-  it('swallows save failures', async () => {
+  it('swallows background save failures but keeps the error for the next flush', async () => {
     const client = new FakeReviewClient({ loaded: mockLoaded() });
-    client.saveProgress = () => Promise.reject(new Error('offline'));
+    client.saveProgress = vi.fn(() => Promise.reject(new Error('offline')));
     renderProvider(client);
     act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    // advanceTimersByTimeAsync would reject if the timer callback rethrew the failure.
     await act(async () => { await vi.advanceTimersByTimeAsync(600); });
-    // no unhandled rejection / async rethrow: fake timers would surface a thrown timer callback here
-    await act(async () => { await vi.runAllTimersAsync(); });
+    expect(client.saveProgress).toHaveBeenCalledTimes(1);
+    expect(current.state.review.answers['retry-backoff'].choice).toBe('A');
+    await expect(current.flushAutosave()).rejects.toThrow('offline');
   });
 });
 
@@ -141,6 +143,23 @@ describe('ReviewProvider planChanged', () => {
     expect(client.progressSaves).toHaveLength(1);
     await new Promise((r) => setTimeout(r, 600));
     expect(client.progressSaves).toHaveLength(1);
+  });
+
+  it('keeps local progress and skips the reload when the flush fails', async () => {
+    const first = mockLoaded();
+    const client = new FakeReviewClient({ loaded: first });
+    client.saveProgress = vi.fn(() => Promise.reject(new Error('offline')));
+    client.loadDocument = vi.fn(async () => mockLoaded({ review: { ...first.review, round: 3 } }));
+    renderProvider(client, first);
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    window.dispatchEvent(new MessageEvent('message', { data: { kind: 'event', type: 'planChanged' } }));
+    await waitFor(() => expect(client.saveProgress).toHaveBeenCalled());
+    await new Promise((r) => setTimeout(r, 50));
+    expect(client.loadDocument).not.toHaveBeenCalled();
+    expect(current.state.review.round).toBe(2);
+    expect(current.state.review.answers['retry-backoff'].choice).toBe('A');
+    // The failure is still pending, so a submit flush rejects rather than sending over it.
+    await expect(current.flushAutosave()).rejects.toThrow('offline');
   });
 });
 

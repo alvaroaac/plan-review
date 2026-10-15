@@ -113,6 +113,56 @@ describe('SubmitPopover', () => {
     expect(review.current.state.ui.submitOpen).toBe(false);
   });
 
+  describe('summary', () => {
+    const summary = () => document.querySelector<HTMLTextAreaElement>('.submit-pop textarea')!;
+
+    it('survives closing and reopening the popover', () => {
+      const { review } = renderPopover();
+      fireEvent.input(summary(), { target: { value: 'Half-written thought' } });
+      act(() => review.current.dispatch({ type: 'closeSubmit' }));
+      expect(document.querySelector('.submit-pop')).toBeNull();
+      act(() => review.current.dispatch({ type: 'openSubmit' }));
+      expect(summary().value).toBe('Half-written thought');
+    });
+
+    it('survives a jump to a gate item', () => {
+      const { container, review } = renderPopover();
+      fireEvent.input(summary(), { target: { value: 'Before the jump' } });
+      fireEvent.click(container.querySelectorAll('.gate-list .srow')[0]);
+      expect(review.current.state.ui.submitOpen).toBe(false);
+      act(() => review.current.dispatch({ type: 'openSubmit' }));
+      expect(summary().value).toBe('Before the jump');
+    });
+  });
+
+  describe('focus management', () => {
+    const trigger = () => button('Submit review');
+
+    it('is a labelled dialog that focuses the summary when it opens', () => {
+      renderPopover();
+      const dialog = screen.getByRole('dialog', { name: 'Submit review' });
+      expect(document.activeElement).toBe(dialog.querySelector('textarea'));
+    });
+
+    it('returns focus to the trigger when it closes', async () => {
+      renderPopover();
+      fireEvent.keyDown(document, { key: 'Escape' });
+      await waitFor(() => expect(document.activeElement).toBe(trigger()));
+    });
+
+    it('traps Tab and Shift+Tab inside the dialog', () => {
+      renderPopover();
+      const dialog = screen.getByRole('dialog', { name: 'Submit review' });
+      const first = dialog.querySelector('textarea')!;
+      const last = button('Approve');
+      last.focus();
+      fireEvent.keyDown(last, { key: 'Tab' });
+      expect(document.activeElement).toBe(first);
+      fireEvent.keyDown(first, { key: 'Tab', shiftKey: true });
+      expect(document.activeElement).toBe(last);
+    });
+  });
+
   describe('submitting', () => {
     it('flushes the pending autosave before submitting, then shows the submitted state', async () => {
       const calls: string[] = [];

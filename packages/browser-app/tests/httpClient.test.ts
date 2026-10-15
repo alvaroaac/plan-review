@@ -14,14 +14,16 @@ describe('HttpReviewClient', () => {
     expect(fetchSpy).toHaveBeenCalledWith('/api/doc');
   });
 
-  it('saveProgress PUTs answers + threads to /api/session and accepts 204', async () => {
+  it('saveProgress PUTs answers + threads to /api/session with keepalive and accepts 204', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
     const update = { answers: {}, threads: [] };
     await expect(new HttpReviewClient().saveProgress(update)).resolves.toBeUndefined();
+    // keepalive lets the beforeunload flush outlive the page.
     expect(fetchSpy).toHaveBeenCalledWith('/api/session', {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(update),
+      keepalive: true,
     });
   });
 

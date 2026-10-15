@@ -41,6 +41,7 @@ describe('initReviewState', () => {
       submitOpen: false,
       submitted: null,
       submitError: null,
+      summarySeed: '',
     });
   });
 
@@ -123,9 +124,23 @@ describe('reviewReducer — threads', () => {
 
   it('startCompose sets composing and switches to Comments; cancelCompose clears it', () => {
     const composing = reviewReducer(stateWith(), { type: 'startCompose', sectionId: '1.2', anchor: null });
-    expect(composing.ui.composing).toEqual({ sectionId: '1.2', anchor: null });
+    expect(composing.ui.composing).toEqual({ sectionId: '1.2', anchor: null, body: '' });
     expect(composing.ui.tab).toBe('comments');
     expect(reviewReducer(composing, { type: 'cancelCompose' }).ui.composing).toBeNull();
+  });
+
+  it('composeBody keeps the typed text, and moving the composer to another block keeps it', () => {
+    let s = reviewReducer(stateWith(), { type: 'startCompose', sectionId: '1.1', anchor: null });
+    s = reviewReducer(s, { type: 'composeBody', body: 'Half a thought' });
+    expect(s.ui.composing!.body).toBe('Half a thought');
+    s = reviewReducer(s, { type: 'startCompose', sectionId: '1.2', anchor: null });
+    expect(s.ui.composing).toEqual({ sectionId: '1.2', anchor: null, body: 'Half a thought' });
+    expect(isProgressAction({ type: 'composeBody', body: 'x' })).toBe(false);
+  });
+
+  it('composeBody is ignored when nothing is being composed', () => {
+    const s = stateWith();
+    expect(reviewReducer(s, { type: 'composeBody', body: 'x' })).toBe(s);
   });
 });
 
@@ -144,6 +159,20 @@ describe('reviewReducer — ui', () => {
     const state = stateWith([{ ...thread, resolved: true }]);
     const next = reviewReducer(state, { type: 'focus', target: { kind: 'thread', id: thread.id } });
     expect(next.ui.filter).toBe('all');
+  });
+
+  it('focusing an open thread while filtering Resolved widens the filter to All', () => {
+    const state = reviewReducer(stateWith([thread]), { type: 'setFilter', filter: 'resolved' });
+    const next = reviewReducer(state, { type: 'focus', target: { kind: 'thread', id: thread.id } });
+    expect(next.ui.filter).toBe('all');
+  });
+
+  it('focusing a thread the filter already shows keeps the filter', () => {
+    const resolved = reviewReducer(stateWith([{ ...thread, resolved: true }]), { type: 'setFilter', filter: 'resolved' });
+    expect(reviewReducer(resolved, { type: 'focus', target: { kind: 'thread', id: thread.id } }).ui.filter).toBe('resolved');
+    // Outdated threads are listed under every filter.
+    const outdated = reviewReducer(stateWith([{ ...thread, outdated: true }]), { type: 'setFilter', filter: 'resolved' });
+    expect(reviewReducer(outdated, { type: 'focus', target: { kind: 'thread', id: thread.id } }).ui.filter).toBe('resolved');
   });
 
   it('setTab ignores Decisions when the plan has no items', () => {
@@ -174,10 +203,12 @@ describe('reviewReducer — ui', () => {
     expect(failed.ui.submitOpen).toBe(false);
   });
 
-  it('dismissSubmitError returns to the review', () => {
-    const request = { verdict: 'approved' as const, summary: '' };
+  it('dismissSubmitError returns to the review and seeds the summary from the failed request', () => {
+    const request = { verdict: 'approved' as const, summary: 'Rethink retries' };
     const failed = reviewReducer(stateWith(), { type: 'submitFailed', error: 'boom', request });
-    expect(reviewReducer(failed, { type: 'dismissSubmitError' }).ui.submitError).toBeNull();
+    const back = reviewReducer(failed, { type: 'dismissSubmitError' });
+    expect(back.ui.submitError).toBeNull();
+    expect(back.ui.summarySeed).toBe('Rethink retries');
   });
 
   it('reload replaces document, items, warnings and review but keeps ui', () => {
@@ -193,13 +224,39 @@ describe('reviewReducer — ui', () => {
     expect(next.ui.filter).toBe('all');
     expect(next.ui.tab).toBe('comments');
   });
+
+  it('reload keeps focus and composing whose targets still exist', () => {
+    let s = reviewReducer(stateWith([thread]), { type: 'focus', target: { kind: 'item', id: 'retry-backoff' } });
+    s = reviewReducer(s, { type: 'startCompose', sectionId: '1.1', anchor: null });
+    const next = reviewReducer(s, { type: 'reload', loaded: mockLoaded() });
+    expect(next.ui.focus).toEqual({ kind: 'item', id: 'retry-backoff' });
+    expect(next.ui.composing).toMatchObject({ sectionId: '1.1' });
+  });
+
+  it('reload clears focus on a vanished item or thread and composing in a vanished section', () => {
+    const loaded = mockLoaded();
+    const withoutTask1 = {
+      ...loaded,
+      document: { ...loaded.document, sections: loaded.document.sections.filter((x) => x.id !== '1.1') },
+      items: loaded.items.filter((i) => i.id !== 'retry-backoff'),
+    };
+    let s = reviewReducer(stateWith(), { type: 'focus', target: { kind: 'item', id: 'retry-backoff' } });
+    s = reviewReducer(s, { type: 'startCompose', sectionId: '1.1', anchor: null });
+    let next = reviewReducer(s, { type: 'reload', loaded: withoutTask1 });
+    expect(next.ui.focus).toBeNull();
+    expect(next.ui.composing).toBeNull();
+
+    s = reviewReducer(stateWith([thread]), { type: 'focus', target: { kind: 'thread', id: thread.id } });
+    next = reviewReducer(s, { type: 'reload', loaded: mockLoaded() });
+    expect(next.ui.focus).toBeNull();
+  });
 });
 
 describe('isProgressAction', () => {
   it('is true exactly for actions that change answers or threads', () => {
     const progress: ReviewAction['type'][] = ['answer', 'defer', 'clearAnswer', 'addThread', 'reply', 'resolve', 'reopen'];
     const ui: ReviewAction['type'][] = [
-      'startCompose', 'cancelCompose', 'focus', 'setTab', 'setFilter', 'toggleTheme',
+      'startCompose', 'cancelCompose', 'composeBody', 'focus', 'setTab', 'setFilter', 'toggleTheme',
       'openSubmit', 'closeSubmit', 'submitted', 'submitFailed', 'dismissSubmitError', 'reload',
     ];
     for (const type of progress) expect(isProgressAction({ type } as ReviewAction)).toBe(true);

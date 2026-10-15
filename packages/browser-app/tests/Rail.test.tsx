@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, screen } from '@testing-library/preact';
+import { act, fireEvent, screen } from '@testing-library/preact';
 import type { Answer, ReviewItem, Thread } from '@plan-review/core';
 import { Rail } from '../src/components/Rail.js';
 import { answer, assumptionItem, decisionItem, mockLoaded, renderWithReview, thread } from './test-utils.js';
@@ -97,5 +97,26 @@ describe('Rail', () => {
   it('labels each card with its section number', () => {
     const { container } = renderRail({}, [], [decisionItem]);
     expect(container.querySelector('.item-card .loc')!.textContent).toBe('§ 1.1');
+  });
+
+  it('labels the tab panel with the active tab', () => {
+    renderRail();
+    expect(screen.getByRole('tabpanel', { name: /Decisions/ })).toBeTruthy();
+    fireEvent.click(tab(/Comments/));
+    expect(screen.getByRole('tabpanel', { name: /Comments/ })).toBeTruthy();
+  });
+
+  it('starts a card with an empty editor when its answer goes stale', () => {
+    const { container, review } = renderRail({ 'retry-backoff': answer(decisionItem, 'B') }, [], [decisionItem]);
+    const card = () => container.querySelector('#card-retry-backoff')!;
+    fireEvent.click(screen.getByRole('button', { name: 'Change' }));
+    expect(card().querySelector('.opt.on')).not.toBeNull();
+
+    const base = review.current.state;
+    const loaded = { ...mockLoaded(), items: [{ ...decisionItem, hash: 'h-new' }], review: { ...mockLoaded().review, answers: base.review.answers } };
+    act(() => review.current.dispatch({ type: 'reload', loaded }));
+    expect(card().querySelector('.ic-changed')).not.toBeNull();
+    expect(card().querySelector('.opts .opt.on')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Save decision' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

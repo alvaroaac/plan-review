@@ -3,6 +3,7 @@ import { itemState } from '@plan-review/core/review';
 import { useReview } from '../state/ReviewContext.js';
 import { scrollDocTo, sectionElementId } from '../scroll.js';
 import { sectionNumbers } from '../sections.js';
+import { isOpenThread } from '../threads.js';
 import { ChatIcon } from './icons.js';
 
 export function TocPanel({ active }: { active: string | null }) {
@@ -40,7 +41,7 @@ function TocRow({ section, num, active }: { section: Section; num: string; activ
   const { state } = useReview();
   const { items, review } = state;
   const sectionItems = items.filter((i) => i.sectionId === section.id);
-  const openThreads = review.threads.filter((t) => t.sectionId === section.id && !t.resolved).length;
+  const openThreads = review.threads.filter((t) => t.sectionId === section.id && isOpenThread(t)).length;
 
   return (
     <button

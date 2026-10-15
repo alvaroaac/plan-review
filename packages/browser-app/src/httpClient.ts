@@ -15,6 +15,7 @@ export class HttpReviewClient implements ReviewClient {
       method: 'PUT',
       headers: JSON_HEADERS,
       body: JSON.stringify(update),
+      keepalive: true, // the beforeunload flush must survive the page closing
     });
     await ensureOk(res, 'saveProgress');
   }

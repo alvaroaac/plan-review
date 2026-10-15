@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { options } from 'preact';
 import { fireEvent, screen } from '@testing-library/preact';
 import type { Answer, ReviewItem, Section } from '@plan-review/core';
 import { ItemCard } from '../src/components/ItemCard.js';
@@ -56,6 +57,49 @@ describe('ItemCard', () => {
 
       expect(review.current.state.review.answers['retry-backoff']).toMatchObject({ choice: 'B', note: 'breaker is safer' });
       expect(container.querySelector('.answer')!.textContent).toContain('B · Circuit breaker');
+    });
+
+    // A real browser runs microtasks between event listeners, so Preact re-renders
+    // after the card's focus handler while the radio's click is still being
+    // dispatched. Rendering synchronously (and dispatching outside act(), which
+    // would defer renders) reproduces that ordering in jsdom. Chrome fires `change`
+    // only if the radio is still checked once the click has finished dispatching;
+    // jsdom fires it regardless, so that is asserted directly.
+    describe('when renders run between event listeners, as in a real browser', () => {
+      let debounce: typeof options.debounceRendering;
+      beforeEach(() => {
+        debounce = options.debounceRendering;
+        options.debounceRendering = (cb) => cb();
+      });
+      afterEach(() => { options.debounceRendering = debounce; });
+
+      it.each([
+        ['label', (opt: Element) => opt],
+        ['text', (opt: Element) => opt.querySelector('.opt-text')!],
+      ])('clicking an option %s selects it and leaves its radio checked after the click', (_, target) => {
+        const { container } = renderCard(decision);
+        const radio = option(container, 'B').querySelector('input')!;
+        let checkedAfterDispatch: boolean | null = null;
+        const record = (e: Event) => { if (e.target === radio) checkedAfterDispatch = radio.checked; };
+        window.addEventListener('click', record);
+        try {
+          target(option(container, 'B')).dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        } finally {
+          window.removeEventListener('click', record);
+        }
+        expect(checkedAfterDispatch).toBe(true);
+        expect(option(container, 'B').classList.contains('on')).toBe(true);
+        expect(button('Save decision')).toHaveProperty('disabled', false);
+      });
+    });
+
+    it('options form a labelled radio group that also selects on change (arrow keys)', () => {
+      const { container } = renderCard(decision);
+      expect(screen.getByRole('radiogroup', { name: 'Retry backoff' })).toBeTruthy();
+      const radios = screen.getAllByRole('radio');
+      expect(radios).toHaveLength(3);
+      fireEvent.change(radios[1]);
+      expect(option(container, 'B').classList.contains('on')).toBe(true);
     });
 
     it('requires a note for "Something else"', () => {

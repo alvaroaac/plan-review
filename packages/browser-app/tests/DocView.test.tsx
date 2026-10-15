@@ -73,10 +73,16 @@ describe('DocView', () => {
       expect(banners(container)[0]).toContain('1 item changed since you answered it');
     });
 
-    it('lists the warnings', () => {
+    it('lists the warnings under a counted heading', () => {
       const { container } = renderDoc({ warnings: ['Line 4: missing id', 'Line 9: duplicate id'] });
+      expect(banners(container)[0]).toContain('This plan has 2 warnings:');
       const items = Array.from(container.querySelectorAll('.callout li'), (li) => li.textContent);
       expect(items).toEqual(['Line 4: missing id', 'Line 9: duplicate id']);
+    });
+
+    it('uses the singular for one warning', () => {
+      const { container } = renderDoc({ warnings: ['Line 4: missing id'] });
+      expect(banners(container)[0]).toContain('This plan has 1 warning:');
     });
   });
 

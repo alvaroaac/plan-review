@@ -56,6 +56,18 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByText('Error: Network error')).toBeTruthy());
   });
 
+  it('retries a failed load', async () => {
+    const loadDocument = vi.fn()
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce(mockLoaded());
+    const client: ReviewClient = { loadDocument, saveProgress: async () => {}, submitReview: async () => ({ ok: true, output: '' }) };
+    const { container } = render(<App client={client} />);
+    await waitFor(() => expect(screen.getByText('Error: Network error')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(container.querySelector('header.top')).toBeTruthy());
+    expect(loadDocument).toHaveBeenCalledTimes(2);
+  });
+
   it('renders the top bar with brand, plan title crumb, theme toggle and Submit review', async () => {
     const { container } = await renderLoaded();
     const top = container.querySelector('header.top')!;
@@ -239,6 +251,15 @@ describe('App', () => {
         expect(text).toContain('### `retry-backoff` · Retry backoff — **B**: Circuit breaker');
       });
 
+      it('keeps the heartbeat alive while the failure is shown, so the server does not exit', async () => {
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        await new Promise((r) => setTimeout(r, 50)); // let the shell's effects settle
+        vi.mocked(fetch).mockClear();
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(fetch).toHaveBeenCalledWith('/api/heartbeat', expect.anything());
+      });
+
       it('copies the review to the clipboard', async () => {
         const writeText = vi.fn(async () => {});
         Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
@@ -257,14 +278,27 @@ describe('App', () => {
         await waitFor(() => expect(screen.getByText('Could not copy. Select the review below.')).toBeTruthy());
       });
 
-      it('Back to review returns to the review with its state intact', async () => {
+      it('Back to review returns to the review with its answers and threads intact', async () => {
         await submitWith(failing(), 'Approve');
         await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
         fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
         expect(screen.queryByRole('heading', { name: 'Submit failed' })).toBeNull();
         expect(document.querySelector('header.top')).toBeTruthy();
-        expect(document.querySelectorAll('.side .thread')).toHaveLength(0); // Decisions tab still active
         expect(document.querySelector('.side .tab.on')!.textContent).toContain('Decisions');
+        const answers = Array.from(document.querySelectorAll('.side .item-card .answer'), (a) => a.textContent);
+        expect(answers).toHaveLength(2);
+        expect(answers[0]).toContain('B · Circuit breaker');
+        expect(answers[1]).toContain("Doesn't hold");
+        fireEvent.click(screen.getByRole('tab', { name: /Comments/ }));
+        expect(document.querySelectorAll('.side .thread')).toHaveLength(1);
+      });
+
+      it('Back to review restores the summary in the submit popover', async () => {
+        await submitWith(failing(), 'Request changes', 'Rethink the retries');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
+        expect(document.querySelector<HTMLTextAreaElement>('.submit-pop textarea')!.value).toBe('Rethink the retries');
       });
     });
   });

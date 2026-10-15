@@ -16,7 +16,10 @@ export function SubmitPopover() {
   const { state, dispatch } = useReview();
   const open = state.ui.submitOpen;
   const [busy, setBusy] = useState(false);
+  // Held here, not in the panel, so the summary survives closing, gate jumps and a failed submit.
+  const [summary, setSummary] = useState(() => state.ui.summarySeed);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     if (!open || busy) return;
@@ -33,9 +36,20 @@ export function SubmitPopover() {
     };
   }, [open, busy, dispatch]);
 
+  // On close, hand focus back to the trigger unless the user has already moved it elsewhere.
+  const wasOpen = useRef(open);
+  useEffect(() => {
+    const active = document.activeElement;
+    if (wasOpen.current && !open && (active === document.body || wrapRef.current?.contains(active))) {
+      triggerRef.current?.focus();
+    }
+    wasOpen.current = open;
+  }, [open]);
+
   return (
     <div class="submit-wrap" ref={wrapRef}>
       <button
+        ref={triggerRef}
         type="button"
         class="btn primary"
         aria-expanded={open}
@@ -44,15 +58,23 @@ export function SubmitPopover() {
       >
         Submit review
       </button>
-      {open && <SubmitPanel busy={busy} setBusy={setBusy} />}
+      {open && <SubmitPanel busy={busy} setBusy={setBusy} summary={summary} setSummary={setSummary} />}
     </div>
   );
 }
 
-function SubmitPanel({ busy, setBusy }: { busy: boolean; setBusy: (busy: boolean) => void }) {
+interface SubmitPanelProps {
+  busy: boolean;
+  setBusy: (busy: boolean) => void;
+  summary: string;
+  setSummary: (summary: string) => void;
+}
+
+function SubmitPanel({ busy, setBusy, summary, setSummary }: SubmitPanelProps) {
   const { state, dispatch, client, flushAutosave } = useReview();
   const { items, review } = state;
-  const [summary, setSummary] = useState('');
+  const summaryRef = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => { summaryRef.current?.focus(); }, []);
 
   const gate = items
     .map((item, index) => ({ item, index, status: itemState(item, review.answers[item.id]) }))
@@ -84,8 +106,9 @@ function SubmitPanel({ busy, setBusy }: { busy: boolean; setBusy: (busy: boolean
   };
 
   return (
-    <div class="submit-pop" role="dialog" aria-label="Submit review">
+    <div class="submit-pop" role="dialog" aria-label="Submit review" onKeyDown={trapTab}>
       <textarea
+        ref={summaryRef}
         class="field"
         value={summary}
         onInput={(e) => setSummary(e.currentTarget.value)}
@@ -121,4 +144,17 @@ function SubmitPanel({ busy, setBusy }: { busy: boolean; setBusy: (busy: boolean
       </div>
     </div>
   );
+}
+
+// Keeps Tab and Shift+Tab cycling inside the dialog.
+function trapTab(e: KeyboardEvent) {
+  if (e.key !== 'Tab') return;
+  const focusable = Array.from((e.currentTarget as HTMLElement)
+    .querySelectorAll<HTMLElement>('textarea, button:not([disabled])'));
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const edge = e.shiftKey ? first : last;
+  if (document.activeElement !== edge) return;
+  e.preventDefault();
+  (e.shiftKey ? last : first).focus();
 }

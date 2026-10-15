@@ -64,7 +64,7 @@ function Banners() {
       {warnings.length > 0 && (
         <Callout icon="!">
           <div>
-            Some decision or assumption blocks couldn’t be read and are shown as code:
+            This plan has {warnings.length === 1 ? '1 warning' : `${warnings.length} warnings`}:
             <ul>{warnings.map((w) => <li key={w}>{w}</li>)}</ul>
           </div>
         </Callout>

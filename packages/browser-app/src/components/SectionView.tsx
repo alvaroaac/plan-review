@@ -8,6 +8,7 @@ import { markAll, markQuote } from '../highlight.js';
 import { resolveAnchor } from '../anchors.js';
 import { sectionElementId } from '../scroll.js';
 import { LineBlock } from '../LineBlock.js';
+import { isOpenThread } from '../threads.js';
 
 type MarkState = 'open' | 'done' | 'deferred'; // a changed item reads as open again
 
@@ -53,12 +54,14 @@ export function SectionView({ section, num }: { section: Section; num: string })
     }
   }
   for (const t of review.threads) {
-    if (t.sectionId !== section.id || !t.anchor || t.resolved || t.outdated) continue;
+    if (t.sectionId !== section.id || !t.anchor || !isOpenThread(t)) continue;
     const range = resolveAnchor(blocks, t.anchor);
     if (!range) continue;
     const className = `hl${isFocused({ kind: 'thread', id: t.id }) ? ' is-focus' : ''}`;
     for (let i = range.start; i <= range.end; i++) {
-      html[i] = markAll(html[i], { id: `hl-${t.id}`, className, data: { thread: t.id } });
+      // Only the first block carries the id: it is the scroll target, and ids must be unique.
+      const id = i === range.start ? `hl-${t.id}` : undefined;
+      html[i] = markAll(html[i], { id, className, data: { thread: t.id } });
     }
   }
 

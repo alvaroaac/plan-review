@@ -11,6 +11,7 @@ import type {
 } from '@plan-review/core';
 import { newCommentId, newThreadId } from '@plan-review/core/review';
 import type { Theme } from '../theme.js';
+import { isListed } from '../threads.js';
 
 export type Tab = 'decisions' | 'comments';
 export type ThreadFilter = 'open' | 'resolved' | 'all';
@@ -25,12 +26,15 @@ export interface ReviewState {
     tab: Tab;
     filter: ThreadFilter;
     focus: FocusTarget | null;
-    composing: { sectionId: string; anchor: LineAnchor | null } | null;
+    /** The open composer; its body is kept here so moving it to another block keeps the text. */
+    composing: { sectionId: string; anchor: LineAnchor | null; body: string } | null;
     theme: Theme;
     submitOpen: boolean;
     submitted: { output: string } | null;
     /** A failed submit keeps its request so the failure view can format the review locally. */
     submitError: { message: string; request: SubmitRequest } | null;
+    /** The summary the submit popover starts from: the failed request's, after Back to review. */
+    summarySeed: string;
   };
 }
 
@@ -40,6 +44,7 @@ export type ReviewAction =
   | { type: 'clearAnswer'; itemId: string }
   | { type: 'startCompose'; sectionId: string; anchor: LineAnchor | null }
   | { type: 'cancelCompose' }
+  | { type: 'composeBody'; body: string }
   | { type: 'addThread'; sectionId: string; anchor: LineAnchor | null; body: string }
   | { type: 'reply'; threadId: string; body: string }
   | { type: 'resolve'; threadId: string }
@@ -76,6 +81,7 @@ export function initReviewState(loaded: LoadedReview, theme: Theme): ReviewState
       submitOpen: false,
       submitted: null,
       submitError: null,
+      summarySeed: '',
     },
   };
 }
@@ -92,11 +98,14 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
     }
     case 'startCompose':
       return withUi(state, {
-        composing: { sectionId: action.sectionId, anchor: action.anchor },
+        composing: { sectionId: action.sectionId, anchor: action.anchor, body: state.ui.composing?.body ?? '' },
         tab: 'comments',
       });
     case 'cancelCompose':
       return withUi(state, { composing: null });
+    case 'composeBody':
+      if (!state.ui.composing) return state;
+      return withUi(state, { composing: { ...state.ui.composing, body: action.body } });
     case 'addThread': {
       const thread: Thread = {
         id: newThreadId(),
@@ -137,12 +146,28 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
     case 'submitFailed':
       return withUi(state, { submitError: { message: action.error, request: action.request }, submitOpen: false });
     case 'dismissSubmitError':
-      return withUi(state, { submitError: null });
-    case 'reload': {
-      const next = { ...state, ...fromLoaded(action.loaded) };
-      return next.items.length === 0 ? withUi(next, { tab: 'comments' }) : next;
-    }
+      return withUi(state, {
+        submitError: null,
+        summarySeed: state.ui.submitError?.request.summary ?? state.ui.summarySeed,
+      });
+    case 'reload':
+      return reload(state, action.loaded);
   }
+}
+
+// The new round may drop the focused item or thread, or the section being commented on.
+function reload(state: ReviewState, loaded: LoadedReview): ReviewState {
+  const next = { ...state, ...fromLoaded(loaded) };
+  const { focus, composing } = state.ui;
+  const focusExists = !focus || (focus.kind === 'item'
+    ? next.items.some((i) => i.id === focus.id)
+    : next.review.threads.some((t) => t.id === focus.id));
+  const composingExists = !composing || next.doc.sections.some((s) => s.id === composing.sectionId);
+  return withUi(next, {
+    focus: focusExists ? focus : null,
+    composing: composingExists ? composing : null,
+    tab: next.items.length === 0 ? 'comments' : state.ui.tab,
+  });
 }
 
 function fromLoaded(loaded: LoadedReview): Omit<ReviewState, 'ui'> {
@@ -182,11 +207,11 @@ function updateThread(state: ReviewState, threadId: string, update: (t: Thread) 
 }
 
 // Focusing something in the doc reveals its card: switch to the tab that lists it,
-// and widen the thread filter when a resolved thread would otherwise be hidden.
+// and widen the thread filter when the current one would hide the thread.
 function focus(state: ReviewState, target: FocusTarget | null): ReviewState {
   if (!target) return withUi(state, { focus: null });
   if (target.kind === 'item') return withUi(state, { focus: target, tab: 'decisions' });
   const thread = state.review.threads.find((t) => t.id === target.id);
-  const hidden = thread?.resolved && state.ui.filter === 'open';
+  const hidden = thread && !isListed(state.ui.filter, thread);
   return withUi(state, { focus: target, tab: 'comments', filter: hidden ? 'all' : state.ui.filter });
 }

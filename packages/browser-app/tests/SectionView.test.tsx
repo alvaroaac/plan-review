@@ -158,6 +158,14 @@ describe('SectionView', () => {
       expect(container.querySelector('.hl')).toBeNull();
     });
 
+    it('puts the scroll-target id only on the first block of a multi-block highlight', () => {
+      const t = thread('t1', '1.1', lineAnchor(0, ['Alpha line.', 'Beta line.']));
+      const { container } = renderSection([], { threads: [t] }, 'Alpha line.\n\nBeta line.');
+      expect(container.querySelectorAll('.hl')).toHaveLength(2);
+      expect(container.querySelectorAll('[id="hl-t1"]')).toHaveLength(1);
+      expect(container.querySelector('#hl-t1')!.textContent).toBe('Alpha line.');
+    });
+
     it('does not highlight a section-level thread', () => {
       const { container } = renderSection([], { threads: [thread('t1', '1.1', null)] });
       expect(container.querySelector('.hl')).toBeNull();
@@ -177,7 +185,7 @@ describe('SectionView', () => {
       const { container, review } = renderSection([]);
       const add = container.querySelectorAll<HTMLButtonElement>('.para-add');
       fireEvent.click(add[0]);
-      expect(review.current.state.ui.composing).toEqual({ sectionId: '1.1', anchor: lineAnchor(0, [PARA_1]) });
+      expect(review.current.state.ui.composing).toEqual({ sectionId: '1.1', anchor: lineAnchor(0, [PARA_1]), body: '' });
       expect(review.current.state.ui.tab).toBe('comments');
       expect(container.querySelectorAll('.para.is-pending')).toHaveLength(1);
     });

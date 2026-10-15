@@ -165,11 +165,21 @@ function DecisionOptions({ item, choice, onChoose }: {
     ...(item.options ?? []).map((o) => ({ key: o.key, label: o.key, text: o.text, detail: o.detail, pick: o.pick })),
     { key: 'other', label: '…', text: 'Something else', detail: undefined, pick: false },
   ];
+  // The choice is taken on the radio's own click, before the click bubbles to the
+  // card: the card's focus dispatch re-renders mid-click (browsers run microtasks
+  // between listeners), and a render that still saw the old choice would uncheck
+  // the radio so the browser never fires `change`. onChange covers arrow keys.
   return (
-    <div class="opts">
+    <div class="opts" role="radiogroup" aria-label={item.label}>
       {options.map((o) => (
         <label key={o.key} class={`opt${choice === o.key ? ' on' : ''}`}>
-          <input type="radio" name={item.id} checked={choice === o.key} onChange={() => onChoose(o.key)} />
+          <input
+            type="radio"
+            name={item.id}
+            checked={choice === o.key}
+            onClick={() => onChoose(o.key)}
+            onChange={() => onChoose(o.key)}
+          />
           <span class="opt-key">{o.label}</span>
           <span class="opt-text">{o.text}{o.detail && <small>{o.detail}</small>}</span>
           {o.pick ? <span class="pick">Author's pick</span> : <span />}

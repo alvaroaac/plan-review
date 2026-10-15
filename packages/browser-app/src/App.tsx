@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { LoadedReview } from '@plan-review/core';
 import type { ReviewClient } from '@plan-review/core/client';
 import { ReviewProvider, useReview } from './state/ReviewContext.js';
@@ -19,14 +19,23 @@ export function App({ client }: { client: ReviewClient }) {
   // Theme the loading and error screens too; the provider owns it once loaded.
   useLayoutEffect(() => applyTheme(theme), [theme]);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setError(null);
     client
       .loadDocument()
       .then(setLoaded)
       .catch((err: Error) => setError(err.message));
   }, [client]);
+  useEffect(load, [load]);
 
-  if (error) return <div class="loading">Error: {error}</div>;
+  if (error) {
+    return (
+      <div class="loading">
+        Error: {error}
+        <button type="button" class="btn" onClick={load}>Retry</button>
+      </div>
+    );
+  }
   if (!loaded) return <div class="loading">Loading...</div>;
 
   return (
@@ -39,7 +48,8 @@ export function App({ client }: { client: ReviewClient }) {
 function ReviewShell() {
   const { state } = useReview();
   const { submitted, submitError } = state.ui;
-  useHeartbeat(submitted === null && submitError === null);
+  // Stays on through a failed submit: the server waits for the retry.
+  useHeartbeat(submitted === null);
 
   if (submitted) return <SubmittedView />;
   if (submitError) return <SubmitFailureView message={submitError.message} request={submitError.request} />;

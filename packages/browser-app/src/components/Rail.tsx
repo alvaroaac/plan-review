@@ -3,6 +3,7 @@ import { itemState } from '@plan-review/core/review';
 import { useReview } from '../state/ReviewContext.js';
 import type { Tab } from '../state/reducer.js';
 import { sectionNumbers } from '../sections.js';
+import { isOpenThread } from '../threads.js';
 import { CommentsList } from './CommentsList.js';
 import { ItemCard } from './ItemCard.js';
 
@@ -10,12 +11,13 @@ export function Rail() {
   const { state, dispatch } = useReview();
   const { items, review, ui } = state;
   const pending = items.filter((i) => isPending(itemState(i, review.answers[i.id]))).length;
-  const openThreads = review.threads.filter((t) => !t.resolved && !t.outdated).length;
+  const openThreads = review.threads.filter(isOpenThread).length;
 
   const tab = (id: Tab, label: string, count: number, hot: boolean) => (
     <button
       type="button"
       role="tab"
+      id={`tab-${id}`}
       aria-selected={ui.tab === id}
       class={`tab${ui.tab === id ? ' on' : ''}`}
       onClick={() => dispatch({ type: 'setTab', tab: id })}
@@ -30,7 +32,7 @@ export function Rail() {
         {items.length > 0 && tab('decisions', 'Decisions', pending, pending > 0)}
         {tab('comments', 'Comments', openThreads, false)}
       </div>
-      <div class="scroll" role="tabpanel">
+      <div class="scroll" role="tabpanel" aria-labelledby={`tab-${ui.tab}`}>
         {ui.tab === 'decisions' ? <DecisionsList /> : <CommentsList />}
       </div>
     </aside>
@@ -55,7 +57,8 @@ function DecisionsList() {
     <div class="rail-list">
       {groups.filter(([, list]) => list.length > 0).map(([title, list]) => [
         <div key={title} class="group-h"><span>{title}</span><span>{list.length}</span></div>,
-        ...list.map((item) => <ItemCard key={item.id} item={item} loc={`§ ${numbers.get(item.sectionId) ?? ''}`} />),
+        // Keyed on state too, so a card whose answer goes stale starts with a fresh draft.
+        ...list.map((item) => <ItemCard key={`${item.id}:${stateOf(item)}`} item={item} loc={`§ ${numbers.get(item.sectionId) ?? ''}`} />),
       ])}
     </div>
   );

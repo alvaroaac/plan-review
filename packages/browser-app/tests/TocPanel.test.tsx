@@ -47,7 +47,7 @@ describe('TocPanel', () => {
     expect(rows(container)[1].querySelector('.idx-dots')).toBeNull();
   });
 
-  it('shows the open-thread count, ignoring resolved threads', () => {
+  it('shows the open-thread count, ignoring resolved and outdated threads', () => {
     const base = mockLoaded();
     const { container } = renderToc({
       document: genericDoc,
@@ -58,6 +58,7 @@ describe('TocPanel', () => {
           thread('t1', 'section-2', null),
           thread('t2', 'section-2', null),
           thread('t3', 'section-2', null, { resolved: true }),
+          thread('t4', 'section-2', null, { outdated: true }),
         ],
       },
     });

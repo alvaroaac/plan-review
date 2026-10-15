@@ -83,7 +83,7 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
     };
   }, [autosave]);
 
-  useHostPlanChanges(client, autosave.flush, dispatch);
+  useHostPlanChanges(client, flushAutosave, dispatch);
   useThemeSync(state.ui.theme, dispatch);
 
   const value = useMemo(
@@ -95,6 +95,7 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
 
 // The VS Code host broadcasts `planChanged` when the plan file is saved; it has
 // already re-opened the review, so save what we have and load the new round.
+// If the save fails, the reload is skipped: it would replace unsaved local progress.
 function useHostPlanChanges(
   client: ReviewClient,
   flush: () => Promise<void>,
