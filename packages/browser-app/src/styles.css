@@ -366,7 +366,8 @@ textarea.submit-failure-review { min-height: 320px; font: 12px/1.55 var(--mono);
 @media (max-width: 1040px) {
   .main { grid-template-columns: 52px minmax(0, 1fr) 320px; }
   .index { padding: 14px 6px; }
-  .index .idx-h, .index .idx-t, .index .idx-meta, .index   .idx-row, .idx-tasks .idx-row { grid-template-columns: 1fr; justify-items: center; padding: 8px 0; }
+  .index .idx-h, .index .idx-t, .index .idx-meta { display: none; }
+  .idx-row, .idx-tasks .idx-row { grid-template-columns: 1fr; justify-items: center; padding: 8px 0; }
   .doc { padding: 32px 24px 120px 40px; }
   .doc-title { font-size: 30px; }
   .para-add { left: -34px; }
