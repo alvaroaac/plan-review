@@ -1,3 +1,4 @@
+import { validateAnswer } from '@plan-review/core';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs';
 import { join, normalize, resolve as resolvePath, sep, extname } from 'node:path';
@@ -6,6 +7,7 @@ import type {
   LineAnchor,
   LoadedReview,
   ProgressUpdate,
+  ReviewItem,
   SubmitRequest,
   Thread,
   ThreadComment,
@@ -84,11 +86,13 @@ function isThread(x: unknown): x is Thread {
   );
 }
 
-export function isProgressUpdate(x: unknown): x is ProgressUpdate {
+export function isProgressUpdate(x: unknown, items: readonly ReviewItem[] = []): x is ProgressUpdate {
   return (
     isRecord(x) &&
     isRecord(x.answers) &&
     Object.values(x.answers).every(isAnswer) &&
+    items.every((item) => !Object.hasOwn(x.answers as object, item.id)
+      || validateAnswer(item, (x.answers as Record<string, Answer>)[item.id]) === null) &&
     Array.isArray(x.threads) &&
     x.threads.every(isThread)
   );
@@ -161,13 +165,30 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
           sendJson(res, 400, { error: 'verdict must be "changes_requested" or "approved" and summary a string' });
           return;
         }
+        let closed = res.destroyed || res.writableFinished;
+        let submitted = false;
+        const removeListeners = (): void => {
+          res.off('close', responseFinished);
+          res.off('finish', responseFinished);
+        };
+        const responseFinished = (): void => {
+          closed = true;
+          if (submitted) {
+            removeListeners();
+            ctx.onSubmitFinished?.();
+          }
+        };
+        // Observe disconnects while persistence is still in flight.
+        res.once('close', responseFinished);
+        res.once('finish', responseFinished);
         try {
           const output = await ctx.onSubmit(parsed);
-          // 'close' also fires when the client disconnects before the response is flushed.
-          res.once('close', () => ctx.onSubmitFinished?.());
-          sendJson(res, 200, { ok: true, output });
+          submitted = true;
+          if (closed) responseFinished();
+          else sendJson(res, 200, { ok: true, output });
         } catch (err) {
-          sendHandlerError(res, err, 'Failed to submit review');
+          removeListeners();
+          if (!closed) sendHandlerError(res, err, 'Failed to submit review');
         }
       });
       return;
@@ -176,7 +197,7 @@ export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, re
     if (method === 'PUT' && url === '/api/session') {
       void readJsonBody(req, res).then(async (parsed) => {
         if (parsed === undefined) return;
-        if (!isProgressUpdate(parsed)) {
+        if (!isProgressUpdate(parsed, ctx.getLoaded().items)) {
           sendJson(res, 400, { error: 'Body must be { answers, threads } with valid answers and threads' });
           return;
         }

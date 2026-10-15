@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { request } from 'node:http';
+import { request, ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { FileReviewStore, formatPausedNotice, formatReviewOutput, openReview, saveProgress, submitRound } from '@plan-review/core';
@@ -326,4 +326,57 @@ describe('browser review integration', () => {
     expect((await http(`${url}/_assets/missing.png`)).status).toBe(404);
     expect(await (await http(`${url}/_assets/diagram.svg`)).text()).toBe('<svg></svg>');
   });
+});
+
+it('updates the loaded timestamp after saving progress', async () => {
+  const { url, loaded } = await start();
+  vi.setSystemTime(new Date('2026-10-15T12:05:00.000Z'));
+  expect((await send(url, '/api/session', progress(loaded))).status).toBe(204);
+  const current = await (await http(`${url}/api/doc`)).json() as LoadedReview;
+  expect(current.review.updatedAt).toBe('2026-10-15T12:05:00.000Z');
+  expect(current.review.updatedAt).toBe((await store.get(loaded.review.id))?.updatedAt);
+});
+
+it('returns a submitted result and stops when the client disconnects during a delayed submit', async () => {
+  const register = HttpTransport.prototype.onSubmit;
+  let release!: () => void;
+  let committed!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  const ready = new Promise<void>((resolve) => { committed = resolve; });
+  vi.spyOn(HttpTransport.prototype, 'onSubmit').mockImplementation(function (handler) {
+    register.call(this, async (req) => {
+      const output = await handler(req);
+      committed();
+      await gate;
+      return output;
+    });
+  });
+  const { url, result, loaded } = await start();
+  let disconnected!: () => void;
+  const closed = new Promise<void>((resolve) => { disconnected = resolve; });
+  const emit = ServerResponse.prototype.emit;
+  const observeClose = vi.spyOn(ServerResponse.prototype, 'emit').mockImplementation(function (event, ...args) {
+    const emitted = emit.call(this, event, ...args);
+    if (event === 'close') disconnected();
+    return emitted;
+  });
+  const stop = vi.spyOn(HttpTransport.prototype, 'stop');
+  const req = request(`${url}/api/review`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+  req.on('error', () => {});
+  req.end(JSON.stringify({ verdict: 'approved', summary: 'Saved before disconnect.' }));
+  try {
+    await ready;
+    req.destroy();
+    await closed;
+    expect(stop).not.toHaveBeenCalled();
+  } finally {
+    observeClose.mockRestore();
+    release();
+  }
+  const completed = vi.fn();
+  void result.then(completed);
+  await vi.waitFor(() => expect(completed).toHaveBeenCalledOnce());
+  expect((await result).kind).toBe('submitted');
+  expect(stop).toHaveBeenCalled();
+  expect((await store.get(loaded.review.id))?.status).toBe('approved');
 });

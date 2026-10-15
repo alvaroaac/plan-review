@@ -86,12 +86,16 @@ describe('list command', () => {
     expect(run(['list']).stdout).toMatch(new RegExp(`${older.review.id}\\s+Older plan\\s+2\\s+\\d{4}-\\d{2}-\\d{2} \\d{2}:\\d{2}\\s+1/0/1`));
   });
 
-  it('sessions is an alias of list, including --all, and ignores legacy session files', async () => {
+  it('does not advertise or accept sessions as a list alias', () => {
+    expect(run(['--help']).stdout).not.toContain('sessions');
+    const result = run(['sessions']);
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('File not found: sessions');
+  });
+
+  it('ignores legacy session files when listing reviews', async () => {
     mkdirSync(join(home, 'sessions'));
     writeFileSync(join(home, 'sessions', 'old.json'), JSON.stringify({ version: 1, planPath: '/old/plan.md', comments: [], lastModified: now.toISOString() }));
-    expect(run(['sessions']).stdout.trim()).toBe('No open reviews.');
-    await seed();
-    expect(run(['sessions']).stdout).toBe(run(['list']).stdout);
-    expect(run(['sessions', '--all']).stdout).toBe(run(['list', '--all']).stdout);
+    expect(run(['list']).stdout.trim()).toBe('No open reviews.');
   });
 });

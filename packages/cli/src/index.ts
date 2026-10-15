@@ -71,7 +71,6 @@ program
 
 program
   .command('list')
-  .alias('sessions')
   .description('List saved reviews')
   .option('--all', 'Include approved reviews')
   .action(async (opts: { all?: boolean }) => {

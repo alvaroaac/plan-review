@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  contentHash, hashItem, itemCounts, itemState, newCommentId, newReviewId, newThreadId,
+  contentHash, hashItem, itemCounts, itemState, newCommentId, newReviewId, newThreadId, validateAnswer,
 } from '../src/reviewModel.js';
 import type { Answer, ReviewItem } from '../src/types.js';
 
@@ -134,5 +134,37 @@ describe('own-property answer lookups', () => {
     const answers: Record<string, Answer> = Object.create({ constructor: answer(item, 'holds') });
     expect(itemCounts([item], answers).assumptions).toEqual({ holds: 0, unsure: 0, no: 0, deferred: 0, open: 1 });
     expect(itemCounts([item], {}).assumptions.open).toBe(1);
+  });
+});
+
+describe('validateAnswer', () => {
+  const decision = makeItem({ id: 'storage', ...base });
+  const assumption = makeItem({ id: 'browser', kind: 'assumption' });
+
+  it.each(['A', 'B', 'other', 'deferred'])('accepts decision choice %s', (choice) => {
+    expect(validateAnswer(decision, answer(decision, choice, { note: choice === 'other' ? 'Alternative' : '' }))).toBeNull();
+  });
+
+  it.each(['holds', 'unsure', 'no', 'deferred'])('accepts assumption choice %s', (choice) => {
+    expect(validateAnswer(assumption, answer(assumption, choice, { note: choice === 'no' ? 'Unsupported' : '' }))).toBeNull();
+  });
+
+  it.each(['C', 'holds', 'no', 'unsure', '', 'a'])('rejects invalid decision choice %s', (choice) => {
+    expect(validateAnswer(decision, answer(decision, choice, { note: 'Reason' }))).toEqual(expect.any(String));
+  });
+
+  it.each(['A', 'other', 'yes', ''])('rejects invalid assumption choice %s', (choice) => {
+    expect(validateAnswer(assumption, answer(assumption, choice, { note: 'Reason' }))).toEqual(expect.any(String));
+  });
+
+  it.each(['', '   ', '\t\n'])('rejects blank required notes: %j', (note) => {
+    expect(validateAnswer(decision, answer(decision, 'other', { note }))).toEqual(expect.any(String));
+    expect(validateAnswer(assumption, answer(assumption, 'no', { note }))).toEqual(expect.any(String));
+  });
+
+  it('checks the current option keys', () => {
+    const changed = { ...decision, options: [{ key: 'C', text: 'New option', pick: false }] };
+    expect(validateAnswer(changed, answer(decision, 'A'))).toEqual(expect.any(String));
+    expect(validateAnswer(changed, answer(changed, 'C'))).toBeNull();
   });
 });

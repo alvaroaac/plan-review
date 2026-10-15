@@ -8,9 +8,7 @@
     "plan-review": "dist/index.js"
   },
   "files": [
-    "dist",
-    "skills",
-    "examples"
+    "dist"
   ],
   "scripts": {
     "build": "node build.mjs",
@@ -49,5 +47,8 @@
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

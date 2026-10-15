@@ -29,13 +29,38 @@ function isRound(value: unknown): boolean {
   );
 }
 
+function isLineAnchor(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    value.type === 'lines' &&
+    typeof value.startLine === 'number' &&
+    typeof value.endLine === 'number' &&
+    Array.isArray(value.lineTexts) &&
+    value.lineTexts.every((text) => typeof text === 'string')
+  );
+}
+
+function isThreadComment(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    (value.author === 'reviewer' || value.author === 'agent') &&
+    typeof value.body === 'string' &&
+    typeof value.createdAt === 'string'
+  );
+}
+
 function isThread(value: unknown): boolean {
   return (
     isRecord(value) &&
     typeof value.id === 'string' &&
     typeof value.sectionId === 'string' &&
+    (value.anchor === null || isLineAnchor(value.anchor)) &&
     typeof value.resolved === 'boolean' &&
-    Array.isArray(value.comments)
+    typeof value.outdated === 'boolean' &&
+    typeof value.createdRound === 'number' &&
+    Array.isArray(value.comments) &&
+    value.comments.every(isThreadComment)
   );
 }
 
@@ -44,6 +69,7 @@ export function isReview(value: unknown): value is Review {
   return (
     value.version === 2 &&
     typeof value.id === 'string' &&
+    REVIEW_ID_PATTERN.test(value.id) &&
     typeof value.title === 'string' &&
     typeof value.createdAt === 'string' &&
     typeof value.updatedAt === 'string' &&
@@ -66,10 +92,11 @@ export class FileReviewStore implements ReviewStore {
 
   async get(id: string): Promise<Review | null> {
     if (!REVIEW_ID_PATTERN.test(id)) return null;
-    return this.readReview(join(this.dir, `${id}.json`));
+    return this.readReview(id);
   }
 
   async save(review: Review): Promise<void> {
+    if (!REVIEW_ID_PATTERN.test(review.id)) throw new Error('Invalid review id');
     await mkdir(this.dir, { recursive: true });
     const path = join(this.dir, `${review.id}.json`);
     const tmpPath = `${path}.tmp-${randomBytes(4).toString('hex')}`;
@@ -88,7 +115,9 @@ export class FileReviewStore implements ReviewStore {
     const reviews: Review[] = [];
     for (const file of files) {
       if (!file.endsWith('.json')) continue;
-      const review = await this.readReview(join(this.dir, file));
+      const id = file.slice(0, -5);
+      if (!REVIEW_ID_PATTERN.test(id)) continue;
+      const review = await this.readReview(id);
       if (review && (!filter?.status || review.status === filter.status)) {
         reviews.push(review);
       }
@@ -101,10 +130,10 @@ export class FileReviewStore implements ReviewStore {
     return open.find((review) => review.planPath === planPath) ?? null;
   }
 
-  private async readReview(path: string): Promise<Review | null> {
+  private async readReview(id: string): Promise<Review | null> {
     try {
-      const data: unknown = JSON.parse(await readFile(path, 'utf-8'));
-      return isReview(data) ? data : null;
+      const data: unknown = JSON.parse(await readFile(join(this.dir, `${id}.json`), 'utf-8'));
+      return isReview(data) && data.id === id ? data : null;
     } catch {
       return null;
     }

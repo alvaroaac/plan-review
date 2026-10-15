@@ -43,3 +43,22 @@ describe('messageHandlers.saveProgress', () => {
     await expect(panel.saveProgress({ answers: {}, threads: [] })).rejects.toThrow('document not loaded');
   });
 });
+
+it.each([
+  { choice: 'C', note: 'Invalid option' },
+  { choice: 'holds', note: '' },
+  { choice: 'other', note: '' },
+  { choice: 'other', note: ' \t\n' },
+])('rejects invalid answers without saving: %j', async (invalid) => {
+  const panel = createMessageHandlers({ reviewStore: f.store });
+  const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+  await expect(panel.saveProgress({ answers: { storage: { ...answer, ...invalid } }, threads: [] })).rejects.toThrow();
+  expect((await f.store.get(loaded.review.id))?.answers).toEqual({});
+});
+
+it('validates answers against items from the latest load', async () => {
+  const panel = createMessageHandlers({ reviewStore: f.store });
+  await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+  await panel.loadDocument({ planFsPath: f.planFsPath, markdown: markdown.replace('- A: Files', '- C: Cloud') });
+  await expect(panel.saveProgress({ answers: { storage: answer }, threads: [] })).rejects.toThrow();
+});

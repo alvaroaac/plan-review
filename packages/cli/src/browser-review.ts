@@ -95,7 +95,7 @@ export async function browserReview(opts: BrowserReviewOptions): Promise<Browser
         review = await saveProgress(store, review.id, update, new Date(), itemIds);
         loaded = {
           ...loaded,
-          review: { ...loaded.review, answers: review.answers, threads: review.threads },
+          review: { ...loaded.review, answers: review.answers, threads: review.threads, updatedAt: review.updatedAt },
         };
         transport.setLoaded(loaded);
       } catch (err) {

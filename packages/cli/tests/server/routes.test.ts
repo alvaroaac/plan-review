@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { EventEmitter } from 'node:events';
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createRouteHandler, isProgressUpdate, isSubmitRequest } from '../../src/server/routes.js';
 import type { Answer, LoadedReview, ProgressUpdate, Thread } from '@plan-review/core';
 
@@ -96,6 +97,28 @@ describe('server routes', () => {
       expect(res.status).toBe(204);
       expect(ctx.onProgress).toHaveBeenCalledWith(progress);
       await stopTestServer(server);
+    });
+
+    it.each([
+      { choice: 'C', note: 'Invalid option' },
+      { choice: 'holds', note: '' },
+      { choice: 'other', note: '' },
+      { choice: 'other', note: ' \t\n' },
+    ])('returns 400 without saving an invalid answer: %j', async (invalid) => {
+      const current: LoadedReview = { ...loaded, items: [{
+        id: 'item-1', kind: 'decision', label: 'Storage', question: 'Which storage?',
+        sectionId: '1.1', hash: 'h1', options: [{ key: 'A', text: 'Files', pick: false }],
+      }] };
+      const ctx = baseCtx({ getLoaded: () => current });
+      const { server, port } = await startTestServer(ctx);
+      try {
+        const res = await send(port, 'PUT', '/api/session', { ...progress, answers: { 'item-1': { ...answer, ...invalid } } });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toHaveProperty('error');
+        expect(ctx.onProgress).not.toHaveBeenCalled();
+      } finally {
+        await stopTestServer(server);
+      }
     });
 
     it('returns 400 with error for an invalid shape', async () => {
@@ -291,4 +314,27 @@ describe('isSubmitRequest', () => {
   it.each([null, {}, { verdict: 'rejected', summary: '' }, { verdict: 'approved', summary: 1 }])('rejects %j', (x) => {
     expect(isSubmitRequest(x)).toBe(false);
   });
+});
+
+it('completes a saved submit when the response closes before onSubmit resolves', async () => {
+  const req = new EventEmitter() as IncomingMessage;
+  req.method = 'POST';
+  req.url = '/api/review';
+  const res = Object.assign(new EventEmitter(), { writeHead: vi.fn(), end: vi.fn() }) as unknown as ServerResponse;
+  let release!: (output: string) => void;
+  const saved = new Promise<string>((resolve) => { release = resolve; });
+  const onSubmitFinished = vi.fn();
+  const ctx = baseCtx({ onSubmit: vi.fn(() => saved), onSubmitFinished });
+  createRouteHandler(ctx)(req, res);
+  req.emit('data', Buffer.from(JSON.stringify({ verdict: 'approved', summary: '' })));
+  req.emit('end');
+  await Promise.resolve();
+  expect(ctx.onSubmit).toHaveBeenCalledOnce();
+  res.emit('close');
+  expect(onSubmitFinished).not.toHaveBeenCalled();
+  release('saved output');
+  await vi.waitFor(() => expect(onSubmitFinished).toHaveBeenCalledOnce());
+  res.emit('finish');
+  expect(onSubmitFinished).toHaveBeenCalledOnce();
+  expect(res.end).not.toHaveBeenCalled();
 });

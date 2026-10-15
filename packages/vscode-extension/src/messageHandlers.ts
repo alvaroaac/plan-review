@@ -9,6 +9,7 @@ import {
   type ReviewStore,
   type SubmitRequest,
 } from '@plan-review/core';
+import { isProgressUpdate } from './protocol.js';
 import type { SubmitTarget } from './settings.js';
 
 export interface MessageHandlers {
@@ -28,6 +29,7 @@ export function createMessageHandlers(deps?: {
   const now = deps?.now ?? (() => new Date());
   let loaded: LoadedReview | undefined;
   let planFsPath: string;
+  let loadedContentHash: string;
 
   function current(): LoadedReview {
     if (!loaded) throw new Error('document not loaded');
@@ -43,16 +45,22 @@ export function createMessageHandlers(deps?: {
         now: now(),
       });
       loaded = opened.loaded;
+      loadedContentHash = opened.review.rounds[opened.review.rounds.length - 1].contentHash;
       planFsPath = params.planFsPath;
       return loaded;
     },
     async saveProgress(update) {
       const currentLoaded = current();
+      if (!isProgressUpdate(update, currentLoaded.items)) throw new Error('invalid saveProgress params');
       await saveProgress(store, currentLoaded.review.id, update, now(), new Set(currentLoaded.items.map((item) => item.id)));
     },
     async submitReview(req) {
       const currentLoaded = current();
+      const submittingContentHash = loadedContentHash;
       const targets = await deps?.chooseTargets?.();
+      if (loadedContentHash !== submittingContentHash) {
+        throw new Error('The plan changed. Review the updated plan and submit again.');
+      }
       if (!targets?.length) throw new Error('Submit cancelled — no destination chosen.');
       const review = await submitRound(store, currentLoaded.review.id, req, now());
       const output = formatReviewOutput(review, currentLoaded.items, currentLoaded.document);

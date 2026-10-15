@@ -21,6 +21,17 @@ export function contentHash(markdown: string): string {
   return fnv1a(markdown);
 }
 
+export function validateAnswer(item: ReviewItem, answer: Answer): string | null {
+  const validChoice = answer.choice === 'deferred' || (item.kind === 'decision'
+    ? answer.choice === 'other' || item.options?.some((option) => option.key === answer.choice)
+    : isVerdict(answer.choice));
+  if (!validChoice) return `Invalid choice for item ${item.id}`;
+  if ((answer.choice === 'other' || answer.choice === 'no') && !answer.note.trim()) {
+    return `A note is required for ${answer.choice} on item ${item.id}`;
+  }
+  return null;
+}
+
 export function itemState(item: ReviewItem, answer: Answer | undefined): ItemState {
   if (!answer) return 'open';
   if (answer.itemHash !== item.hash) return 'changed';

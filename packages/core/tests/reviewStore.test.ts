@@ -3,7 +3,7 @@ import { mkdtemp, writeFile, readdir, readFile, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
-import type { Review } from '../src/types.js';
+import type { LineAnchor, Review } from '../src/types.js';
 import { DEFAULT_REVIEW_DIR, FileReviewStore, isReview } from '../src/reviewStore.js';
 
 let dir: string;
@@ -87,6 +87,25 @@ describe('FileReviewStore', () => {
     expect(await store.get('')).toBeNull();
   });
 
+  it.each(['../../target', 'rv_', 'outside'])('refuses to save invalid id %s before writing', async (id) => {
+    const store = new FileReviewStore({ dir: join(dir, 'nested', 'reviews') });
+    await expect(store.save(makeReview({ id }))).rejects.toThrow('Invalid review id');
+    expect(await readdir(dir)).toEqual([]);
+  });
+
+  it.each(['../../target', 'rv_other'])('rejects a file whose internal id is %s', async (id) => {
+    const store = new FileReviewStore({ dir });
+    await writeFile(join(dir, 'rv_valid.json'), JSON.stringify(makeReview({ id })));
+    expect(await store.get('rv_valid')).toBeNull();
+    expect(await store.list()).toEqual([]);
+  });
+
+  it('skips files whose names do not match their valid internal id', async () => {
+    const store = new FileReviewStore({ dir });
+    await writeFile(join(dir, 'other.json'), JSON.stringify(makeReview()));
+    expect(await store.list()).toEqual([]);
+  });
+
   it('lists valid reviews by updatedAt desc, skipping corrupt and non-json files', async () => {
     const store = new FileReviewStore({ dir });
     await store.save(makeReview({ id: 'rv_old', updatedAt: '2026-10-15T09:00:00.000Z' }));
@@ -135,9 +154,9 @@ describe('isReview', () => {
     ['array answers', { ...makeReview(), answers: [] }],
     ['null thread', { ...makeReview(), threads: [null] }],
     ['array thread', { ...makeReview(), threads: [[]] }],
-    ...['id', 'sectionId', 'resolved', 'comments'].flatMap<[string, unknown]>((field) => [
+    ...['id', 'sectionId', 'resolved', 'outdated', 'createdRound', 'comments'].flatMap<[string, unknown]>((field) => [
       [`thread missing ${field}`, { ...makeReview(), threads: [{ ...makeReview().threads[0], [field]: undefined }] }],
-      [`thread invalid ${field}`, { ...makeReview(), threads: [{ ...makeReview().threads[0], [field]: 1 }] }],
+      [`thread invalid ${field}`, { ...makeReview(), threads: [{ ...makeReview().threads[0], [field]: field === 'createdRound' ? '1' : 1 }] }],
     ]),
     ['round missing startedAt', { ...makeReview(), rounds: [{ ...makeReview().rounds[0], startedAt: undefined }] }],
     ['round invalid startedAt', { ...makeReview(), rounds: [{ ...makeReview().rounds[0], startedAt: 1 }] }],
@@ -153,5 +172,42 @@ describe('isReview', () => {
     ['round without contentHash', { ...makeReview(), rounds: [{ n: 1, plan: '' }] }],
   ])('rejects %s', (_name, value) => {
     expect(isReview(value)).toBe(false);
+  });
+});
+
+describe('stored thread validation', () => {
+  const thread = makeReview().threads[0];
+  const anchor: LineAnchor = { type: 'lines', startLine: 0, endLine: 1, lineTexts: ['a', 'b'] };
+
+  it('accepts line anchors and both comment authors', () => {
+    expect(isReview(makeReview({ threads: [{ ...thread, anchor, comments: [
+      thread.comments[0], { ...thread.comments[0], author: 'agent' },
+    ] }] }))).toBe(true);
+  });
+
+  it.each([
+    null, [], {},
+    ...['id', 'author', 'body', 'createdAt'].flatMap((field) => [
+      { ...thread.comments[0], [field]: undefined },
+      { ...thread.comments[0], [field]: 1 },
+    ]),
+    { ...thread.comments[0], author: 'bot' },
+  ])('rejects malformed comment %j', (comment) => {
+    expect(isReview({ ...makeReview(), threads: [{ ...thread, comments: [comment] }] })).toBe(false);
+  });
+
+  it.each([
+    undefined, {}, [], 'lines',
+    { ...anchor, type: 'range' },
+    { ...anchor, startLine: '0' },
+    { ...anchor, endLine: undefined },
+    { ...anchor, lineTexts: [null] },
+    { ...anchor, lineTexts: 'a' },
+  ])('rejects malformed anchor %j', (value) => {
+    expect(isReview({ ...makeReview(), threads: [{ ...thread, anchor: value }] })).toBe(false);
+  });
+
+  it.each(['../../target', 'rv_', 'outside'])('rejects invalid review id %s', (id) => {
+    expect(isReview(makeReview({ id }))).toBe(false);
   });
 });

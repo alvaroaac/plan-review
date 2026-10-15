@@ -1,4 +1,5 @@
-import type { Answer, LineAnchor, ProgressUpdate, SubmitRequest, Thread, ThreadComment } from '@plan-review/core';
+import { validateAnswer } from '@plan-review/core';
+import type { Answer, LineAnchor, ProgressUpdate, ReviewItem, SubmitRequest, Thread, ThreadComment } from '@plan-review/core';
 
 export type WebviewRequestMethod = 'loadDocument' | 'saveProgress' | 'submitReview';
 
@@ -82,11 +83,13 @@ function isThread(x: unknown): x is Thread {
   );
 }
 
-export function isProgressUpdate(x: unknown): x is ProgressUpdate {
+export function isProgressUpdate(x: unknown, items: readonly ReviewItem[] = []): x is ProgressUpdate {
   return (
     isRecord(x) &&
     isRecord(x.answers) &&
     Object.values(x.answers).every(isAnswer) &&
+    items.every((item) => !Object.hasOwn(x.answers as object, item.id)
+      || validateAnswer(item, (x.answers as Record<string, Answer>)[item.id]) === null) &&
     Array.isArray(x.threads) &&
     x.threads.every(isThread)
   );

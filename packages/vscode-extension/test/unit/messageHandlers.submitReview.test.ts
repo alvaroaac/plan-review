@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { formatReviewOutput } from '@plan-review/core';
+import { formatReviewOutput, type Review, type ReviewStore } from '@plan-review/core';
 import { createMessageHandlers } from '../../src/messageHandlers.js';
 import { fixture, markdown, now, answer, thread } from './reviewFixtures.js';
 
@@ -58,4 +58,29 @@ describe('messageHandlers.submitReview', () => {
     await expect(panel.submitReview({ verdict: 'approved', summary: '' })).rejects.toThrow('document not loaded');
     expect(deliver).not.toHaveBeenCalled();
   });
+});
+
+it('aborts without persisting when the plan changes while the destination picker is open', async () => {
+  let saved: Review | null = null;
+  const store: ReviewStore = {
+    get: async () => saved && structuredClone(saved),
+    save: vi.fn(async (review) => { saved = structuredClone(review); }),
+    list: async () => [],
+    findOpenByPlanPath: async () => null,
+  };
+  let choose!: (targets: ['clipboard']) => void;
+  const targets = new Promise<['clipboard']>((resolve) => { choose = resolve; });
+  const deliver = vi.fn();
+  const panel = createMessageHandlers({ reviewStore: store, chooseTargets: () => targets, deliver });
+  const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+  const submission = panel.submitReview({ verdict: 'approved', summary: '' });
+  const rejected = expect(submission).rejects.toThrow(/plan changed.*review the updated plan.*submit again/i);
+  await panel.loadDocument({ planFsPath: f.planFsPath, markdown: markdown.replace('Where to store?', 'Which database?') });
+  const beforeSubmit = await store.get(loaded.review.id);
+  vi.mocked(store.save).mockClear();
+  choose(['clipboard']);
+  await rejected;
+  expect(store.save).not.toHaveBeenCalled();
+  expect(await store.get(loaded.review.id)).toEqual(beforeSubmit);
+  expect(deliver).not.toHaveBeenCalled();
 });
