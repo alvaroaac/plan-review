@@ -3,13 +3,14 @@ import { itemState } from '@plan-review/core/review';
 import { useReview } from '../state/ReviewContext.js';
 import type { Tab } from '../state/reducer.js';
 import { sectionNumbers } from '../sections.js';
+import { CommentsList } from './CommentsList.js';
 import { ItemCard } from './ItemCard.js';
 
 export function Rail() {
   const { state, dispatch } = useReview();
   const { items, review, ui } = state;
   const pending = items.filter((i) => isPending(itemState(i, review.answers[i.id]))).length;
-  const openThreads = review.threads.filter((t) => !t.resolved).length;
+  const openThreads = review.threads.filter((t) => !t.resolved && !t.outdated).length;
 
   const tab = (id: Tab, label: string, count: number, hot: boolean) => (
     <button
@@ -30,7 +31,7 @@ export function Rail() {
         {tab('comments', 'Comments', openThreads, false)}
       </div>
       <div class="scroll" role="tabpanel">
-        {ui.tab === 'decisions' ? <DecisionsList /> : <div class="rail-list" />}
+        {ui.tab === 'decisions' ? <DecisionsList /> : <CommentsList />}
       </div>
     </aside>
   );

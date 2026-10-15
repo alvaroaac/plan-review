@@ -296,6 +296,14 @@ textarea.field { resize: vertical; min-height: 56px; }
 .cmt-meta b { color: var(--ink); font-weight: 600; }
 .cmt p { margin: 2px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
 .ava { border-radius: 50%; display: inline-grid; place-items: center; color: #fff; font-weight: 700; flex-shrink: 0; letter-spacing: -.02em; }
+/* The design's avatar is 22px with a 0.4 font ratio; hues follow its "you" (150) and plan author (40). */
+.ava-reviewer, .ava-agent { width: 22px; height: 22px; font-size: 8.8px; }
+.ava-reviewer { background: oklch(0.6 0.09 150); }
+.ava-agent { background: oklch(0.6 0.09 40); }
+/* Anchors are whole blocks, so long quotes are clamped to keep cards scannable. */
+.th-quote { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; }
+/* An outdated thread's quote is text that no longer exists in the plan. */
+.thread.is-outdated .th-quote { border-left-color: var(--rule-2); }
 .th-reply input { height: 32px; }
 .composer { border-color: var(--ink-4); }
 .composer .lbl { font: 11px var(--mono); color: var(--ink-4); margin-bottom: 8px; }

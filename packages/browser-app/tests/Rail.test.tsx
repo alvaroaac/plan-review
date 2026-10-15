@@ -25,14 +25,19 @@ describe('Rail', () => {
     Element.prototype.scrollIntoView = vi.fn();
   });
 
-  it('badges Decisions with open + changed items and Comments with open threads', () => {
+  it('badges Decisions with open + changed items and Comments with open, non-outdated threads', () => {
     const { container } = renderRail(
       {
         'retry-backoff': answer(decisionItem, 'A', 'old-hash'), // changed
         'auth-latency': answer(assumptionItem, 'holds'),
         'cookie-scope': answer(cookieItem, 'deferred'),
       },
-      [thread('t1', '1.1', null), thread('t2', '1.1', null, { resolved: true }), thread('t3', '1.2', null)],
+      [
+        thread('t1', '1.1', null),
+        thread('t2', '1.1', null, { resolved: true }),
+        thread('t3', '1.2', null),
+        thread('t4', '1.2', null, { outdated: true }),
+      ],
     );
     const [decisions, comments] = Array.from(container.querySelectorAll('.tab'));
     expect(decisions.textContent).toBe('Decisions 2');
@@ -80,6 +85,13 @@ describe('Rail', () => {
   it('hides empty groups', () => {
     const { container } = renderRail({ 'auth-latency': answer(assumptionItem, 'holds') }, [], [decisionItem, assumptionItem]);
     expect(groups(container)).toEqual(['# Needs your answer 1', 'Retry backoff', '# Answered 1', 'Auth server latency']);
+  });
+
+  it('lists threads in the Comments tab', () => {
+    const { container } = renderRail({}, [thread('t1', '1.1', null)]);
+    fireEvent.click(tab(/Comments/));
+    expect(container.querySelector('.chips')).not.toBeNull();
+    expect(container.querySelectorAll('.rail-list > .thread')).toHaveLength(1);
   });
 
   it('labels each card with its section number', () => {
