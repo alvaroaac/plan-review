@@ -6,6 +6,7 @@ import { TopBar } from './components/TopBar.js';
 import { TocPanel } from './components/TocPanel.js';
 import { DocView } from './components/DocView.js';
 import { Rail } from './components/Rail.js';
+import { SubmitFailureView, SubmittedView } from './components/SubmitResult.js';
 import { useScrollSpy } from './scroll.js';
 import { useHeartbeat } from './heartbeat.js';
 import { applyTheme, detectTheme } from './theme.js';
@@ -37,7 +38,16 @@ export function App({ client }: { client: ReviewClient }) {
 
 function ReviewShell() {
   const { state } = useReview();
-  useHeartbeat(state.ui.submitted === null && state.ui.submitError === null);
+  const { submitted, submitError } = state.ui;
+  useHeartbeat(submitted === null && submitError === null);
+
+  if (submitted) return <SubmittedView />;
+  if (submitError) return <SubmitFailureView message={submitError.message} request={submitError.request} />;
+  return <ReviewLayout />;
+}
+
+function ReviewLayout() {
+  const { state } = useReview();
   const scrollRef = useRef<HTMLDivElement>(null);
   const active = useScrollSpy(scrollRef, state.doc.sections.map((s) => s.id));
 

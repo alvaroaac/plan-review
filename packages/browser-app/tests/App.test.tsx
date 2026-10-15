@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
 import { FakeReviewClient } from '@plan-review/core/client';
 import type { ReviewClient } from '@plan-review/core';
 import { App } from '../src/App.js';
-import { mockLoaded } from './test-utils.js';
+import { answer, assumptionItem, decisionItem, mockLoaded, thread } from './test-utils.js';
 
 const THEME_KEY = 'plan-review-theme';
 
@@ -75,13 +75,22 @@ describe('App', () => {
     expect(main.children[2].matches('aside.side')).toBe(true);
   });
 
-  it('Submit review opens the submit popover state', async () => {
-    const { container } = await renderLoaded();
+  it('Submit review toggles the submit popover', async () => {
+    await renderLoaded();
     const btn = screen.getByRole('button', { name: 'Submit review' });
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     fireEvent.click(btn);
     expect(btn.getAttribute('aria-expanded')).toBe('true');
-    expect(container.querySelector('header.top')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Submit review' })).toBeTruthy();
+    fireEvent.click(btn);
+    expect(screen.queryByRole('dialog', { name: 'Submit review' })).toBeNull();
+  });
+
+  it('closes the submit popover on a click outside it', async () => {
+    const { container } = await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
+    fireEvent.mouseDown(container.querySelector('article.doc')!);
+    expect(screen.queryByRole('dialog', { name: 'Submit review' })).toBeNull();
   });
 
   it('shows the stepper in the top bar between the crumb and the theme toggle', async () => {
@@ -177,6 +186,86 @@ describe('App', () => {
       document.body.className = 'vscode-light';
       await waitFor(() => expect(html().dataset.theme).toBe('light'));
       expect(localStorage.getItem(THEME_KEY)).toBeNull();
+    });
+  });
+
+  describe('submit', () => {
+    const answered = () => {
+      const base = mockLoaded();
+      return mockLoaded({
+        review: {
+          ...base.review,
+          answers: { 'retry-backoff': answer(decisionItem, 'B'), 'auth-latency': answer(assumptionItem, 'no') },
+          threads: [thread('t_1', '1.1', null)],
+        },
+      });
+    };
+
+    async function submitWith(client: ReviewClient, verdict: 'Approve' | 'Request changes', summary = '') {
+      await renderLoaded(client);
+      fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
+      if (summary) fireEvent.input(document.querySelector('.submit-pop textarea')!, { target: { value: summary } });
+      fireEvent.click(screen.getByRole('button', { name: verdict }));
+    }
+
+    it('on success shows the submitted view and a toast summing up the review', async () => {
+      await submitWith(new FakeReviewClient({ loaded: answered() }), 'Approve');
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Review submitted' })).toBeTruthy());
+      expect(screen.getByText('You can close this tab.')).toBeTruthy();
+      expect(document.querySelector('header.top')).toBeNull();
+      expect(document.querySelector('.toast')!.textContent).toBe('Review sent · 2 answered, 1 assumption flagged, 1 comment');
+    });
+
+    it('omits item counts from the toast for a plan without items', async () => {
+      await submitWith(new FakeReviewClient({ loaded: mockLoaded({ items: [] }) }), 'Approve');
+      await waitFor(() => expect(document.querySelector('.toast')!.textContent).toBe('Review sent'));
+    });
+
+    describe('on failure', () => {
+      const failing = (loaded = answered()): ReviewClient => ({
+        loadDocument: async () => loaded,
+        saveProgress: async () => {},
+        submitReview: () => Promise.reject(new Error('Submit cancelled — no destination chosen.')),
+      });
+
+      it('shows the error and the review formatted from the current state', async () => {
+        await submitWith(failing(), 'Request changes', 'Rethink the retries');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        expect(screen.getByText('Submit cancelled — no destination chosen.')).toBeTruthy();
+        const text = document.querySelector<HTMLTextAreaElement>('textarea.submit-failure-review')!.value;
+        expect(text).toContain('# Plan Review: Test Plan');
+        expect(text).toContain('Review `rv_abc12345` · Round 2 · **Changes requested**');
+        expect(text).toContain('Rethink the retries');
+        expect(text).toContain('### `retry-backoff` · Retry backoff — **B**: Circuit breaker');
+      });
+
+      it('copies the review to the clipboard', async () => {
+        const writeText = vi.fn(async () => {});
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Copy review to clipboard' }));
+        await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+        expect(writeText).toHaveBeenCalledWith(document.querySelector<HTMLTextAreaElement>('textarea.submit-failure-review')!.value);
+      });
+
+      it('says so when the clipboard is unavailable', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true });
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Copy review to clipboard' }));
+        await waitFor(() => expect(screen.getByText('Could not copy. Select the review below.')).toBeTruthy());
+      });
+
+      it('Back to review returns to the review with its state intact', async () => {
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+        expect(screen.queryByRole('heading', { name: 'Submit failed' })).toBeNull();
+        expect(document.querySelector('header.top')).toBeTruthy();
+        expect(document.querySelectorAll('.side .thread')).toHaveLength(0); // Decisions tab still active
+        expect(document.querySelector('.side .tab.on')!.textContent).toContain('Decisions');
+      });
     });
   });
 });

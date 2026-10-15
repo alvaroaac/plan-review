@@ -1,9 +1,8 @@
 import { h, type ComponentChildren } from 'preact';
 import { render } from '@testing-library/preact';
 import type { Answer, LineAnchor, LoadedReview, PlanDocument, ReviewItem, Thread } from '@plan-review/core';
-import { FakeReviewClient } from '@plan-review/core/client';
+import { FakeReviewClient, type ReviewClient } from '@plan-review/core/client';
 import { ReviewProvider, useReview } from '../src/state/ReviewContext.js';
-import type { ReviewAction, ReviewState } from '../src/state/reducer.js';
 
 export const mockPlanDoc: PlanDocument = {
   title: 'Test Plan',
@@ -74,13 +73,16 @@ export function lineAnchor(startLine: number, lineTexts: string[]): LineAnchor {
 }
 
 /** Renders `ui` inside a ReviewProvider; `review.current` always holds the latest state and dispatch. */
-export function renderWithReview(ui: ComponentChildren, loaded: LoadedReview = mockLoaded()) {
-  const review = {} as { current: { state: ReviewState; dispatch: (a: ReviewAction) => void } };
+export function renderWithReview(
+  ui: ComponentChildren,
+  loaded: LoadedReview = mockLoaded(),
+  client: ReviewClient = new FakeReviewClient({ loaded }),
+) {
+  const review = {} as { current: ReturnType<typeof useReview> };
   function Probe() {
     review.current = useReview();
     return null;
   }
-  const client = new FakeReviewClient({ loaded });
   const utils = render(h(ReviewProvider, { client, loaded, theme: 'light', children: [h(Probe, null), ui] }));
   return { ...utils, review };
 }

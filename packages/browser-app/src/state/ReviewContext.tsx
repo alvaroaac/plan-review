@@ -13,6 +13,9 @@ import {
 interface ReviewContextValue {
   state: ReviewState;
   dispatch: (action: ReviewAction) => void;
+  client: ReviewClient;
+  /** Sends any pending progress save now; rejects if the latest progress could not be saved. */
+  flushAutosave: () => Promise<void>;
 }
 
 const ReviewContext = createContext<ReviewContextValue | null>(null);
@@ -41,21 +44,35 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
     rawDispatch(action);
   }, []);
 
+  // Background saves are best-effort (the next change retries with the full state),
+  // but the last failure is kept so a submit never goes out over unsaved progress.
+  const saveError = useRef<unknown>(null);
   const autosave = useMemo(
     () => createAutosave<ProgressUpdate>({
       delayMs: 500,
-      save: (update) => client.saveProgress(update),
-      onError: () => {}, // best-effort; the next change retries with the full state
+      save: async (update) => {
+        await client.saveProgress(update);
+        saveError.current = null;
+      },
+      onError: (err) => { saveError.current = err; },
     }),
     [client],
   );
 
   const { answers, threads } = state.review;
+  const progress = useRef<ProgressUpdate>({ answers, threads });
+  progress.current = { answers, threads };
   useEffect(() => {
     if (!progressChanged.current) return;
     progressChanged.current = false;
     autosave.schedule({ answers, threads });
   }, [autosave, answers, threads]);
+
+  const flushAutosave = useCallback(async () => {
+    if (saveError.current) autosave.schedule(progress.current);
+    await autosave.flush();
+    if (saveError.current) throw saveError.current;
+  }, [autosave]);
 
   useEffect(() => {
     const flush = () => { void autosave.flush(); };
@@ -69,7 +86,10 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
   useHostPlanChanges(client, autosave.flush, dispatch);
   useThemeSync(state.ui.theme, dispatch);
 
-  const value = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+  const value = useMemo(
+    () => ({ state, dispatch, client, flushAutosave }),
+    [state, dispatch, client, flushAutosave],
+  );
   return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
 }
 
