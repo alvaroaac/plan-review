@@ -309,4 +309,20 @@ describe('navigate', () => {
     await navigate(doc, true);
     expect(createReadStreamSpy).toHaveBeenCalledWith('/dev/tty');
   });
+
+  it("finishes and calls onApprove when user types 'approve'", async () => {
+    const rl = await getReadlineMock();
+    rl._reset(['approve']);
+    const onApprove = vi.fn();
+    await navigate(makePlanDoc(), false, undefined, { onApprove });
+    expect(onApprove).toHaveBeenCalledOnce();
+  });
+
+  it("does not call onApprove on 'done'", async () => {
+    const rl = await getReadlineMock();
+    rl._reset(['done']);
+    const onApprove = vi.fn();
+    await navigate(makePlanDoc(), false, undefined, { onApprove });
+    expect(onApprove).not.toHaveBeenCalled();
+  });
 });

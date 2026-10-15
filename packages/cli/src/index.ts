@@ -17,6 +17,7 @@ import { writeOutput, isClaudeAvailable } from './output.js';
 import { createRequire } from 'node:module';
 import { promptOutputTarget } from './prompts.js';
 import { browserReview, createReviewStore } from './browser-review.js';
+import { terminalReview } from './terminal-review.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
@@ -150,8 +151,13 @@ async function run(
     }
     output = result.output;
   } else {
-    const reviewed = await navigate(doc, inputFromStdin);
-    output = formatReview(reviewed, { verdict: null, summary: '' });
+    output = await terminalReview(inputFromStdin, {
+      markdown: input,
+      ...(file && file !== '-' ? { planPath: resolvePath(file) } : {}),
+      reviewId: opts.review,
+      fresh: opts.fresh,
+      splitBy: splitStrategy,
+    });
   }
 
   // Determine output target after review is complete
