@@ -1,10 +1,12 @@
 import { extractItems } from './items.js';
 import type { ExtractResult } from './items.js';
+import { findLineRun, renderToLineBlocks } from './lineBlocks.js';
+import type { LineBlock } from './lineBlocks.js';
 import { parse } from './parser.js';
 import { contentHash, newCommentId, newReviewId } from './reviewModel.js';
 import type { ReviewStore } from './reviewStore.js';
 import type {
-  Banner, LoadedReview, ProgressUpdate, Review, SplitStrategy, SubmitRequest,
+  Banner, LoadedReview, ProgressUpdate, Review, Section, SplitStrategy, SubmitRequest,
 } from './types.js';
 
 export interface OpenReviewInput {
@@ -148,12 +150,6 @@ async function openResolvedReview(
   };
 }
 
-function normalize(text: string): string {
-  return text.replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
-    .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, '$1')
-    .toLowerCase().replace(/[^a-z0-9]/g, '');
-}
-
 export function carryForward(review: Review, extract: ExtractResult, now: Date, splitBy?: SplitStrategy): Review {
   const previousPlan = review.rounds.at(-1)?.plan;
   const previousSections = previousPlan === undefined ? [] : parse(previousPlan, splitBy).sections;
@@ -175,8 +171,19 @@ export function carryForward(review: Review, extract: ExtractResult, now: Date, 
       }],
     };
   }
+  // Blocks as the browser renders them, so anchor line numbers stay in its coordinates.
+  const blocksBySection = new Map<string, LineBlock[]>();
+  const blocksOf = (section: Section): LineBlock[] => {
+    let blocks = blocksBySection.get(section.id);
+    if (!blocks) {
+      const itemIds = extract.items.filter((item) => item.sectionId === section.id).map((item) => item.id);
+      blocks = renderToLineBlocks(section.body, new Set(itemIds));
+      blocksBySection.set(section.id, blocks);
+    }
+    return blocks;
+  };
+
   const reanchored = threads.map((thread) => {
-    if (thread.resolved) return thread;
     const heading = previousSections.find((section) => section.id === thread.sectionId)?.heading;
     const candidates = sections.filter((section) => section.heading === heading);
     const ordinal = previousSections.filter((section) => section.heading === heading)
@@ -188,11 +195,26 @@ export function carryForward(review: Review, extract: ExtractResult, now: Date, 
       return { ...thread, sectionId: sameHeading?.id ?? thread.sectionId, outdated: !sameHeading };
     }
 
-    const anchorText = thread.anchor.lineTexts.map(normalize).join('');
-    const matches = (body: string): boolean => normalize(body).includes(anchorText);
-    const match = sameHeading && matches(sameHeading.body)
-      ? sameHeading : sections.find((section) => matches(section.body));
-    return { ...thread, sectionId: match?.id ?? thread.sectionId, outdated: !match };
+    const { anchor } = thread;
+    const locate = (section: Section) => {
+      const range = findLineRun(blocksOf(section), anchor.lineTexts);
+      return range && { section, range };
+    };
+    const match = (sameHeading && locate(sameHeading))
+      ?? sections.reduce<ReturnType<typeof locate>>((found, section) => found ?? locate(section), null);
+    if (!match) return { ...thread, outdated: true };
+    const { section, range } = match;
+    return {
+      ...thread,
+      sectionId: section.id,
+      outdated: false,
+      anchor: {
+        ...anchor,
+        startLine: range.start,
+        endLine: range.end,
+        lineTexts: blocksOf(section).slice(range.start, range.end + 1).map((block) => block.text),
+      },
+    };
   });
 
   return { ...review, threads: reanchored };

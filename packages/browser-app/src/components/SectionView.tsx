@@ -1,11 +1,10 @@
 import { useMemo } from 'preact/hooks';
 import type { LineAnchor, ReviewItem, Section } from '@plan-review/core';
+import { findLineRun, renderToLineBlocks, type LineBlock as Block } from '@plan-review/core/items';
 import { itemState } from '@plan-review/core/review';
 import { useReview } from '../state/ReviewContext.js';
 import type { FocusTarget } from '../state/reducer.js';
-import { renderToLineBlocks, type LineBlock as Block } from '../lineRenderer.js';
 import { markAll, markQuote } from '../highlight.js';
-import { resolveAnchor } from '../anchors.js';
 import { sectionElementId } from '../scroll.js';
 import { LineBlock } from '../LineBlock.js';
 import { isOpenThread } from '../threads.js';
@@ -55,7 +54,7 @@ export function SectionView({ section, num }: { section: Section; num: string })
   }
   for (const t of review.threads) {
     if (t.sectionId !== section.id || !t.anchor || !isOpenThread(t)) continue;
-    const range = resolveAnchor(blocks, t.anchor);
+    const range = findLineRun(blocks, t.anchor.lineTexts);
     if (!range) continue;
     const className = `hl${isFocused({ kind: 'thread', id: t.id }) ? ' is-focus' : ''}`;
     for (let i = range.start; i <= range.end; i++) {

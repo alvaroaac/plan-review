@@ -1,7 +1,6 @@
 import { Marked } from 'marked';
 import type { Tokens, TokenizerExtension, RendererExtension } from 'marked';
 import markedFootnote from 'marked-footnote';
-import { ITEM_FENCE_RE } from '@plan-review/core/items';
 
 // Typed shapes for the custom marked extensions defined below. Each extends
 // Tokens.Generic (which has a string index signature), so a plain `as`
@@ -94,17 +93,29 @@ function mathDisplayHtml(latex: string): string {
   return `<div class="math-display">${escapeForKatex(latex)}</div>`;
 }
 
+export const ITEM_FENCE_RE = /^(?:decision|assumption)\s+id=[^\s]+(?:\s|$)/;
+
 export interface LineBlock {
   index: number;     // 0-based, sequential within the section
   innerHtml: string; // rendered HTML (safe for dangerouslySetInnerHTML)
   text: string;      // plain text (HTML stripped) for lineTexts storage
-  itemId?: string;   // set on a decision/assumption fence: a marker, not rendered as code
+  itemId?: string;   // set on an item's decision/assumption fence: a marker, not rendered as code
 }
 
+const NAMED_ENTITIES: Record<string, string> = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: '\u00a0' };
+
+function decodeEntities(text: string): string {
+  return text.replace(/&(?:#(\d+)|#x([0-9a-f]+)|([a-z]+));/gi, (whole, dec?: string, hex?: string, name?: string) => {
+    if (name !== undefined) return NAMED_ENTITIES[name] ?? whole;
+    const code = dec !== undefined ? parseInt(dec, 10) : parseInt(hex!, 16);
+    return code <= 0x10ffff ? String.fromCodePoint(code) : whole;
+  });
+}
+
+// DOM-free textContent: core computes the same block texts in Node (carry-forward)
+// as the browser does when rendering, so this must not depend on `document`.
 function stripHtml(html: string): string {
-  const el = document.createElement('div');
-  el.innerHTML = html;
-  return (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<!--[\s\S]*?-->|<\/?[a-z][^>]*>/gi, '')).replace(/\s+/g, ' ').trim();
 }
 
 // A plain Marked instance used only for rendering sub-content (no custom
@@ -125,6 +136,7 @@ interface RendererThis {
 
 export function renderToLineBlocks(markdown: string, itemIds: Set<string> = new Set()): LineBlock[] {
   const blocks: LineBlock[] = [];
+  const markedItemIds = new Set<string>();
   let i = 0;
 
   // marked-footnote's `footnotes` renderer recursively calls
@@ -227,8 +239,11 @@ export function renderToLineBlocks(markdown: string, itemIds: Set<string> = new 
 
       code(token: Tokens.Code): string {
         const lang = token.lang ?? '';
+        // Only an item's first fence is its marker; a repeat of the id is a
+        // malformed duplicate and renders as an ordinary code block.
         const itemId = ITEM_FENCE_RE.test(lang) ? /id=([^\s]+)/.exec(lang)?.[1] : undefined;
-        if (itemId && itemIds.has(itemId)) {
+        if (itemId && itemIds.has(itemId) && !markedItemIds.has(itemId)) {
+          markedItemIds.add(itemId);
           blocks.push({ index: i++, innerHtml: '', text: '', itemId });
           return '';
         }
@@ -373,6 +388,25 @@ export function renderToLineBlocks(markdown: string, itemIds: Set<string> = new 
     }
   }
   return mergeOpenHtmlSpans(blocks);
+}
+
+const squashSpace = (text: string): string => text.replace(/\s+/g, ' ').trim();
+
+/**
+ * The first run of consecutive blocks whose texts equal `lineTexts`, ignoring
+ * whitespace differences only (punctuation, case and Unicode all count).
+ */
+export function findLineRun(
+  blocks: readonly LineBlock[], lineTexts: readonly string[],
+): { start: number; end: number } | null {
+  const wanted = lineTexts.map(squashSpace);
+  if (wanted.length === 0) return null;
+  for (let start = 0; start + wanted.length <= blocks.length; start++) {
+    if (wanted.every((text, k) => squashSpace(blocks[start + k].text) === text)) {
+      return { start, end: start + wanted.length - 1 };
+    }
+  }
+  return null;
 }
 
 // `<details>` (and similar block HTML wrappers) opened on one line and closed

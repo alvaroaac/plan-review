@@ -1,6 +1,6 @@
-// @vitest-environment jsdom
 import { describe, it, expect } from 'vitest';
-import { renderToLineBlocks } from '../src/lineRenderer.js';
+import { findLineRun, renderToLineBlocks } from '../src/lineBlocks.js';
+import type { LineBlock } from '../src/lineBlocks.js';
 
 describe('renderToLineBlocks', () => {
   it('returns one block per paragraph', () => {
@@ -379,6 +379,13 @@ describe('renderToLineBlocks', () => {
   });
 });
 
+describe('renderToLineBlocks plain text', () => {
+  it('strips tags and decodes entities without a DOM', () => {
+    const blocks = renderToLineBlocks('Use `a<b>` & "c" isn\'t &#x263A;<!-- hidden -->\n\n<div>\n  <p>Raw  &amp; html</p>\n</div>');
+    expect(blocks.map((b) => b.text)).toEqual(['Use a<b> & "c" isn\'t \u263A', 'Raw & html']);
+  });
+});
+
 describe('renderToLineBlocks item fences', () => {
   const md = [
     'Intro paragraph.',
@@ -414,9 +421,49 @@ describe('renderToLineBlocks item fences', () => {
     expect(blocks[3].innerHtml).toContain('language-ts');
   });
 
+  it('renders a later fence repeating an item id as an ordinary code block', () => {
+    const repeated = `${md}\n\n\`\`\`decision id=retry-backoff\nquestion: Again?\n\`\`\``;
+    const blocks = renderToLineBlocks(repeated, known);
+    expect(blocks.filter((b) => b.itemId === 'retry-backoff').map((b) => b.index)).toEqual([1]);
+    expect(blocks[4]).toMatchObject({ text: 'question: Again?' });
+    expect(blocks[4].innerHtml).toContain('<pre><code');
+  });
+
   it('only treats top-level fences as items', () => {
     const nested = '- item\n\n  ```decision id=retry-backoff\n  q\n  ```\n';
     const blocks = renderToLineBlocks(nested, known);
     expect(blocks.every((b) => b.itemId === undefined)).toBe(true);
+  });
+});
+
+describe('findLineRun', () => {
+  const blocks: LineBlock[] = ['Alpha', 'Beta', 'Gamma', 'Beta', 'Delta'].map((text, index) => ({
+    index,
+    innerHtml: `<p>${text}</p>`,
+    text,
+  }));
+
+  it('finds the run of blocks whose text matches lineTexts in order', () => {
+    expect(findLineRun(blocks, ['Gamma', 'Beta'])).toEqual({ start: 2, end: 3 });
+  });
+
+  it('returns the first matching run when the text repeats', () => {
+    expect(findLineRun(blocks, ['Beta'])).toEqual({ start: 1, end: 1 });
+  });
+
+  it('requires the matched blocks to be consecutive', () => {
+    expect(findLineRun(blocks, ['Alpha', 'Gamma'])).toBeNull();
+  });
+
+  it('ignores whitespace differences only', () => {
+    expect(findLineRun(blocks, ['  Delta\n'])).toEqual({ start: 4, end: 4 });
+    expect(findLineRun(blocks, ['delta'])).toBeNull();
+    expect(findLineRun(blocks, ['Delta.'])).toBeNull();
+  });
+
+  it('returns null when the text is gone, for an empty section and for no lines', () => {
+    expect(findLineRun(blocks, ['Removed'])).toBeNull();
+    expect(findLineRun([], ['Alpha'])).toBeNull();
+    expect(findLineRun(blocks, [])).toBeNull();
   });
 });

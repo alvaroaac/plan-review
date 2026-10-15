@@ -124,6 +124,13 @@ describe('SectionView', () => {
       expect(paras.map((p) => p.classList.contains('mk-row'))).toEqual([false, false, true]);
     });
 
+    it('renders a later fence repeating an item id as a visible code block', () => {
+      const repeated = `${body}\n\n\`\`\`assumption id=auth-latency\nstatement: repeated\n\`\`\``;
+      const { container } = renderSection([decision, assumption], {}, repeated);
+      expect(container.querySelectorAll('#mk-auth-latency')).toHaveLength(1);
+      expect(container.querySelector('pre code')!.textContent).toBe('statement: repeated');
+    });
+
     it('outlines the focused item', () => {
       const { container, review } = renderSection();
       fireEvent.click(container.querySelector('#mk-auth-latency')!);
@@ -164,6 +171,12 @@ describe('SectionView', () => {
       expect(container.querySelectorAll('.hl')).toHaveLength(2);
       expect(container.querySelectorAll('[id="hl-t1"]')).toHaveLength(1);
       expect(container.querySelector('#hl-t1')!.textContent).toBe('Alpha line.');
+    });
+
+    it('does not fall back to the stored line range when the anchored text is gone', () => {
+      const t = thread('t1', '1.1', lineAnchor(0, ['Removed line.']));
+      const { container } = renderSection([], { threads: [t] }, 'Alpha line.\n\nBeta line.');
+      expect(container.querySelector('.hl')).toBeNull();
     });
 
     it('does not highlight a section-level thread', () => {

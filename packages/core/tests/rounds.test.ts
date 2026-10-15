@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it, expect, vi } from 'vitest';
 import * as core from '../src/index.js';
 import { extractItems } from '../src/items.js';
+import { renderToLineBlocks } from '../src/lineBlocks.js';
 import { parse } from '../src/parser.js';
 import { contentHash, itemState } from '../src/reviewModel.js';
 import type { ReviewStore } from '../src/reviewStore.js';
@@ -39,7 +40,7 @@ function makeReview(overrides: Partial<Review> = {}): Review {
 function makeThread(overrides: Partial<Thread> = {}): Thread {
   return {
     id: 't_abc123', sectionId: 'section-1',
-    anchor: { type: 'lines', startLine: 3, endLine: 4, lineTexts: ['Keep these words.', 'Second line.'] },
+    anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['Keep these words. Second line.'] },
     resolved: false, outdated: false, createdRound: 1,
     comments: [{ id: 'c_abc12345', author: 'reviewer', body: 'Please check.', createdAt: BEFORE }],
     ...overrides,
@@ -160,12 +161,14 @@ describe('openReview rounds and loaded view', () => {
   });
 
   it('replaces a changed paused snapshot after re-anchoring against its old heading', async () => {
-    const markdown = '# Test Plan\n\n## Inserted\n\nKeep these words. Second line.\n\n## Original\n\nKEEP these words! Second-line.';
+    const markdown = '# Test Plan\n\n## Inserted\n\nKeep these words. Second line.\n\n## Original\n\nMoved down.\n\nKeep these words. Second line.';
     const existing = makeReview({ threads: [makeThread()], rounds: [makeRound(PLAN, { n: 3 })] });
     const store = makeStore(existing);
     const { review, loaded } = await openReview(store, { markdown, reviewId: existing.id, now: NOW });
     expect(review.rounds).toEqual([makeRound(markdown, { n: 3 })]);
-    expect(review.threads[0]).toEqual({ ...existing.threads[0], sectionId: 'section-2' });
+    expect(review.threads[0]).toEqual({
+      ...existing.threads[0], sectionId: 'section-2', anchor: { ...existing.threads[0].anchor!, startLine: 1, endLine: 1 },
+    });
     expect(loaded.review.banner).toBe('planChangedWhilePaused');
     expect(loaded.review.round).toBe(3);
     expect(review.updatedAt).toBe(NOW.toISOString());
@@ -243,11 +246,46 @@ describe('carryForward', () => {
     expect(itemState(current.items[1], carried.answers.changed)).toBe('changed');
   });
 
-  it('prefers the old heading over an earlier match, normalizes text and preserves anchor coordinates', () => {
+  it('prefers the old heading over an earlier match and moves the anchor to the matched blocks', () => {
     const thread = makeThread({ outdated: true });
-    const current = extract('# Test Plan\n\n## Earlier\n\nKeep these words. Second line.\n\n## Original\n\nKEEP **these** words!\nSecond-line.');
+    const current = extract('# Test Plan\n\n## Earlier\n\nKeep these words. Second line.\n\n## Original\n\nNew intro.\n\nKeep **these** words.\nSecond line.');
     const carried = carryForward(makeReview({ threads: [thread] }), current, NOW);
-    expect(carried.threads[0]).toEqual({ ...thread, sectionId: 'section-2', outdated: false });
+    expect(carried.threads[0]).toEqual({
+      ...thread, sectionId: 'section-2', outdated: false, anchor: { ...thread.anchor!, startLine: 1, endLine: 1 },
+    });
+  });
+
+  it('matches a multi-block anchor ignoring only whitespace and stores the current block texts', () => {
+    const thread = makeThread({ anchor: {
+      type: 'lines', startLine: 0, endLine: 1, lineTexts: ['Keep these words.', 'const a  =  1;\nconst b = 2;'],
+    } });
+    const current = extract('# Test Plan\n\n## Original\n\nIntro.\n\nKeep these words.\n\n```ts\nconst a = 1;\n  const b = 2;\n```');
+    expect(carryForward(makeReview({ threads: [thread] }), current, NOW).threads[0].anchor).toEqual({
+      type: 'lines', startLine: 1, endLine: 2, lineTexts: ['Keep these words.', 'const a = 1;\n  const b = 2;'],
+    });
+  });
+
+  it.each([
+    ['punctuation', 'Use a-b.', 'Use a+b.'],
+    ['letter case', 'Keep these words.', 'KEEP these words.'],
+    ['non-ASCII text', '設計を確認する。', '別の文章です。'],
+  ])('treats a %s change as a different line', (_, anchored, current) => {
+    const thread = makeThread({ anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: [anchored] } });
+    const carried = carryForward(makeReview({ threads: [thread] }), extract(`# Test Plan\n\n## Original\n\n${current}`), NOW);
+    expect(carried.threads[0]).toEqual({ ...thread, outdated: true });
+  });
+
+  it('matches non-ASCII anchors by their text', () => {
+    const thread = makeThread({ anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['設計を確認する。'] } });
+    const current = extract('# Test Plan\n\n## Original\n\n別の文章です。\n\n設計を確認する。');
+    expect(carryForward(makeReview({ threads: [thread] }), current, NOW).threads[0])
+      .toEqual({ ...thread, anchor: { ...thread.anchor!, startLine: 1, endLine: 1 } });
+  });
+
+  it('counts item fences as single blocks when locating an anchor', () => {
+    const current = extract(`# Test Plan\n\n## Original\n\n${decision()}\n\nKeep these words. Second line.`);
+    expect(carryForward(makeReview({ threads: [makeThread()] }), current, NOW).threads[0].anchor)
+      .toMatchObject({ startLine: 1, endLine: 1 });
   });
 
   it('moves an anchor to the first matching section in document order', () => {
@@ -282,9 +320,13 @@ describe('carryForward', () => {
       .toEqual({ ...thread, outdated: true });
   });
 
-  it('skips resolved threads during re-anchoring', () => {
+  it('re-anchors resolved threads too', () => {
     const thread = makeThread({ resolved: true });
-    expect(carryForward(makeReview({ threads: [thread] }), extract('# Entirely changed'), NOW).threads[0]).toEqual(thread);
+    expect(carryForward(makeReview({ threads: [thread] }), extract('# Entirely changed'), NOW).threads[0])
+      .toEqual({ ...thread, outdated: true });
+    const moved = extract('# Test Plan\n\n## Inserted\n\nNew.\n\n## Original\n\nKeep these words. Second line.');
+    expect(carryForward(makeReview({ threads: [thread] }), moved, NOW).threads[0])
+      .toEqual({ ...thread, sectionId: 'section-2' });
   });
 
   it('appends agent replies with generated ids and injected timestamps in order', () => {
@@ -452,12 +494,13 @@ describe('round regressions', () => {
   });
 
   it.each(['[docs](https://example.com/x)', '![docs](https://example.com/x)', '[docs][ref]', '![docs][ref]'])(
-    're-anchors plain text against markdown %s on changed-plan open', async (link) => {
+    're-anchors a line containing markdown %s by its rendered text on changed-plan open', async (link) => {
+      const line = `See ${link} now.`;
       const existing = makeReview({ threads: [makeThread({
-        anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['See docs now.'] },
+        anchor: { type: 'lines', startLine: 0, endLine: 0, lineTexts: [renderToLineBlocks(line)[0].text] },
       })] });
       const { review } = await openReview(makeStore(existing), {
-        markdown: `# Test Plan\n\n## Original\n\nSee ${link} now.`, reviewId: existing.id, now: NOW,
+        markdown: `# Test Plan\n\n## Original\n\n${line}`, reviewId: existing.id, now: NOW,
       });
       expect(review.threads[0]).toEqual(existing.threads[0]);
     },
@@ -472,6 +515,21 @@ describe('round regressions', () => {
   });
 
   for (const anchored of [false, true]) {
+    it(`keeps a resolved thread on its section across rounds until a reply reopens it, anchored=${anchored}`, async () => {
+      const existing = makeReview({ threads: [makeThread({ resolved: true, ...(anchored ? {} : { anchor: null }) })] });
+      const store = makeStore(existing);
+      const inserted = '# Test Plan\n\n## Inserted\n\nKeep these words. Second line.\n\n## Original\n\nKeep these words. Second line.';
+      const submit = () => submitRound(store, existing.id, { verdict: 'changes_requested', summary: '' }, NOW);
+      await submit();
+      const second = await openReview(store, { markdown: inserted, reviewId: existing.id, now: NOW });
+      expect(second.review.threads[0]).toMatchObject({ sectionId: 'section-2', resolved: true });
+      await submit();
+      const third = await openReview(store, {
+        markdown: `${inserted}\n\n${fence('reply thread=t_abc123', 'Fixed.')}`, reviewId: existing.id, now: NOW,
+      });
+      expect(third.review.threads[0]).toMatchObject({ sectionId: 'section-2', resolved: false, outdated: false });
+    });
+
     it(`keeps the second duplicate heading on identical-plan carry-forward, anchored=${anchored}`, () => {
       const plan = '# Plan\n\n### Tests\n\nShared anchor.\n\n### Tests\n\nShared anchor.';
       const thread = makeThread({ sectionId: 'section-2', anchor: anchored
