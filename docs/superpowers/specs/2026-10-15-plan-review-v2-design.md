@@ -211,7 +211,7 @@ Table of open reviews: id, title, round, last updated, `answered/deferred/open` 
 
 | Route | Body / response |
 |---|---|
-| `GET /api/doc` | → `{ document, items, warnings, review: { id, round, status, answers, threads, banner? } }` |
+| `GET /api/doc` | → `{ document, items, warnings, review: { id, round, status, updatedAt, answers, threads, banner? } }` |
 | `PUT /api/session` | ← `{ answers, threads }`; validated (hand-written validators, existing pattern); server merges into the active round's review and saves |
 | `POST /api/review` | ← `{ verdict: 'changes_requested' \| 'approved', summary }` |
 | heartbeat / pause / cancel / `_assets` | unchanged semantics, except cancel → paused outcome |
