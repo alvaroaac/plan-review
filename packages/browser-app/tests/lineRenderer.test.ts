@@ -378,3 +378,45 @@ describe('renderToLineBlocks', () => {
     expect(blocks[0].text).toContain('Banana | 3');
   });
 });
+
+describe('renderToLineBlocks item fences', () => {
+  const md = [
+    'Intro paragraph.',
+    '',
+    '```decision id=retry-backoff',
+    'question: How?',
+    '```',
+    '',
+    '```assumption id=unknown-item',
+    'statement: x',
+    '```',
+    '',
+    '```ts',
+    'const a = 1;',
+    '```',
+  ].join('\n');
+  const known = new Set(['retry-backoff']);
+
+  it('turns a known item fence into a marker block with itemId and no code HTML', () => {
+    const blocks = renderToLineBlocks(md, known);
+    expect(blocks[1]).toMatchObject({ index: 1, itemId: 'retry-backoff', innerHtml: '' });
+  });
+
+  it('renders an item fence whose id is not a known item as code', () => {
+    const blocks = renderToLineBlocks(md, known);
+    expect(blocks[2].itemId).toBeUndefined();
+    expect(blocks[2].innerHtml).toContain('<pre><code');
+  });
+
+  it('renders other fences as code without itemId', () => {
+    const blocks = renderToLineBlocks(md, known);
+    expect(blocks[3].itemId).toBeUndefined();
+    expect(blocks[3].innerHtml).toContain('language-ts');
+  });
+
+  it('only treats top-level fences as items', () => {
+    const nested = '- item\n\n  ```decision id=retry-backoff\n  q\n  ```\n';
+    const blocks = renderToLineBlocks(nested, known);
+    expect(blocks.every((b) => b.itemId === undefined)).toBe(true);
+  });
+});

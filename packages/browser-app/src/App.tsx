@@ -1,8 +1,11 @@
-import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import type { LoadedReview } from '@plan-review/core';
 import type { ReviewClient } from '@plan-review/core/client';
 import { ReviewProvider, useReview } from './state/ReviewContext.js';
 import { TopBar } from './components/TopBar.js';
+import { TocPanel } from './components/TocPanel.js';
+import { DocView } from './components/DocView.js';
+import { useScrollSpy } from './scroll.js';
 import { useHeartbeat } from './heartbeat.js';
 import { applyTheme, detectTheme } from './theme.js';
 
@@ -34,14 +37,16 @@ export function App({ client }: { client: ReviewClient }) {
 function ReviewShell() {
   const { state } = useReview();
   useHeartbeat(state.ui.submitted === null && state.ui.submitError === null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const active = useScrollSpy(scrollRef, state.doc.sections.map((s) => s.id));
 
   return (
     <div class="app">
       <TopBar />
       <div class="main">
-        <nav class="index" aria-label="Contents" />
-        <div class="scroll">
-          <article class="doc" />
+        <TocPanel active={active} />
+        <div class="scroll" ref={scrollRef}>
+          <DocView />
         </div>
         <aside class="side" />
       </div>
