@@ -163,14 +163,21 @@ describe('reviewReducer — ui', () => {
     expect(s.ui.submitOpen).toBe(false);
   });
 
-  it('submitted stores the output and closes the popover; submitFailed stores the error', () => {
+  it('submitted stores the output and closes the popover; submitFailed stores the error and request', () => {
     const open = reviewReducer(stateWith(), { type: 'openSubmit' });
     const done = reviewReducer(open, { type: 'submitted', output: 'out' });
     expect(done.ui.submitted).toEqual({ output: 'out' });
     expect(done.ui.submitOpen).toBe(false);
-    const failed = reviewReducer(open, { type: 'submitFailed', error: 'boom' });
-    expect(failed.ui.submitError).toBe('boom');
+    const request = { verdict: 'approved' as const, summary: 'ok' };
+    const failed = reviewReducer(open, { type: 'submitFailed', error: 'boom', request });
+    expect(failed.ui.submitError).toEqual({ message: 'boom', request });
     expect(failed.ui.submitOpen).toBe(false);
+  });
+
+  it('dismissSubmitError returns to the review', () => {
+    const request = { verdict: 'approved' as const, summary: '' };
+    const failed = reviewReducer(stateWith(), { type: 'submitFailed', error: 'boom', request });
+    expect(reviewReducer(failed, { type: 'dismissSubmitError' }).ui.submitError).toBeNull();
   });
 
   it('reload replaces document, items, warnings and review but keeps ui', () => {
@@ -193,7 +200,7 @@ describe('isProgressAction', () => {
     const progress: ReviewAction['type'][] = ['answer', 'defer', 'clearAnswer', 'addThread', 'reply', 'resolve', 'reopen'];
     const ui: ReviewAction['type'][] = [
       'startCompose', 'cancelCompose', 'focus', 'setTab', 'setFilter', 'toggleTheme',
-      'openSubmit', 'closeSubmit', 'submitted', 'submitFailed', 'reload',
+      'openSubmit', 'closeSubmit', 'submitted', 'submitFailed', 'dismissSubmitError', 'reload',
     ];
     for (const type of progress) expect(isProgressAction({ type } as ReviewAction)).toBe(true);
     for (const type of ui) expect(isProgressAction({ type } as ReviewAction)).toBe(false);

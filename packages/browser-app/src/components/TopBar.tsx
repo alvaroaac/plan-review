@@ -2,10 +2,11 @@ import { useReview } from '../state/ReviewContext.js';
 import { vscodeTheme } from '../theme.js';
 import { MoonIcon, SunIcon } from './icons.js';
 import { Stepper } from './Stepper.js';
+import { SubmitPopover } from './SubmitPopover.js';
 
 export function TopBar() {
   const { state, dispatch } = useReview();
-  const { theme, submitOpen } = state.ui;
+  const { theme } = state.ui;
   const showThemeToggle = vscodeTheme() === null;
 
   return (
@@ -25,14 +26,7 @@ export function TopBar() {
           {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
         </button>
       )}
-      <button
-        type="button"
-        class="btn primary"
-        aria-expanded={submitOpen}
-        onClick={() => dispatch({ type: submitOpen ? 'closeSubmit' : 'openSubmit' })}
-      >
-        Submit review
-      </button>
+      <SubmitPopover />
     </header>
   );
 }

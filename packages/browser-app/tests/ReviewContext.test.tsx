@@ -4,10 +4,9 @@ import { render, act, waitFor } from '@testing-library/preact';
 import { FakeReviewClient } from '@plan-review/core/client';
 import type { LoadedReview, ReviewClient } from '@plan-review/core';
 import { ReviewProvider, useReview } from '../src/state/ReviewContext.js';
-import type { ReviewAction, ReviewState } from '../src/state/reducer.js';
 import { mockLoaded } from './test-utils.js';
 
-let current: { state: ReviewState; dispatch: (a: ReviewAction) => void };
+let current: ReturnType<typeof useReview>;
 
 function Probe() {
   current = useReview();
@@ -77,6 +76,55 @@ describe('ReviewProvider autosave', () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(600); });
     // no unhandled rejection / async rethrow: fake timers would surface a thrown timer callback here
     await act(async () => { await vi.runAllTimersAsync(); });
+  });
+});
+
+describe('ReviewProvider flushAutosave', () => {
+  beforeEach(() => vi.useFakeTimers());
+  afterEach(() => vi.useRealTimers());
+
+  it('exposes the client', () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    renderProvider(client);
+    expect(current.client).toBe(client);
+  });
+
+  it('sends the pending save immediately and resolves once it has landed', async () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    let land!: () => void;
+    client.saveProgress = vi.fn(() => new Promise<void>((resolve) => { land = resolve; }));
+    renderProvider(client);
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+
+    let flushed = false;
+    const flush = current.flushAutosave().then(() => { flushed = true; });
+    await act(async () => { await Promise.resolve(); });
+    expect(client.saveProgress).toHaveBeenCalledTimes(1);
+    expect(flushed).toBe(false);
+    land();
+    await flush;
+    expect(flushed).toBe(true);
+  });
+
+  it('resolves at once when nothing is pending', async () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    renderProvider(client);
+    await current.flushAutosave();
+    expect(client.progressSaves).toHaveLength(0);
+  });
+
+  it('rejects when the save fails, and retries the latest state on the next flush', async () => {
+    const client = new FakeReviewClient({ loaded: mockLoaded() });
+    const save = client.saveProgress.bind(client);
+    client.saveProgress = () => Promise.reject(new Error('offline'));
+    renderProvider(client);
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    await expect(current.flushAutosave()).rejects.toThrow('offline');
+
+    client.saveProgress = save;
+    await current.flushAutosave();
+    expect(client.progressSaves).toHaveLength(1);
+    expect(client.progressSaves[0].answers['retry-backoff'].choice).toBe('A');
   });
 });
 

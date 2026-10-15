@@ -5,6 +5,7 @@ import type {
   PlanDocument,
   ReviewItem,
   ReviewView,
+  SubmitRequest,
   Thread,
   ThreadComment,
 } from '@plan-review/core';
@@ -28,7 +29,8 @@ export interface ReviewState {
     theme: Theme;
     submitOpen: boolean;
     submitted: { output: string } | null;
-    submitError: string | null;
+    /** A failed submit keeps its request so the failure view can format the review locally. */
+    submitError: { message: string; request: SubmitRequest } | null;
   };
 }
 
@@ -49,7 +51,8 @@ export type ReviewAction =
   | { type: 'openSubmit' }
   | { type: 'closeSubmit' }
   | { type: 'submitted'; output: string }
-  | { type: 'submitFailed'; error: string }
+  | { type: 'submitFailed'; error: string; request: SubmitRequest }
+  | { type: 'dismissSubmitError' }
   | { type: 'reload'; loaded: LoadedReview };
 
 const PROGRESS_ACTIONS: ReadonlySet<ReviewAction['type']> = new Set([
@@ -132,7 +135,9 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
     case 'submitted':
       return withUi(state, { submitted: { output: action.output }, submitOpen: false });
     case 'submitFailed':
-      return withUi(state, { submitError: action.error, submitOpen: false });
+      return withUi(state, { submitError: { message: action.error, request: action.request }, submitOpen: false });
+    case 'dismissSubmitError':
+      return withUi(state, { submitError: null });
     case 'reload': {
       const next = { ...state, ...fromLoaded(action.loaded) };
       return next.items.length === 0 ? withUi(next, { tab: 'comments' }) : next;
