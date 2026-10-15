@@ -1,58 +1,42 @@
-import { test, expect, type Page } from '@playwright/test';
+import type { Page } from '@playwright/test';
 import { readFileSync, mkdirSync, rmSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { parse } from '../../packages/core/src/parser.js';
-import { HttpTransport } from '../../packages/cli/src/transport.js';
+import { resolve } from 'node:path';
+import { test, expect, ROOT } from '../e2e/helpers/cli.js';
 
-// Boot the real HttpTransport against examples/renderer-fixture.md once per
-// suite. Playwright drives headless Chromium against it. We assert post-mount
-// DOM (mermaid SVG present, KaTeX typeset, footnote section in place, etc.)
-// and computed styles — the things vitest unit tests cannot see.
-
-const FIXTURE = resolve(import.meta.dirname, '..', '..', 'examples', 'renderer-fixture.md');
+// Drive the built CLI and its inlined browser app, with an isolated review home
+// per test. Assert renderer DOM, computed styles and section screenshots.
+const FIXTURE = resolve(ROOT, 'examples', 'renderer-fixture.md');
 const SCREENSHOT_DIR = resolve(import.meta.dirname, 'screenshots');
 
-let transport: HttpTransport;
-let baseUrl: string;
+test.use({ colorScheme: 'dark' });
 
-test.beforeAll(async () => {
-  // Start each run from a clean screenshot dir — stale PNGs from a prior run
-  // would otherwise mask a regression that silently stopped rendering a section.
+test.beforeAll(() => {
   rmSync(SCREENSHOT_DIR, { recursive: true, force: true });
   mkdirSync(SCREENSHOT_DIR, { recursive: true });
-
-  const input = readFileSync(FIXTURE, 'utf-8');
-  const doc = parse(input);
-  transport = new HttpTransport();
-  transport.sendDocument(doc);
-  // Plan dir is needed so /_assets/<rel> can serve the fixture's local image.
-  transport.setAssetBaseDir(dirname(FIXTURE));
-  const { url } = await transport.start(0);
-  baseUrl = url;
 });
 
-test.afterAll(async () => {
-  await transport.stop();
+test.beforeEach(async ({ page, cli }) => {
+  const run = await cli.start(FIXTURE);
+  await page.goto(await run.url);
 });
 
 async function gotoAndWait(page: Page): Promise<void> {
-  await page.goto(baseUrl);
   // Wait for the top bar — proxy for "App rendered and /api/doc resolved".
-  await expect(page.locator('header.top-bar h1')).toBeVisible();
+  await expect(page.locator('header.top .crumb b')).toBeVisible();
   // Section containers all mount before mermaid/katex kick in.
-  await expect(page.locator('div[id^="section-"]')).not.toHaveCount(0);
+  await expect(page.locator('.doc > section')).not.toHaveCount(0);
 }
 
 test('document loads and renders every section', async ({ page }) => {
   await gotoAndWait(page);
 
-  await expect(page.locator('header.top-bar h1')).toHaveText(/Renderer Fixture/);
+  await expect(page.locator('header.top .crumb b')).toHaveText(/Renderer Fixture/);
 
   // Each `##` in the fixture becomes a section. Count them and assert the DOM
   // matches — otherwise we've lost a section somewhere in the parser.
   const input = readFileSync(FIXTURE, 'utf-8');
   const h2Count = (input.match(/^## /gm) ?? []).length;
-  await expect(page.locator('div[id^="section-"]')).toHaveCount(h2Count);
+  await expect(page.locator('.doc > section')).toHaveCount(h2Count);
 });
 
 test('mermaid diagrams render as inline SVG', async ({ page }) => {
@@ -107,6 +91,9 @@ test('mermaid sequence actors carry distinct indices + colors', async ({ page })
   await gotoAndWait(page);
   await expect(page.locator('svg[id^="mermaid"]').first()).toBeVisible({ timeout: 30_000 });
 
+  // Mermaid renders the sequence after the flowchart; wait for its post-processing.
+  await expect(page.locator('pre.mermaid[data-processed] rect.actor[data-actor-idx]').first()).toBeVisible();
+
   // Fixture's sequence has 3 participants — expect indices 0, 1, 2 present.
   const indices = await page.locator('pre.mermaid[data-processed] rect.actor[data-actor-idx]').evaluateAll(
     (rects) => Array.from(new Set(rects.map(r => r.getAttribute('data-actor-idx'))))
@@ -143,8 +130,8 @@ test('footnotes section has populated bodies and inline refs render as <sup>', a
 
   // Lives inside a section-view under the Footnotes heading, not at document root.
   const parentHeading = await footnoteSection.evaluate((el) => {
-    const parent = el.closest('div[id^="section-"]');
-    return parent?.querySelector('h2')?.textContent?.trim() ?? null;
+    const parent = el.closest('.doc > section');
+    return parent?.querySelector('h2')?.textContent?.replace(/^\d+\s*/, '').trim() ?? null;
   });
   expect(parentHeading).toBe('Footnotes');
 
@@ -156,7 +143,7 @@ test('footnotes section has populated bodies and inline refs render as <sup>', a
   expect(sectionHtml).toContain('The second one');
 
   // And no stray duplicate body paragraph above the section.
-  const footnotesSection = page.locator('div[id^="section-"]').filter({ has: footnoteSection }).first();
+  const footnotesSection = page.locator('.doc > section').filter({ has: footnoteSection }).first();
   const bodyDupes = await footnotesSection.locator('p', { hasText: 'The first footnote body' }).count();
   // One copy inside the <section>'s <p>, none above it.
   expect(bodyDupes).toBe(1);
@@ -184,7 +171,7 @@ test('footnotes section has populated bodies and inline refs render as <sup>', a
 test('nested lists produce nested <ul>/<ol> DOM with visible markers', async ({ page }) => {
   await gotoAndWait(page);
 
-  const listsSection = page.locator('div[id^="section-"]').filter({ hasText: 'Unordered, nested' }).first();
+  const listsSection = page.locator('.doc > section').filter({ hasText: 'Unordered, nested' }).first();
 
   // Each level of the one / one-a / one-a-i chain must mount as its own <ul>.
   await expect(listsSection.locator('ul').first()).toBeVisible();
@@ -212,10 +199,10 @@ test('ordered list numbering continues across per-item LineBlocks', async ({ pag
   // "Ordered, nested" ones by their first-item text. Our renderer emits one
   // <ol> per top-level item, so without `start=N` every item visually
   // restarts at "1." — the bug the fixture surfaced.
-  const listsSection = page.locator('div[id^="section-"]').filter({ hasText: 'Ordered, nested' }).first();
-  const firstOrdered = listsSection.locator('.line-inner > ol', { hasText: 'first' });
-  const secondOrdered = listsSection.locator('.line-inner > ol', { hasText: 'second' });
-  const thirdOrdered = listsSection.locator('.line-inner > ol', { hasText: 'third' });
+  const listsSection = page.locator('.doc > section').filter({ hasText: 'Ordered, nested' }).first();
+  const firstOrdered = listsSection.locator('.para-body > ol', { hasText: 'first' });
+  const secondOrdered = listsSection.locator('.para-body > ol', { hasText: 'second' });
+  const thirdOrdered = listsSection.locator('.para-body > ol', { hasText: 'third' });
 
   await expect(firstOrdered).toHaveAttribute('start', '1');
   await expect(secondOrdered).toHaveAttribute('start', '2');
@@ -225,7 +212,7 @@ test('ordered list numbering continues across per-item LineBlocks', async ({ pag
 test('GFM task-list checkbox sits inline with its label', async ({ page }) => {
   await gotoAndWait(page);
 
-  const taskSection = page.locator('div[id^="section-"]').filter({ hasText: 'GitHub task list' }).first();
+  const taskSection = page.locator('.doc > section').filter({ hasText: 'GitHub task list' }).first();
   const firstTaskItem = taskSection.locator('li.task-list-item').first();
   await expect(firstTaskItem).toBeVisible();
 
@@ -260,7 +247,7 @@ test('GFM admonitions render with chrome and title', async ({ page }) => {
 test('Docusaurus :::note ... ::: renders as an admonition with chrome', async ({ page }) => {
   await gotoAndWait(page);
 
-  const admSection = page.locator('div[id^="section-"]').filter({ hasText: 'Admonitions' }).first();
+  const admSection = page.locator('.doc > section').filter({ hasText: 'Admonitions' }).first();
   // The :::note fence in the fixture should land inside its own
   // blockquote.admonition-note — same chrome as the GFM > [!NOTE] form.
   const docusaurus = admSection.locator('blockquote.admonition-note', {
@@ -311,7 +298,7 @@ test('local image with relative src loads (served from plan dir)', async ({ page
 
   // Fixture: ![local gif](demo-browser.gif). Should resolve relative to the
   // plan file's directory (examples/) and return a real GIF, not a 404.
-  const imagesSection = page.locator('div[id^="section-"]').filter({ hasText: 'Images' }).first();
+  const imagesSection = page.locator('.doc > section').filter({ hasText: 'Images' }).first();
   const localImg = imagesSection.locator('img[alt="local gif"]');
   await expect(localImg).toBeVisible();
 
@@ -331,7 +318,7 @@ test('inline links use the dark-mode palette, not browser default blue', async (
   // Fixture has reference-style links pointing at https://example.com and a
   // GitHub URL. Browser default is rgb(0, 0, 238) — too saturated on the dark
   // background. Must be overridden in CSS.
-  const linksSection = page.locator('div[id^="section-"]').filter({ hasText: 'Reference-style' }).first();
+  const linksSection = page.locator('.doc > section').filter({ hasText: 'Reference-style' }).first();
   const refLink = linksSection.locator('a[href="https://example.com"]').first();
   await expect(refLink).toBeVisible();
 
@@ -343,7 +330,7 @@ test('inline links use the dark-mode palette, not browser default blue', async (
 test('<details> wraps markdown content even across blank lines', async ({ page }) => {
   await gotoAndWait(page);
 
-  const inlineHtmlSection = page.locator('div[id^="section-"]').filter({ hasText: 'Inline HTML' }).first();
+  const inlineHtmlSection = page.locator('.doc > section').filter({ hasText: 'Inline HTML' }).first();
   const details = inlineHtmlSection.locator('details').first();
   await expect(details).toBeAttached();
 
@@ -372,9 +359,9 @@ test('per-section screenshots — written to tests/visual/screenshots/', async (
   await page.locator('.math-inline .katex').first().waitFor({ state: 'visible', timeout: 30_000 }).catch(() => {});
   await page.waitForTimeout(500);
 
-  const sections = await page.locator('div[id^="section-"]').all();
+  const sections = await page.locator('.doc > section').all();
   for (const section of sections) {
-    const id = await section.getAttribute('id');
+    const id = await section.locator('h2, h3').first().getAttribute('id');
     if (!id) continue;
     const heading = (await section.locator('h2').first().textContent())?.trim() ?? id;
     const safeHeading = heading.replace(/[^a-z0-9]+/gi, '-').toLowerCase();

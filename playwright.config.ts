@@ -4,10 +4,8 @@ import { defineConfig } from '@playwright/test';
 // Lives alongside vitest — vitest runs `tests/**/*.test.ts`, Playwright runs
 // `tests/**/*.spec.ts`. Scripts scope e2e and visual suites separately.
 //
-// These tests boot the real `HttpTransport` in-process (same pattern as
-// tests/browser-integration.test.ts), point a headless Chromium at it, and
-// assert the post-mount DOM + computed styles that unit tests can't reach.
-//
+// These tests launch the built CLI with an isolated PLAN_REVIEW_HOME, point
+// headless Chromium at it, and assert behavior, renderer DOM and styles.
 // Run: `npm run test:visual`.
 export default defineConfig({
   testDir: './tests',

@@ -1,125 +1,112 @@
-import { test, expect, type Page } from '@playwright/test';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import { parse } from '../../packages/core/src/parser.js';
-import { HttpTransport } from '../../packages/cli/src/transport.js';
-import type { ReviewSubmission } from '../../packages/core/src/types.js';
+import type { Page } from '@playwright/test';
+import { test, expect, reviewId } from './helpers/cli.js';
+import { addParagraphComment, answerDecision, openSubmit, submit } from './helpers/review.js';
 
-const DEMO_PLAN = resolve(import.meta.dirname, '..', '..', 'examples', 'demo-plan.md');
-
-let transport: HttpTransport;
-let baseUrl: string;
-let submissions: ReviewSubmission[];
-
-test.beforeEach(async () => {
-  const input = readFileSync(DEMO_PLAN, 'utf-8');
-  const doc = parse(input);
-  submissions = [];
-  transport = new HttpTransport();
-  transport.sendDocument(doc);
-  transport.setAssetBaseDir(dirname(DEMO_PLAN));
-  transport.onReviewSubmit((submission) => {
-    submissions.push(submission);
-  });
-  const started = await transport.start(0);
-  baseUrl = started.url;
-});
-
-test.afterEach(async () => {
-  await transport?.stop();
-});
-
-async function addSectionComment(page: Page, text: string): Promise<void> {
-  await page.locator('#section-1\\.1 .add-section-comment-link').click();
-  await page.getByPlaceholder('Add a comment...').fill(text);
-  await page.getByRole('button', { name: 'Add' }).click();
-  await expect(page.getByText(text)).toBeVisible();
+async function failFirstSubmit(page: Page): Promise<void> {
+  await page.route('**/api/review', (route) => route.fulfill({
+    status: 500,
+    contentType: 'application/json',
+    body: JSON.stringify({ error: 'Submission temporarily unavailable' }),
+  }), { times: 1 });
 }
 
-async function openSubmitPopover(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Submit Review ▾' }).click();
-  await expect(page.getByRole('dialog', { name: 'Submit review' })).toBeVisible();
-}
-
-async function confirmSubmit(page: Page): Promise<void> {
-  await page.getByRole('button', { name: 'Submit', exact: true }).click();
-}
-
-test('submits comments, verdict, and summary on the happy path', async ({ page }) => {
+test('submits comments, verdict, and summary on the happy path', async ({ page, cli }) => {
+  const run = await cli.start();
   const comment = 'Happy path comment from the real browser.';
+  await page.goto(await run.url);
+  await expect(page.locator('.doc-title')).toHaveText(/User Authentication System/);
+  await addParagraphComment(page, comment);
+  await submit(page, 'Approve', 'Looks ready from e2e.');
 
-  await page.goto(baseUrl);
-  await expect(page.locator('header.top-bar h1')).toHaveText(/User Authentication System/);
-  await addSectionComment(page, comment);
-
-  await openSubmitPopover(page);
-  await page.getByPlaceholder('Leave a summary...').fill('Looks ready from e2e.');
-  await confirmSubmit(page);
-
-  await expect(page.getByText('Review submitted. You can close this tab.')).toBeVisible();
-  expect(submissions).toHaveLength(1);
-  expect(submissions[0]).toMatchObject({
-    verdict: 'approved',
-    summary: 'Looks ready from e2e.',
-    comments: [
-      expect.objectContaining({
-        sectionId: '1.1',
-        text: comment,
-      }),
-    ],
-  });
+  const outcome = await run.waitForExit();
+  expect(outcome).toMatchObject({ code: 0, signal: null });
+  expect(outcome.stdout).toContain('**Approved**');
+  expect(outcome.stdout).toContain('Looks ready from e2e.');
+  expect(outcome.stdout).toContain('§ Task 1.1: Create users table');
+  expect(outcome.stdout).toContain(`- **Reviewer:** ${comment}`);
 });
 
-test('requires either comments or a summary for comment-only submissions', async ({ page }) => {
-  await page.goto(baseUrl);
-  await expect(page.locator('header.top-bar h1')).toHaveText(/User Authentication System/);
-
-  await openSubmitPopover(page);
-  await page.getByLabel('Comment').check();
-
-  await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeDisabled();
-  await page.getByPlaceholder('Leave a summary...').fill('Leaving only an overall comment.');
-  await expect(page.getByRole('button', { name: 'Submit', exact: true })).toBeEnabled();
+test('allows summary-only requests for changes through the v2 soft gate', async ({ page, cli }) => {
+  const run = await cli.start();
+  await page.goto(await run.url);
+  await openSubmit(page);
+  // v2 replaces the required comment/summary gate with an advisory item list.
+  const requestChanges = page.getByRole('button', { name: 'Request changes', exact: true });
+  await expect(requestChanges).toBeEnabled();
+  await expect(page.getByRole('dialog')).toContainText('4 unanswered');
+  await page.getByPlaceholder('Summary for the agent (optional)').fill('Leaving only an overall comment.');
+  await requestChanges.click();
+  await expect(page.getByRole('heading', { name: 'Review submitted', exact: true })).toBeVisible();
+  const outcome = await run.waitForExit();
+  expect(outcome.code).toBe(0);
+  expect(outcome.stdout).toContain('**Changes requested**');
+  expect(outcome.stdout).toContain('Leaving only an overall comment.');
+  expect(outcome.stdout).not.toContain('## Open threads');
 });
 
-test('keeps a copyable review when the API dies before submit', async ({ page }) => {
+test('keeps a copyable review after a failed submit and recovers to retry without losing progress', async ({ page, cli }) => {
+  const run = await cli.start();
+  const url = await run.url;
   const comment = 'This comment survives an API-side failure.';
-
-  await page.goto(baseUrl);
-  await expect(page.locator('header.top-bar h1')).toHaveText(/User Authentication System/);
-  await addSectionComment(page, comment);
-
-  await transport.stop();
-
-  await openSubmitPopover(page);
-  await confirmSubmit(page);
+  await page.goto(url);
+  await answerDecision(page);
+  await addParagraphComment(page, comment);
+  await failFirstSubmit(page);
+  await openSubmit(page, 'Preserve this summary across the retry.');
+  await page.getByRole('button', { name: 'Request changes', exact: true }).click();
 
   await expect(page.getByRole('heading', { name: 'Submit failed' })).toBeVisible();
   await expect(page.getByText('Copy the review and paste it into your agent session.')).toBeVisible();
-  await expect(page.getByText(/^Error:/)).toHaveCount(0);
-
+  await expect(page.locator('.result-err')).toHaveText('Submission temporarily unavailable');
   const reviewText = await page.locator('.submit-failure-review').inputValue();
   expect(reviewText).toContain('# Plan Review: User Authentication System');
-  expect(reviewText).toContain('## Section 1.1: Task 1.1: Create users table');
+  expect(reviewText).toContain('**Changes requested**');
+  expect(reviewText).toContain('§ Task 1.1: Create users table');
   expect(reviewText).toContain(comment);
+  expect(reviewText).toContain('Rate limit store — **B**: Postgres table keyed by email');
+  expect(reviewText).toContain('Preserve this summary across the retry.');
+
+  // The intercepted POST never froze the real round; its autosaved state remains available.
+  const response = await page.request.get(new URL('/api/doc', url).href);
+  expect(response.ok()).toBe(true);
+  const loaded = await response.json();
+  expect(loaded.review.answers['rate-limit-store'].choice).toBe('B');
+  expect(loaded.review.threads[0].comments[0].body).toBe(comment);
+
+  await page.getByRole('button', { name: 'Back to review' }).click();
+  await expect(page.locator('.thread .cmt p')).toHaveText(comment);
+  await page.getByRole('tab', { name: /Decisions/ }).click();
+  await expect(page.locator('#card-rate-limit-store .answer')).toContainText('B · Postgres table keyed by email');
+  await openSubmit(page);
+  await expect(page.getByPlaceholder('Summary for the agent (optional)')).toHaveValue('Preserve this summary across the retry.');
+  await page.getByRole('button', { name: 'Request changes', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'Review submitted', exact: true })).toBeVisible();
+  const outcome = await run.waitForExit();
+  expect(outcome).toMatchObject({ code: 0, signal: null });
+  expect(reviewId(outcome.stdout)).toBe(reviewId(reviewText));
+  expect(outcome.stdout.trim()).toBe(reviewText);
 });
 
-test('copies the recovered review text to the clipboard after submit failure', async ({ page, context }) => {
+test('copies the recovered review text to the clipboard after submit failure', async ({ page, context, cli }) => {
+  const run = await cli.start();
+  const url = await run.url;
   const comment = 'Clipboard recovery comment from e2e.';
-
-  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: baseUrl });
-  await page.goto(baseUrl);
-  await addSectionComment(page, comment);
-
-  await transport.stop();
-  await openSubmitPopover(page);
-  await confirmSubmit(page);
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: url });
+  await page.goto(url);
+  await addParagraphComment(page, comment);
+  await failFirstSubmit(page);
+  await openSubmit(page, 'Recover using the clipboard.');
+  await page.getByRole('button', { name: 'Approve', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Submit failed' })).toBeVisible();
 
   const reviewText = await page.locator('.submit-failure-review').inputValue();
   await page.getByRole('button', { name: 'Copy review to clipboard' }).click();
-
-  await expect(page.getByText('Copied')).toBeVisible();
+  await expect(page.getByText('Copied', { exact: true })).toBeVisible();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(reviewText);
   expect(reviewText).toContain(comment);
+  await page.getByRole('button', { name: 'Back to review' }).click();
+  await submit(page, 'Approve', 'Recover using the clipboard.');
+  const outcome = await run.waitForExit();
+  expect(outcome.code).toBe(0);
+  expect(outcome.stdout.trim()).toBe(reviewText);
 });

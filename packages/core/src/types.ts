@@ -40,14 +40,6 @@ export type OutputTarget = 'stdout' | 'clipboard' | 'file' | 'claude';
 
 export type SplitStrategy = 'heading' | 'separator' | 'auto';
 
-export type ReviewVerdict = 'approved' | null;
-
-export interface ReviewSubmission {
-  comments: ReviewComment[];
-  verdict: ReviewVerdict;
-  summary: string; // empty string allowed
-}
-
 export type ItemKind = 'decision' | 'assumption';
 
 export interface ReviewItem {
