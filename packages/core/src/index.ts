@@ -2,6 +2,7 @@ export * from './types.js';
 export * from './parser.js';
 export * from './formatter.js';
 export * from './reviewClient.js';
+export * from './reviewModel.js';
 export {
   computeContentHash,
   DEFAULT_SESSION_DIR,

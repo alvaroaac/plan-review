@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, it, expect } from 'vitest';
 import * as core from '../src/index.js';
 // @ts-expect-error SessionLoadResult is intentionally not part of the public API.
@@ -19,5 +20,17 @@ describe('@plan-review/core public API', () => {
     expect('clearSession' in core).toBe(false);
     expect('listSessions' in core).toBe(false);
     expect('getSessionDir' in core).toBe(false);
+  });
+
+  it('exports the v2 review model helpers and client', () => {
+    expect(core.hashItem).toEqual(expect.any(Function));
+    expect(core.itemState).toEqual(expect.any(Function));
+    expect(core.itemCounts).toEqual(expect.any(Function));
+    expect(core.FakeReviewClient).toEqual(expect.any(Function));
+  });
+
+  it('keeps reviewModel browser-safe', () => {
+    const source = readFileSync(new URL('../src/reviewModel.ts', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/node:/);
   });
 });

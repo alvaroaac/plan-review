@@ -13,6 +13,14 @@
       "types": "./dist/formatter.d.ts",
       "default": "./dist/formatter.js"
     },
+    "./review": {
+      "types": "./dist/reviewModel.d.ts",
+      "default": "./dist/reviewModel.js"
+    },
+    "./client": {
+      "types": "./dist/reviewClient.d.ts",
+      "default": "./dist/reviewClient.js"
+    },
     "./autosave": {
       "types": "./dist/autosave.d.ts",
       "default": "./dist/autosave.js"
