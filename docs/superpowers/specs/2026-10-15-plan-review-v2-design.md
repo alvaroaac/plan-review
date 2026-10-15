@@ -239,7 +239,7 @@ Review `rv_8f3a` · Round 2 · **Changes requested**
 ## Summary
 <reviewer summary, if any>
 - Decisions: 2 answered, 1 deferred, 1 unanswered · Assumptions: 1 holds, 1 doesn't hold
-- Threads: 2 open (1 new this round), 1 resolved this round
+- Threads: 2 open (1 new this round), 1 resolved
 
 ## Decisions
 ### `retry-backoff` · Retry backoff — **B**: Circuit breaker after 90 s (your pick was A)

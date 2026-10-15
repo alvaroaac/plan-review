@@ -19,10 +19,10 @@ Either the `plan-review` CLI is on `$PATH` (`npm install -g plan-review`) or a d
 if command -v plan-review >/dev/null 2>&1; then
   PLAN_REVIEW_CMD="plan-review"
 else
-  if [ ! -f ~/desenv/personal/plan-review/dist/index.js ]; then
+  if [ ! -f ~/desenv/personal/plan-review/packages/cli/dist/index.js ]; then
     (cd ~/desenv/personal/plan-review && npm run build)
   fi
-  PLAN_REVIEW_CMD="node $HOME/desenv/personal/plan-review/dist/index.js"
+  PLAN_REVIEW_CMD="node $HOME/desenv/personal/plan-review/packages/cli/dist/index.js"
 fi
 ```
 
@@ -94,7 +94,7 @@ While revising:
 - **Keep item ids stable.** Answers are matched by id. If you edit an item's text, it reopens for the user with their previous answer shown. If you remove an item, its answer is hidden.
 - Apply the answers to the plan. Keep answered blocks in place so the user still sees past decisions in later rounds.
 - Leave deferred items unchanged unless you resolve them.
-- Answer comment threads with `reply` blocks, using the thread id from the output. They appear in the thread, not in the plan. A reply to an unknown thread id is ignored, with a warning.
+- Answer comment threads with `reply` blocks, using the thread id from the output. They appear in the thread, not in the plan. A reply to a resolved thread reopens it. A reply to an unknown thread id is ignored, with a warning.
 
 ````md
 ```reply thread=t_4k2
@@ -104,7 +104,7 @@ Reworded to "never exposed to the browser".
 
 ## Notes
 
-- For a file, running without `--review` resumes the open review for that file, or starts one. Use `--fresh` to start a new review instead. `--fresh` cannot be combined with `--review`.
+- For a file, running without `--review` resumes the open review for that file, or starts one. Use `--fresh` to start a new review instead; the old review stays open, not closed. `--fresh` cannot be combined with `--review`.
 - For an inline plan, only `--review <id>` continues a review. Without it, every run starts a new one.
 - An approved review is closed. `--review` on it fails; start a new review without the flag. Deferred items in an approved review are still open, so track them during implementation.
 - `plan-review list` shows open reviews with their ids. `list --all` includes approved ones.
