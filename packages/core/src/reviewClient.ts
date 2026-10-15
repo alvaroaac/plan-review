@@ -2,7 +2,8 @@ import type { LoadedReview, ProgressUpdate, SubmitRequest } from './types.js';
 
 export interface ReviewClient {
   loadDocument(): Promise<LoadedReview>;
-  saveProgress(update: ProgressUpdate): Promise<void>;
+  /** `keepalive` asks the transport to let this save outlive the page (the beforeunload save). */
+  saveProgress(update: ProgressUpdate, opts?: { keepalive?: boolean }): Promise<void>;
   submitReview(req: SubmitRequest): Promise<{ ok: true; output: string }>;
 }
 
