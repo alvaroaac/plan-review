@@ -4,6 +4,7 @@ export * from './formatter.js';
 export * from './reviewClient.js';
 export * from './reviewModel.js';
 export * from './items.js';
+export * from './rounds.js';
 export {
   computeContentHash,
   DEFAULT_SESSION_DIR,
