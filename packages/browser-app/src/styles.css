@@ -103,6 +103,7 @@ svg.i { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-widt
 .idx-dot.deferred { border-color: var(--amber); background: linear-gradient(90deg, var(--amber) 50%, transparent 50%); }
 .idx-cmt { display: inline-flex; align-items: center; gap: 3px; font: 600 10.5px var(--mono); color: var(--amber-ink); background: var(--amber-soft); padding: 1px 5px; border-radius: 999px; }
 .idx-cmt svg.i { width: 10px; height: 10px; }
+.idx-tasks .idx-row { padding-left: 18px; }
 .idx-sub { display: flex; align-items: center; gap: 8px; width: 100%; padding: 5px 10px 5px 38px; border: 0; background: none; border-radius: 6px; text-align: left; font-size: 12.5px; color: var(--ink-2); }
 .idx-sub:hover { background: var(--bg-2); }
 .idx-sub.on { background: var(--surface); box-shadow: 0 0 0 1px var(--rule); }
@@ -141,7 +142,12 @@ svg.i { width: 14px; height: 14px; stroke: currentColor; fill: none; stroke-widt
 
 .doc h2 { font: 500 25px/1.25 var(--serif); letter-spacing: -.01em; margin: 44px 0 12px; display: flex; align-items: baseline; gap: 12px; }
 .h2-num { font: 500 12px var(--mono); color: var(--ink-4); }
-.doc h3 { font: 600 15px/1.4 var(--sans); margin: 28px 0 8px; }
+.doc h3 { font: 600 15px/1.4 var(--sans); margin: 28px 0 8px; display: flex; align-items: baseline; gap: 10px; }
+
+.callout { display: flex; gap: 12px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--rule); border-radius: 10px; margin: 18px 0; font: 15.5px/1.6 var(--serif); color: var(--ink-2); }
+.callout + .callout { margin-top: -6px; }
+.callout .ico { width: 22px; height: 22px; border-radius: 6px; background: var(--bg-2); display: grid; place-items: center; font: 700 12px var(--mono); color: var(--ink-3); flex-shrink: 0; }
+.callout ul { font: 13px/1.5 var(--mono); margin: 6px 0 0; }
 .doc h4 { font: 600 13.5px/1.4 var(--sans); margin: 20px 0 6px; color: var(--ink-2); }
 .doc p, .doc ul, .doc ol { font: 400 17px/1.7 var(--serif); color: var(--ink-2); margin: 0 0 16px; text-wrap: pretty; }
 .doc ul, .doc ol { padding-left: 20px; }
@@ -201,24 +207,17 @@ sup > a[data-footnote-ref]:hover, a[data-footnote-backref]:hover { text-decorati
 .math-display { text-align: center; overflow-x: auto; padding: 8px 0; margin: 0 0 16px; }
 .math-inline { font-family: "Latin Modern Math", "Times New Roman", serif; }
 
-/* ── Comment gutter on rendered blocks ─────────────────── */
-
-.line-block { display: flex; align-items: flex-start; gap: 6px; padding: 0 0 0 4px; border-left: 2px solid transparent; border-radius: 0 4px 4px 0; transition: background .1s, border-color .1s; position: relative; }
-.line-block:hover, .line-block.hovered { background: color-mix(in srgb, var(--indigo-soft) 40%, transparent); border-left-color: var(--rule-2); }
-.line-block.in-range { background: color-mix(in srgb, var(--indigo-soft) 70%, transparent); border-left-color: var(--indigo); }
-.line-block.has-comment { background: color-mix(in srgb, var(--amber-soft) 60%, transparent); border-left-color: var(--amber); }
-.line-block.pending-comment { background: color-mix(in srgb, var(--amber-soft) 40%, transparent); border-left-color: var(--amber); }
-.line-gutter { width: 20px; flex-shrink: 0; display: flex; justify-content: center; padding-top: 6px; font: 13px/1 var(--mono); cursor: pointer; user-select: none; color: var(--ink-5); transition: color .1s; }
-.line-block:hover .line-gutter, .line-block.hovered .line-gutter, .line-block.in-range .line-gutter { color: var(--indigo); font-weight: 700; }
-.line-block.has-comment .line-gutter, .line-block.pending-comment .line-gutter { color: var(--amber-ink); }
-.line-inner { flex: 1; min-width: 0; }
-
 /* ── Paragraph affordances & highlights ─────────────────── */
 
 .para { position: relative; }
 .para-add { position: absolute; left: -44px; top: 4px; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--rule-2); background: var(--surface); color: var(--ink-3); display: grid; place-items: center; opacity: 0; transition: opacity .12s; }
 .para:hover .para-add { opacity: 1; }
 .para-add:hover { color: var(--ink); border-color: var(--ink-4); }
+.para.is-pending { background: color-mix(in srgb, var(--amber-soft) 50%, transparent); box-shadow: -10px 0 0 color-mix(in srgb, var(--amber-soft) 50%, transparent), 10px 0 0 color-mix(in srgb, var(--amber-soft) 50%, transparent); }
+.para.is-pending .para-add { opacity: 1; color: var(--amber-ink); border-color: var(--amber); }
+.mk-row { margin: 0 0 16px; }
+/* An item whose quote isn't in the text: a standalone mark where its block was (.q below adds the underline) */
+.mk-chip { border: 0; font: 500 14px/1.6 var(--sans); color: var(--ink-2); padding: 1px 6px; }
 .q { cursor: pointer; border-bottom: 1.5px dashed var(--indigo); background: color-mix(in srgb, var(--indigo-soft) 55%, transparent); border-radius: 2px; padding: 0 1px; transition: background .15s; }
 .q:hover, .q.is-focus { background: var(--indigo-soft); }
 .q-assumption { border-color: var(--teal); background: color-mix(in srgb, var(--teal-soft) 55%, transparent); }
@@ -233,6 +232,7 @@ sup > a[data-footnote-ref]:hover, a[data-footnote-backref]:hover { text-decorati
 .q.is-deferred .q-badge { background: var(--amber); color: oklch(0.3 0.06 70); }
 .hl { background: var(--amber-soft); border-bottom: 2px solid var(--amber); cursor: pointer; }
 .hl.is-focus { background: color-mix(in srgb, var(--amber) 45%, transparent); }
+.hl-block { border-bottom: 0; border-left: 2px solid var(--amber); padding-left: 10px; margin-bottom: 16px; }
 
 /* ── Cards ──────────────────────────────────────────────── */
 
@@ -327,7 +327,7 @@ textarea.field { resize: vertical; min-height: 56px; }
   .main { grid-template-columns: 52px minmax(0, 1fr) 320px; }
   .index { padding: 14px 6px; }
   .index .idx-h, .index .idx-t, .index .idx-meta, .index .idx-sub { display: none; }
-  .idx-row { grid-template-columns: 1fr; justify-items: center; padding: 8px 0; }
+  .idx-row, .idx-tasks .idx-row { grid-template-columns: 1fr; justify-items: center; padding: 8px 0; }
   .doc { padding: 32px 24px 120px 40px; }
   .doc-title { font-size: 30px; }
   .para-add { left: -34px; }

@@ -12,3 +12,21 @@ export const MoonIcon = () => (
     <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
   </svg>
 );
+
+export const PlusIcon = () => (
+  <svg class="i" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+
+export const ChatIcon = () => (
+  <svg class="i" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12z" />
+  </svg>
+);
+
+export const RightIcon = () => (
+  <svg class="i" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M9 6l6 6-6 6" />
+  </svg>
+);

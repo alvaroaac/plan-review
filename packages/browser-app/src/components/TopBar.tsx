@@ -1,6 +1,7 @@
 import { useReview } from '../state/ReviewContext.js';
 import { vscodeTheme } from '../theme.js';
 import { MoonIcon, SunIcon } from './icons.js';
+import { Stepper } from './Stepper.js';
 
 export function TopBar() {
   const { state, dispatch } = useReview();
@@ -12,6 +13,7 @@ export function TopBar() {
       <div class="brand"><span class="logo" aria-hidden="true" />plan-review</div>
       <span class="crumb"><b>{state.doc.title}</b></span>
       <div class="sp" />
+      {state.items.length > 0 && <><Stepper /><div class="sp" /></>}
       {showThemeToggle && (
         <button
           type="button"

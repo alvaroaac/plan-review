@@ -84,6 +84,40 @@ describe('App', () => {
     expect(container.querySelector('header.top')).toBeTruthy();
   });
 
+  it('shows the stepper in the top bar between the crumb and the theme toggle', async () => {
+    const { container } = await renderLoaded();
+    const children = Array.from(container.querySelector('header.top')!.children);
+    const stepper = children.findIndex((el) => el.matches('.stepper'));
+    expect(children[stepper - 1].matches('.sp')).toBe(true);
+    expect(children[stepper + 1].matches('.sp')).toBe(true);
+    expect(children[stepper - 2].matches('.crumb')).toBe(true);
+  });
+
+  it('hides the stepper when the plan has no items', async () => {
+    const { container } = await renderLoaded(new FakeReviewClient({ loaded: mockLoaded({ items: [] }) }));
+    expect(container.querySelector('.stepper')).toBeNull();
+  });
+
+  it('renders the contents and the document', async () => {
+    const { container } = await renderLoaded();
+    expect(container.querySelectorAll('nav.index .idx-row')).toHaveLength(3);
+    expect(container.querySelector('article.doc h1.doc-title')!.textContent).toBe('Test Plan');
+  });
+
+  it('marks the section scrolled past the top as active in the contents', async () => {
+    const { container } = await renderLoaded();
+    const scroll = container.querySelector<HTMLElement>('.main > .scroll')!;
+    const tops: Record<string, number> = { 'sec-milestone-1': -300, 'sec-1.1': 100, 'sec-1.2': 400 };
+    for (const [id, top] of Object.entries(tops)) {
+      document.getElementById(id)!.getBoundingClientRect = () => ({ top } as DOMRect);
+    }
+    // The scroll listener is attached in an effect, which runs after paint.
+    await waitFor(() => {
+      fireEvent.scroll(scroll);
+      expect(container.querySelector('.idx-row.on .idx-t')!.textContent).toBe('Task 1');
+    });
+  });
+
   describe('theme', () => {
     it('defaults to prefers-color-scheme', async () => {
       mockColorScheme(true);

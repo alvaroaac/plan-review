@@ -1,6 +1,7 @@
 import { Marked } from 'marked';
 import type { Tokens, TokenizerExtension, RendererExtension } from 'marked';
 import markedFootnote from 'marked-footnote';
+import { ITEM_FENCE_RE } from '@plan-review/core/items';
 
 // Typed shapes for the custom marked extensions defined below. Each extends
 // Tokens.Generic (which has a string index signature), so a plain `as`
@@ -97,6 +98,7 @@ export interface LineBlock {
   index: number;     // 0-based, sequential within the section
   innerHtml: string; // rendered HTML (safe for dangerouslySetInnerHTML)
   text: string;      // plain text (HTML stripped) for lineTexts storage
+  itemId?: string;   // set on a decision/assumption fence: a marker, not rendered as code
 }
 
 function stripHtml(html: string): string {
@@ -121,7 +123,7 @@ interface RendererThis {
   };
 }
 
-export function renderToLineBlocks(markdown: string): LineBlock[] {
+export function renderToLineBlocks(markdown: string, itemIds: Set<string> = new Set()): LineBlock[] {
   const blocks: LineBlock[] = [];
   let i = 0;
 
@@ -225,6 +227,12 @@ export function renderToLineBlocks(markdown: string): LineBlock[] {
 
       code(token: Tokens.Code): string {
         const lang = token.lang ?? '';
+        const itemId = ITEM_FENCE_RE.test(lang) ? /id=([^\s]+)/.exec(lang)?.[1] : undefined;
+        if (itemId && itemIds.has(itemId)) {
+          blocks.push({ index: i++, innerHtml: '', text: '', itemId });
+          return '';
+        }
+
         const escapedCode = token.text
           .replace(/&/g, '&amp;')
           .replace(/</g, '&lt;')
