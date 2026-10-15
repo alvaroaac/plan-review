@@ -2,9 +2,9 @@
 
 **Goal:** Add email/password authentication with session management to the web app.
 
-**Architecture:** Express middleware + bcrypt + JWT tokens + PostgreSQL sessions table. Three milestones: database schema, auth endpoints, session management.
+**Architecture:** Express middleware + bcrypt + opaque session tokens + PostgreSQL sessions table. Three milestones: database schema, auth endpoints, session management.
 
-**Tech Stack:** Node.js, Express, PostgreSQL, bcrypt, jsonwebtoken
+**Tech Stack:** Node.js, Express, PostgreSQL, bcrypt
 
 ---
 
@@ -64,6 +64,13 @@ Accepts `{ email, password }`. Validates:
 
 Hash password with bcrypt (cost factor 12). Return `201 { user: { id, email } }` on success, `400` with validation errors, `409` if email exists.
 
+```assumption id=bcrypt-cost
+label: bcrypt cost
+statement: A bcrypt cost factor of 12 keeps a login under 300 ms on production hardware.
+quote: cost factor 12
+context: Measured at 250 ms on a staging box; production uses the same instance type.
+```
+
 ### Task 2.2: POST /auth/login
 
 **Depends On:** 1.1
@@ -76,7 +83,24 @@ Accepts `{ email, password }`. Compares against stored bcrypt hash.
 On success: create a session (Task 3.1), return `200 { token, expiresAt }`.
 On failure: return `401 { error: "Invalid credentials" }`. Do **not** reveal whether the email exists.
 
-Rate limiting: 5 attempts per email per 15 minutes. Use a simple in-memory counter (Redis in v2).
+Rate limiting: 5 attempts per email per 15 minutes. Counters live in the API process for now.
+
+```decision id=rate-limit-store
+label: Rate limit store
+question: Where should login attempt counters live?
+quote: 5 attempts per email per 15 minutes
+context: Counters only need to survive for 15 minutes, but every API instance must see the same count.
+- A: In-memory map in the API process | No new infrastructure; resets on deploy [pick]
+- B: Postgres table keyed by email | Shared across instances; one extra write per login
+- C: Redis with key expiry | Built for this; adds a service to run
+```
+
+```assumption id=single-instance
+label: Single API instance
+statement: The API runs as one process, so an in-memory counter sees every login attempt.
+quote: the API is deployed as a single instance
+context: The current deploy config pins one instance. Autoscaling would break this.
+```
 
 ### Task 2.3: Auth middleware
 
@@ -126,4 +150,11 @@ Two features:
 DELETE FROM sessions WHERE expires_at < NOW();
 ```
 
-Consider: should logout invalidate all sessions for the user, or just the current one? Start with current-only. Add "logout everywhere" as a v2 feature.
+Logout needs a scope decision before the endpoint is written.
+
+```decision id=logout-scope
+label: Logout scope
+question: Should logout end only the current session, or every session for the user?
+- A: Current session only | Matches what users expect on a shared computer
+- B: Every session for the user | Safer after a stolen token; signs out other devices too
+```
