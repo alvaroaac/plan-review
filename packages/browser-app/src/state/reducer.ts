@@ -44,7 +44,8 @@ export type ReviewAction =
   | { type: 'answer'; itemId: string; choice: string; note: string; itemHash?: string }
   | { type: 'defer'; itemId: string; note?: string; itemHash?: string }
   | { type: 'clearAnswer'; itemId: string }
-  | { type: 'startCompose'; sectionId: string; anchor: LineAnchor | null }
+  // `doc` pins the document a composer was opened on, when that start is held through a reload.
+  | { type: 'startCompose'; sectionId: string; anchor: LineAnchor | null; doc?: PlanDocument }
   | { type: 'cancelCompose' }
   | { type: 'composeBody'; body: string }
   | { type: 'addThread'; sectionId: string; anchor: LineAnchor | null; body: string }
@@ -98,11 +99,12 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       const { [action.itemId]: _removed, ...answers } = state.review.answers;
       return withReview(state, { answers });
     }
-    case 'startCompose':
-      return withUi(state, {
-        composing: { sectionId: action.sectionId, anchor: action.anchor, body: state.ui.composing?.body ?? '' },
-        tab: 'comments',
-      });
+    case 'startCompose': {
+      const composing = { sectionId: action.sectionId, anchor: action.anchor, body: state.ui.composing?.body ?? '' };
+      // A start held through a reload targets the old document; re-anchor it like an open draft.
+      const moved = action.doc && action.doc !== state.doc ? reanchorComposer(composing, action.doc, state) : composing;
+      return withUi(state, { composing: moved, tab: 'comments' });
+    }
     case 'cancelCompose':
       return withUi(state, { composing: null });
     case 'composeBody':
@@ -170,16 +172,16 @@ function reload(state: ReviewState, loaded: LoadedReview): ReviewState {
     : next.review.threads.some((t) => t.id === focus.id));
   return withUi(next, {
     focus: focusExists ? focus : null,
-    composing: reanchorComposer(state, next),
+    composing: state.ui.composing && reanchorComposer(state.ui.composing, state.doc, next),
     tab: next.items.length === 0 ? 'comments' : state.ui.tab,
   });
 }
 
-function reanchorComposer(previous: ReviewState, next: ReviewState): ReviewState['ui']['composing'] {
-  const composing = previous.ui.composing;
-  if (!composing) return null;
-  const oldSection = previous.doc.sections.find((section) => section.id === composing.sectionId);
-  const ordinal = previous.doc.sections.filter((section) => section.heading === oldSection?.heading)
+type Composing = NonNullable<ReviewState['ui']['composing']>;
+
+function reanchorComposer(composing: Composing, previousDoc: PlanDocument, next: ReviewState): Composing {
+  const oldSection = previousDoc.sections.find((section) => section.id === composing.sectionId);
+  const ordinal = previousDoc.sections.filter((section) => section.heading === oldSection?.heading)
     .findIndex((section) => section.id === composing.sectionId);
   const preferred = next.doc.sections.filter((section) => section.heading === oldSection?.heading)[ordinal];
   if (!composing.anchor) {
@@ -200,7 +202,8 @@ function reanchorComposer(previous: ReviewState, next: ReviewState): ReviewState
       },
     };
   }
-  return { ...composing, detached: true };
+  // Section ids are positional, so a detached draft keeps its heading-matched section.
+  return { ...composing, sectionId: preferred?.id ?? composing.sectionId, detached: true };
 }
 
 function fromLoaded(loaded: LoadedReview): Omit<ReviewState, 'ui'> {

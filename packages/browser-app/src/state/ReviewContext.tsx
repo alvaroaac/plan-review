@@ -2,7 +2,7 @@ import { createContext, type ComponentChildren } from 'preact';
 import {
   useCallback, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef,
 } from 'preact/hooks';
-import type { LoadedReview, ProgressUpdate, ReviewItem } from '@plan-review/core';
+import type { LoadedReview, ProgressUpdate } from '@plan-review/core';
 import type { ReviewClient } from '@plan-review/core/client';
 import { createAutosave } from '@plan-review/core/autosave';
 import { applyTheme, storeTheme, vscodeTheme, type Theme } from '../theme.js';
@@ -46,15 +46,16 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
   // While a host reload runs, progress edits wait and are replayed on the new round,
   // so no pre-reload snapshot can be saved over it. A held answer keeps the hash of the
   // item the reviewer saw, so a revised item still shows as changed. Composer changes made
-  // after a held post wait behind it, so the post replays on its own (re-anchored) composer.
-  const items = useRef(state.items);
-  items.current = state.items;
+  // after a held post wait behind it, so the post replays on its own (re-anchored) composer;
+  // a held start keeps the document it was made on, so it re-anchors too.
+  const seen = useRef(state);
+  seen.current = state;
   const held = useRef<ReviewAction[] | null>(null);
   const dispatch = useCallback((action: ReviewAction) => {
     const queue = held.current;
     if (queue && (isProgressAction(action)
       || (COMPOSER_ACTIONS.has(action.type) && queue.some((a) => a.type === 'addThread')))) {
-      queue.push(pinItemHash(action, items.current));
+      queue.push(pinSeen(action, seen.current));
       return;
     }
     // A reload is the server's truth: never echo it back as a save.
@@ -141,7 +142,8 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
 /** UI actions that change `ui.composing` (besides `addThread` and `reload`). */
 const COMPOSER_ACTIONS: ReadonlySet<ReviewAction['type']> = new Set(['startCompose', 'cancelCompose', 'composeBody']);
 
-function pinItemHash(action: ReviewAction, items: ReviewItem[]): ReviewAction {
+function pinSeen(action: ReviewAction, { doc, items }: ReviewState): ReviewAction {
+  if (action.type === 'startCompose') return { ...action, doc };
   if (action.type !== 'answer' && action.type !== 'defer') return action;
   return { ...action, itemHash: items.find((item) => item.id === action.itemId)?.hash };
 }

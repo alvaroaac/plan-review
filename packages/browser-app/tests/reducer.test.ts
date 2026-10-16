@@ -291,6 +291,24 @@ describe('reviewReducer — ui', () => {
     state = reviewReducer(state, { type: 'addThread', ...state.ui.composing! });
     expect(state.review.threads[0].comments[0].body).toBe('Keep this draft');
   });
+
+  it.each([
+    ['re-anchors it when its text moved', 'Before.\n\nOriginal text.', { sectionId: 'section-2', anchor: lineAnchor(1, ['Original text.']) }],
+    ['detaches it when its text is gone', 'Rewritten.', { sectionId: 'section-2', detached: true }],
+  ])('a start held through a reload %s', (_name, body, expected) => {
+    const loaded = mockLoaded({ items: [] });
+    const original = { id: 'section-1', heading: 'Tests', level: 2, body: 'Original text.' };
+    let state = initReviewState({ ...loaded, document: { ...loaded.document, sections: [original] } }, 'light');
+    const held: ReviewAction = { type: 'startCompose', sectionId: original.id, anchor: lineAnchor(0, ['Original text.']), doc: state.doc };
+    const sections = [
+      { id: 'section-1', heading: 'Introduction', level: 2, body: 'New content.' },
+      { ...original, id: 'section-2', body },
+    ];
+    state = reviewReducer(state, { type: 'reload', loaded: { ...loaded, document: { ...loaded.document, sections } } });
+    state = reviewReducer(state, held);
+    expect(state.ui.composing).toMatchObject(expected);
+    if (state.ui.composing!.detached) expect(reviewReducer(state, { type: 'addThread', ...state.ui.composing!, body: 'x' })).toBe(state);
+  });
 });
 
 describe('isProgressAction', () => {
