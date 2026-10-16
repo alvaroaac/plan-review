@@ -33,7 +33,7 @@ beforeEach(() => { vi.clearAllMocks(); });
 
 describe('panel lifecycle', () => {
   it('uses panel-local handlers, sends only planChanged on file saves and does nothing extra on dispose', async () => {
-    const handlers = { loadDocument: vi.fn().mockResolvedValue({ review: { id: 'rv_abcdefgh' } }), saveProgress: vi.fn(), submitReview: vi.fn() };
+    const handlers = { loadDocument: vi.fn(async ({ markdown }: { markdown: () => Promise<string> }) => { await markdown(); return { review: { id: 'rv_abcdefgh' } }; }), saveProgress: vi.fn(), submitReview: vi.fn() };
     mocks.createMessageHandlers.mockReturnValue(handlers);
     const first = panel();
     const second = panel();
@@ -54,7 +54,7 @@ describe('panel lifecycle', () => {
     const receive = first.webview.onDidReceiveMessage.mock.calls[0][0];
     await receive({ id: 'r1', kind: 'req', method: 'loadDocument' });
     expect(mocks.openTextDocument).toHaveBeenCalledWith(uri);
-    expect(handlers.loadDocument).toHaveBeenLastCalledWith({ planFsPath: uri.fsPath, markdown: '# Current editor text' });
+    expect(handlers.loadDocument).toHaveBeenLastCalledWith({ planFsPath: uri.fsPath, markdown: expect.any(Function) });
     handlers.submitReview.mockRejectedValueOnce(new Error('Submit cancelled — no destination chosen.'));
     await receive({ id: 'cancelled', kind: 'req', method: 'submitReview', params: { verdict: 'approved', summary: '' } });
     expect(first.dispose).not.toHaveBeenCalled();

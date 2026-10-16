@@ -13,7 +13,7 @@ import { isProgressUpdate } from './protocol.js';
 import type { SubmitTarget } from './settings.js';
 
 export interface MessageHandlers {
-  loadDocument(params: { planFsPath: string; markdown: string }): Promise<LoadedReview>;
+  loadDocument(params: { planFsPath: string; markdown: () => Promise<string> }): Promise<LoadedReview>;
   saveProgress(update: ProgressUpdate): Promise<void>;
   submitReview(req: SubmitRequest): Promise<{ ok: true; output: string }>;
 }
@@ -42,7 +42,7 @@ export function createMessageHandlers(deps?: {
       loadsInFlight++;
       try {
         const opened = await openReview(store, {
-          markdown: params.markdown,
+          markdown: await params.markdown(),
           planPath: params.planFsPath,
           reviewId: loaded?.review.id,
           now: now(),
