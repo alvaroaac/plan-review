@@ -15,6 +15,7 @@ Two input sources:
 
 When you write a spec or plan whose design still has real choices to make, settle purpose and scope in chat first, then write the document as a draft and ask the open choices in it instead of one at a time in chat:
 - Make the document complete around your recommended option, and add a `decision` block (with `[pick]` on that option) where each open choice comes up. Use an `assumption` block for anything you have not verified.
+- Calls you made on the user's behalf go in the document too, never as a list in chat. Use a `decision` block, with `[pick]` on your default, for anything that is the user's call: money spent (paid APIs, new services), work outside the repo, irreversible steps, or a real alternative (branch base, copying vs importing, new dependencies). Use an `assumption` block for technical guesses you made but have not checked.
 - Ask only what the user must decide: choices with real trade-offs. Aim for 3–7 items per round; settle the rest yourself and say so in the text.
 - Run the review (section 2). Apply the answers, then continue the same review with `--review <id>` until it is approved. An approved review is the user's approval of the document.
 
@@ -35,7 +36,7 @@ fi
 
 ## 1. Mark decisions and assumptions in the plan
 
-If the plan has open choices or things you have not verified, put them in fenced blocks where they come up. Each block becomes an item the user answers. Leave out blocks for things you have already settled.
+If the plan has open choices, calls you made for the user, or things you have not verified, put them in fenced blocks where they come up. Each block becomes an item the user answers. Leave out blocks for things you have already settled.
 
 ````md
 ```decision id=retry-backoff
@@ -85,7 +86,7 @@ The command blocks until the user submits or leaves.
 
 There are two outcomes. Both exit 0.
 
-- **Submitted.** Markdown starting with `# Plan Review: <title>`, then the review id, round and verdict (**Changes requested** or **Approved**). It lists decision answers, assumption verdicts, deferred items, and open comment threads with their ids. Summarize it for the user.
+- **Submitted.** Markdown starting with `# Plan Review: <title>`, then the review id, round and verdict (**Changes requested** or **Approved**). It lists decision answers, assumption verdicts, deferred items, and open comment threads with their ids. Summarize it for the user. On an **Approved** review, an unanswered decision takes its `[pick]`; an unanswered decision without `[pick]` stays open, so ask the user before acting on it.
 - **Paused.** A one-line notice that the review is paused, ending with "The user has not finished reviewing — wait for them" and the resume command. The user closed the tab; everything they did is saved. Tell the user the review is paused and wait. Do not re-run it or change the plan until they ask.
 
 ## 4. Revise and continue

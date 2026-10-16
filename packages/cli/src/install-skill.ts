@@ -7,7 +7,7 @@ const NOTE_END = '<!-- plan-review:end -->';
 export const CLAUDE_NOTE = `${NOTE_BEGIN}
 ## Open design questions go in the document, not the chat
 
-When brainstorming or writing a spec or plan: settle purpose and scope in chat, then write the document as a draft around your recommendations and put the remaining open choices in it as plan-review \`decision\` / \`assumption\` blocks, instead of asking them one at a time. Present it with the \`plan-review\` skill and continue the same review across revisions. A plan-review that comes back **Approved** counts as explicit approval of the document. This overrides any brainstorming skill's one-question-per-message flow for design choices.
+When brainstorming or writing a spec or plan: settle purpose and scope in chat, then write the document as a draft around your recommendations and put the remaining open choices in it as plan-review \`decision\` / \`assumption\` blocks, instead of asking them one at a time. Calls you made on the user's behalf go in too, never as a list in chat: a \`decision\` block with \`[pick]\` on your default for anything that is the user's call (money spent, work outside the repo, irreversible steps, real alternatives), an \`assumption\` block for unchecked technical guesses. Present it with the \`plan-review\` skill and continue the same review across revisions. A plan-review that comes back **Approved** counts as explicit approval of the document. This overrides any brainstorming skill's one-question-per-message flow for design choices.
 ${NOTE_END}`;
 
 export interface InstallResult {
