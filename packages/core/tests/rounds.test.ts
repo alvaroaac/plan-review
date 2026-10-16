@@ -233,6 +233,13 @@ describe('openReview rounds and loaded view', () => {
 });
 
 describe('carryForward', () => {
+  it('preserves a stored anchor on the second repeated paragraph', () => {
+    const plan = '# Plan\n\n## Tests\n\nSame.\n\nBetween.\n\nSame.';
+    const thread = makeThread({ anchor: { type: 'lines', startLine: 2, endLine: 2, lineTexts: ['Same.'] } });
+    const review = makeReview({ rounds: [makeRound(plan)], threads: [thread] });
+    expect(carryForward(review, extract(plan), NOW).threads[0]).toEqual(thread);
+  });
+
   it('keeps all stored answers untouched, including changed and absent items', () => {
     const current = extract(`${PLAN}\n\n${decision('kept')}\n\n${decision('changed', 'New question?')}`);
     const answers = {

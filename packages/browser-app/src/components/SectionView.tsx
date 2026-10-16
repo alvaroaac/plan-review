@@ -54,7 +54,7 @@ export function SectionView({ section, num }: { section: Section; num: string })
   }
   for (const t of review.threads) {
     if (t.sectionId !== section.id || !t.anchor || !isOpenThread(t)) continue;
-    const range = findLineRun(blocks, t.anchor.lineTexts);
+    const range = findLineRun(blocks, t.anchor.lineTexts, t.anchor);
     if (!range) continue;
     const className = `hl${isFocused({ kind: 'thread', id: t.id }) ? ' is-focus' : ''}`;
     for (let i = range.start; i <= range.end; i++) {

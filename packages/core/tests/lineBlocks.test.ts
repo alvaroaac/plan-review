@@ -442,6 +442,14 @@ describe('renderToLineBlocks item fences', () => {
 });
 
 describe('findLineRun', () => {
+  it('honors a matching stored range and otherwise chooses the nearest occurrence', () => {
+    const repeated = renderToLineBlocks('Same.\n\nBetween.\n\nSame.\n\nBetween.\n\nSame.');
+    expect(findLineRun(repeated, ['Same.'], { startLine: 2, endLine: 2 })).toEqual({ start: 2, end: 2 });
+    expect(findLineRun(repeated, ['Same.'], { startLine: 3, endLine: 3 })).toEqual({ start: 2, end: 2 });
+    expect(findLineRun(repeated, ['Same.'], { startLine: 5, endLine: 5 })).toEqual({ start: 4, end: 4 });
+    expect(findLineRun(repeated, ['Gone.'], { startLine: 2, endLine: 2 })).toBeNull();
+  });
+
   const blocks: LineBlock[] = ['Alpha', 'Beta', 'Gamma', 'Beta', 'Delta'].map((text, index) => ({
     index,
     innerHtml: `<p>${text}</p>`,

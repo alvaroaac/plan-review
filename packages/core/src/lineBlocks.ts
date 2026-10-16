@@ -384,20 +384,32 @@ export function renderToLineBlocks(markdown: string, itemIds: Set<string> = new 
 const squashSpace = (text: string): string => text.replace(/\s+/g, ' ').trim();
 
 /**
- * The first run of consecutive blocks whose texts equal `lineTexts`, ignoring
- * whitespace differences only (punctuation, case and Unicode all count).
+ * Consecutive blocks whose texts equal `lineTexts`, ignoring whitespace only.
+ * Prefer a matching stored range, then the nearest match to its start; without
+ * a hint, return the first match. Punctuation, case and Unicode all count.
  */
 export function findLineRun(
   blocks: readonly LineBlock[], lineTexts: readonly string[],
+  hint?: { startLine: number; endLine: number },
 ): { start: number; end: number } | null {
   const wanted = lineTexts.map(squashSpace);
   if (wanted.length === 0) return null;
+  const matches = (start: number) => Number.isInteger(start) && start >= 0
+    && start + wanted.length <= blocks.length
+    && wanted.every((text, k) => squashSpace(blocks[start + k].text) === text);
+  if (hint && hint.endLine === hint.startLine + wanted.length - 1 && matches(hint.startLine)) {
+    return { start: hint.startLine, end: hint.endLine };
+  }
+  let nearest: { start: number; end: number } | null = null;
   for (let start = 0; start + wanted.length <= blocks.length; start++) {
-    if (wanted.every((text, k) => squashSpace(blocks[start + k].text) === text)) {
-      return { start, end: start + wanted.length - 1 };
+    if (matches(start)) {
+      if (!hint) return { start, end: start + wanted.length - 1 };
+      if (!nearest || Math.abs(start - hint.startLine) < Math.abs(nearest.start - hint.startLine)) {
+        nearest = { start, end: start + wanted.length - 1 };
+      }
     }
   }
-  return null;
+  return nearest;
 }
 
 // `<details>` (and similar block HTML wrappers) opened on one line and closed

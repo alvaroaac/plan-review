@@ -197,7 +197,7 @@ export function carryForward(review: Review, extract: ExtractResult, now: Date, 
 
     const { anchor } = thread;
     const locate = (section: Section) => {
-      const range = findLineRun(blocksOf(section), anchor.lineTexts);
+      const range = findLineRun(blocksOf(section), anchor.lineTexts, anchor);
       return range && { section, range };
     };
     const match = (sameHeading && locate(sameHeading))
