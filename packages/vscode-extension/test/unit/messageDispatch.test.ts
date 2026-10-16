@@ -44,6 +44,39 @@ describe('handleWebviewMessage', () => {
     expect(result).toEqual({ action: 'close' });
   });
 
+  it.each([false, true])('rejects submission while reading a reload, pickerOpen=%s', async (pickerOpen) => {
+    let release!: (text: string) => void;
+    const read = new Promise<string>((resolve) => { release = resolve; });
+    let choose!: (targets: ['clipboard']) => void;
+    const targets = new Promise<['clipboard']>((resolve) => { choose = resolve; });
+    const chooseTargets = vi.fn(() => targets);
+    const deliver = vi.fn();
+    const opts = setup();
+    opts.handlers = createMessageHandlers({ reviewStore: f.store, chooseTargets, deliver });
+    await handleWebviewMessage({ id: 'load', kind: 'req', method: 'loadDocument' }, opts);
+    const id = opts.postMessage.mock.calls[0][0].result.review.id;
+    const save = vi.spyOn(f.store, 'save');
+    const submit = () => handleWebviewMessage({ id: 'submit', kind: 'req', method: 'submitReview', params: { verdict: 'approved', summary: '' } }, opts);
+    let submission = pickerOpen ? submit() : undefined;
+    opts.getMarkdown.mockReturnValueOnce(read);
+    const reload = handleWebviewMessage({ id: 'reload', kind: 'req', method: 'loadDocument' }, opts);
+    submission ??= submit();
+    choose(['clipboard']);
+    try {
+      expect(await submission).toEqual({});
+      expect(opts.postMessage).toHaveBeenLastCalledWith({ id: 'submit', kind: 'err', error: 'The plan changed. Review the updated plan and submit again.' });
+      expect(chooseTargets).toHaveBeenCalledTimes(pickerOpen ? 1 : 0);
+      expect(deliver).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+      const review = await f.store.get(id);
+      expect(review?.status).toBe('open');
+      expect(review?.rounds[0].submittedAt).toBeUndefined();
+    } finally {
+      release(markdown.replace('Where to store?', 'Which database?'));
+      await reload;
+    }
+  });
+
   it('posts a cancellation error and keeps the panel open without submitting the round', async () => {
     const opts = setup();
     opts.handlers = createMessageHandlers({ reviewStore: f.store, chooseTargets: async () => undefined, deliver: vi.fn() });
@@ -88,5 +121,16 @@ describe('handleWebviewMessage', () => {
     opts.getMarkdown.mockRejectedValueOnce(new Error('cannot read document'));
     await handleWebviewMessage({ id: 'load', kind: 'req', method: 'loadDocument' }, opts);
     expect(opts.postMessage).toHaveBeenLastCalledWith({ id: 'load', kind: 'err', error: 'cannot read document' });
+  });
+
+  it('allows submission after a reload read fails', async () => {
+    const opts = setup();
+    await handleWebviewMessage({ id: 'load', kind: 'req', method: 'loadDocument' }, opts);
+    opts.getMarkdown.mockRejectedValueOnce(new Error('cannot read document'));
+    await handleWebviewMessage({ id: 'reload', kind: 'req', method: 'loadDocument' }, opts);
+    expect(opts.postMessage).toHaveBeenLastCalledWith({ id: 'reload', kind: 'err', error: 'cannot read document' });
+    const result = await handleWebviewMessage({ id: 'submit', kind: 'req', method: 'submitReview', params: { verdict: 'approved', summary: '' } }, opts);
+    expect(result).toEqual({ action: 'close' });
+    expect(opts.postMessage).toHaveBeenLastCalledWith({ id: 'submit', kind: 'res', result: { ok: true, output: expect.any(String) } });
   });
 });

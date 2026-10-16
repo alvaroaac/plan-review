@@ -63,7 +63,7 @@ export async function handleWebviewMessage(
     if (req.method === 'loadDocument') {
       const loaded = await opts.handlers.loadDocument({
         planFsPath: opts.planFsPath,
-        markdown: await opts.getMarkdown(),
+        markdown: opts.getMarkdown,
       });
       opts.postMessage({ id: req.id, kind: 'res', result: loaded });
     } else if (req.method === 'saveProgress') {

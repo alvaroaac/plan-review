@@ -32,10 +32,10 @@ describe('messageHandlers.submitReview', () => {
     const chooseTargets = vi.fn(() => targets);
     const deliver = vi.fn();
     const panel = createMessageHandlers({ reviewStore: store, chooseTargets, deliver });
-    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
     const submit = () => panel.submitReview({ verdict: 'approved', summary: '' });
     let submission = pickerOpen ? submit() : undefined;
-    const reload = panel.loadDocument({ planFsPath: f.planFsPath, markdown: revised });
+    const reload = panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => revised });
     submission ??= submit();
     const rejected = expect(submission).rejects.toThrow('The plan changed. Review the updated plan and submit again.');
     await saveStarted;
@@ -68,7 +68,7 @@ describe('messageHandlers.submitReview', () => {
       },
       deliver,
     });
-    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
     await expect(panel.submitReview({ verdict: 'approved', summary: '' }))
       .rejects.toThrow('The plan changed. Review the updated plan and submit again.');
     const opened = await reload;
@@ -81,9 +81,9 @@ describe('messageHandlers.submitReview', () => {
   it('allows submission after a failed reload finishes', async () => {
     const deliver = vi.fn();
     const panel = createMessageHandlers({ reviewStore: f.store, chooseTargets: async () => ['clipboard'], deliver });
-    await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
     vi.spyOn(f.store, 'save').mockRejectedValueOnce(new Error('Reload failed'));
-    await expect(panel.loadDocument({ planFsPath: f.planFsPath, markdown })).rejects.toThrow('Reload failed');
+    await expect(panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown })).rejects.toThrow('Reload failed');
     await expect(panel.submitReview({ verdict: 'approved', summary: '' })).resolves.toMatchObject({ ok: true });
     expect(deliver).toHaveBeenCalledOnce();
   });
@@ -96,7 +96,7 @@ describe('messageHandlers.submitReview', () => {
       expect(output).toBe(formatReviewOutput(review!, loaded.items, loaded.document));
     });
     const panel = createMessageHandlers({ reviewStore: f.store, now: () => now, chooseTargets: async () => ['clipboard'], deliver });
-    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
     await panel.saveProgress({ answers: { storage: { ...answer, itemHash: loaded.items[0].hash } }, threads: [thread(loaded.document.sections[0].id)] });
     const result = await panel.submitReview({ verdict, summary: 'My summary' });
     expect(result).toEqual({ ok: true, output: expect.stringContaining('My summary') });
@@ -110,7 +110,7 @@ describe('messageHandlers.submitReview', () => {
     const chooseTargets = vi.fn(async () => targets);
     const deliver = vi.fn();
     const panel = createMessageHandlers({ reviewStore: f.store, chooseTargets, deliver });
-    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
     const save = vi.spyOn(f.store, 'save');
     await expect(panel.submitReview({ verdict: 'approved', summary: '' })).rejects.toThrow('Submit cancelled — no destination chosen.');
     expect(chooseTargets).toHaveBeenCalledOnce();
@@ -126,7 +126,7 @@ describe('messageHandlers.submitReview', () => {
     });
     const deliver = vi.fn();
     const panel = createMessageHandlers({ reviewStore: f.store, chooseTargets: async () => [...await chooseTargets()], deliver });
-    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
     const result = await panel.submitReview({ verdict: 'approved', summary: '' });
     expect(deliver).toHaveBeenCalledWith({ planFsPath: f.planFsPath, output: result.output, targets: ['file'] });
     expect((await f.store.get(loaded.review.id))?.rounds[0].verdict).toBe('approved');
@@ -152,10 +152,10 @@ it('aborts without persisting when the plan changes while the destination picker
   const targets = new Promise<['clipboard']>((resolve) => { choose = resolve; });
   const deliver = vi.fn();
   const panel = createMessageHandlers({ reviewStore: store, chooseTargets: () => targets, deliver });
-  const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+  const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown });
   const submission = panel.submitReview({ verdict: 'approved', summary: '' });
   const rejected = expect(submission).rejects.toThrow(/plan changed.*review the updated plan.*submit again/i);
-  await panel.loadDocument({ planFsPath: f.planFsPath, markdown: markdown.replace('Where to store?', 'Which database?') });
+  await panel.loadDocument({ planFsPath: f.planFsPath, markdown: async () => markdown.replace('Where to store?', 'Which database?') });
   const beforeSubmit = await store.get(loaded.review.id);
   vi.mocked(store.save).mockClear();
   choose(['clipboard']);
