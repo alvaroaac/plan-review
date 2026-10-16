@@ -515,6 +515,19 @@ describe('round regressions', () => {
   });
 
   for (const anchored of [false, true]) {
+    it(`preserves both duplicate headings when an Introduction shifts positional ids, anchored=${anchored}`, () => {
+      const old = '# Plan\n\n### Tests\n\nShared anchor.\n\n### Tests\n\nShared anchor.';
+      const plan = old.replace('# Plan\n\n', '# Plan\n\n### Introduction\n\nWelcome.\n\n');
+      const threads = ['section-1', 'section-2'].map((sectionId, index) => makeThread({
+        id: `t_test0${index}`, sectionId,
+        anchor: anchored ? { type: 'lines', startLine: 0, endLine: 0, lineTexts: ['Shared anchor.'] } : null,
+      }));
+      const review = makeReview({ rounds: [makeRound(old)], threads });
+      expect(carryForward(review, extract(plan), NOW).threads).toEqual(
+        threads.map((thread, index) => ({ ...thread, sectionId: `section-${index + 2}` })),
+      );
+    });
+
     it(`keeps a resolved thread on its section across rounds until a reply reopens it, anchored=${anchored}`, async () => {
       const existing = makeReview({ threads: [makeThread({ resolved: true, ...(anchored ? {} : { anchor: null }) })] });
       const store = makeStore(existing);

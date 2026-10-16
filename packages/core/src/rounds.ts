@@ -188,8 +188,8 @@ export function carryForward(review: Review, extract: ExtractResult, now: Date, 
     const candidates = sections.filter((section) => section.heading === heading);
     const ordinal = previousSections.filter((section) => section.heading === heading)
       .findIndex((section) => section.id === thread.sectionId);
-    const sameHeading = candidates.find((section) => section.id === thread.sectionId)
-      ?? candidates[ordinal] ?? candidates[0];
+    const sameHeading = candidates[ordinal]
+      ?? candidates.find((section) => section.id === thread.sectionId) ?? candidates[0];
     if (!thread.anchor) {
       if (thread.outdated) return thread;
       return { ...thread, sectionId: sameHeading?.id ?? thread.sectionId, outdated: !sameHeading };
