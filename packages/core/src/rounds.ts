@@ -239,10 +239,14 @@ export async function saveProgress(
 
 export async function submitRound(
   store: ReviewStore, reviewId: string, req: SubmitRequest, now: Date,
+  expected?: { round: number; contentHash: string },
 ): Promise<Review> {
   return serializeReview(reviewId, async () => {
     const review = await getReview(store, reviewId);
     const round = review.rounds[review.rounds.length - 1];
+    if (expected && (round.n !== expected.round || round.contentHash !== expected.contentHash)) {
+      throw new Error('The plan changed. Review the updated plan and submit again.');
+    }
     if (round.submittedAt) throw new Error('Round already submitted');
     const timestamp = now.toISOString();
     const updated: Review = {

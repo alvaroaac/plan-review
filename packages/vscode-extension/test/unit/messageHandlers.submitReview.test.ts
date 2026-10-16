@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { formatReviewOutput, type Review, type ReviewStore } from '@plan-review/core';
+import { formatReviewOutput, openReview, type Review, type ReviewStore } from '@plan-review/core';
 import { createMessageHandlers } from '../../src/messageHandlers.js';
 import { fixture, markdown, now, answer, thread } from './reviewFixtures.js';
 
@@ -8,6 +8,86 @@ beforeEach(async () => { f = await fixture(); });
 afterEach(async () => { await f.cleanup(); });
 
 describe('messageHandlers.submitReview', () => {
+  it.each([false, true])('rejects while a reload save is pending, pickerOpen=%s', async (pickerOpen) => {
+    let saved: Review | null = null;
+    let release!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { release = resolve; });
+    let saving!: () => void;
+    const saveStarted = new Promise<void>((resolve) => { saving = resolve; });
+    const revised = markdown.replace('Where to store?', 'Which database?');
+    const store: ReviewStore = {
+      get: async () => saved && structuredClone(saved),
+      save: vi.fn(async (review) => {
+        if (review.rounds.at(-1)?.plan === revised) {
+          saving();
+          await pendingSave;
+        }
+        saved = structuredClone(review);
+      }),
+      list: async () => [],
+      findOpenByPlanPath: async () => null,
+    };
+    let choose!: (targets: ['clipboard']) => void;
+    const targets = new Promise<['clipboard']>((resolve) => { choose = resolve; });
+    const chooseTargets = vi.fn(() => targets);
+    const deliver = vi.fn();
+    const panel = createMessageHandlers({ reviewStore: store, chooseTargets, deliver });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    const submit = () => panel.submitReview({ verdict: 'approved', summary: '' });
+    let submission = pickerOpen ? submit() : undefined;
+    const reload = panel.loadDocument({ planFsPath: f.planFsPath, markdown: revised });
+    submission ??= submit();
+    const rejected = expect(submission).rejects.toThrow('The plan changed. Review the updated plan and submit again.');
+    await saveStarted;
+    choose(['clipboard']);
+    // Let the picker continuation run while persistence is still blocked.
+    await Promise.resolve();
+    release();
+    await reload;
+    await rejected;
+    expect(chooseTargets).toHaveBeenCalledTimes(pickerOpen ? 1 : 0);
+    expect(deliver).not.toHaveBeenCalled();
+    expect(store.save).toHaveBeenCalledTimes(2);
+    const review = await store.get(loaded.review.id);
+    expect(review?.status).toBe('open');
+    expect(review?.rounds).toHaveLength(1);
+    expect(review?.rounds[0].plan).toBe(revised);
+    expect(review?.rounds[0].submittedAt).toBeUndefined();
+  });
+
+  it('passes the captured identity when a reload is queued outside the panel', async () => {
+    let reload: ReturnType<typeof openReview> | undefined;
+    const deliver = vi.fn();
+    const panel = createMessageHandlers({
+      reviewStore: f.store,
+      chooseTargets: async () => {
+        reload = openReview(f.store, {
+          markdown: `${markdown}\nChanged.`, reviewId: loaded.review.id, now,
+        });
+        return ['clipboard'];
+      },
+      deliver,
+    });
+    const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    await expect(panel.submitReview({ verdict: 'approved', summary: '' }))
+      .rejects.toThrow('The plan changed. Review the updated plan and submit again.');
+    const opened = await reload;
+    expect(await f.store.get(loaded.review.id)).toEqual(opened?.review);
+    expect(opened?.review.status).toBe('open');
+    expect(opened?.review.rounds[0].submittedAt).toBeUndefined();
+    expect(deliver).not.toHaveBeenCalled();
+  });
+
+  it('allows submission after a failed reload finishes', async () => {
+    const deliver = vi.fn();
+    const panel = createMessageHandlers({ reviewStore: f.store, chooseTargets: async () => ['clipboard'], deliver });
+    await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
+    vi.spyOn(f.store, 'save').mockRejectedValueOnce(new Error('Reload failed'));
+    await expect(panel.loadDocument({ planFsPath: f.planFsPath, markdown })).rejects.toThrow('Reload failed');
+    await expect(panel.submitReview({ verdict: 'approved', summary: '' })).resolves.toMatchObject({ ok: true });
+    expect(deliver).toHaveBeenCalledOnce();
+  });
+
   it.each(['approved', 'changes_requested'] as const)('freezes the %s round before fan-out and returns v2 output', async (verdict) => {
     const deliver = vi.fn(async ({ planFsPath, output }: { planFsPath: string; output: string }) => {
       const review = await f.store.get(loaded.review.id);

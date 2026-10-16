@@ -418,6 +418,44 @@ describe('saveProgress', () => {
 });
 
 describe('submitRound', () => {
+  it.each(['contentHash', 'round', 'matching'] as const)('checks the %s identity after a queued reload commits', async (identity) => {
+    const existing = makeReview(identity === 'round'
+      ? { rounds: [makeRound(PLAN, { submittedAt: BEFORE, verdict: 'changes_requested' })] } : {});
+    const store = makeStore(existing);
+    const save = store.save.getMockImplementation()!;
+    let release!: () => void;
+    const pendingSave = new Promise<void>((resolve) => { release = resolve; });
+    let saving!: () => void;
+    const saveStarted = new Promise<void>((resolve) => { saving = resolve; });
+    store.save.mockImplementationOnce(async (review) => {
+      saving();
+      await pendingSave;
+      await save(review);
+    });
+    const markdown = identity === 'round' ? PLAN : `${PLAN}\nChanged.`;
+    const reload = openReview(store, { markdown, reviewId: existing.id, now: NOW });
+    await saveStarted;
+    const expected = {
+      round: 1,
+      contentHash: contentHash(identity === 'contentHash' ? PLAN : markdown),
+    };
+    const submission = submitRound(store, existing.id, { verdict: 'approved', summary: 'Done.' }, NOW, expected);
+    const result = identity === 'matching'
+      ? expect(submission).resolves.toMatchObject({ status: 'approved', rounds: [expect.objectContaining({
+        plan: markdown, submittedAt: NOW.toISOString(), verdict: 'approved', summary: 'Done.',
+      })] })
+      : expect(submission).rejects.toThrow('The plan changed. Review the updated plan and submit again.');
+    release();
+    const opened = await reload;
+    await result;
+    expect(store.save).toHaveBeenCalledTimes(identity === 'matching' ? 2 : 1);
+    if (identity !== 'matching') {
+      expect(await store.get(existing.id)).toEqual(opened.review);
+      expect(opened.review.status).toBe('open');
+      expect(opened.review.rounds.at(-1)?.submittedAt).toBeUndefined();
+    }
+  });
+
   for (const verdict of ['changes_requested', 'approved'] as const) {
     it(`submits the active round as ${verdict} and saves it`, async () => {
       const previous = makeRound(PLAN, { submittedAt: BEFORE, verdict: 'changes_requested', summary: 'Earlier.' });

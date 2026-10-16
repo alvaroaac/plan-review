@@ -30,6 +30,7 @@ export function createMessageHandlers(deps?: {
   let loaded: LoadedReview | undefined;
   let planFsPath: string;
   let loadedContentHash: string;
+  let loadsInFlight = 0;
 
   function current(): LoadedReview {
     if (!loaded) throw new Error('document not loaded');
@@ -38,16 +39,21 @@ export function createMessageHandlers(deps?: {
 
   return {
     async loadDocument(params) {
-      const opened = await openReview(store, {
-        markdown: params.markdown,
-        planPath: params.planFsPath,
-        reviewId: loaded?.review.id,
-        now: now(),
-      });
-      loaded = opened.loaded;
-      loadedContentHash = opened.review.rounds[opened.review.rounds.length - 1].contentHash;
-      planFsPath = params.planFsPath;
-      return loaded;
+      loadsInFlight++;
+      try {
+        const opened = await openReview(store, {
+          markdown: params.markdown,
+          planPath: params.planFsPath,
+          reviewId: loaded?.review.id,
+          now: now(),
+        });
+        loaded = opened.loaded;
+        loadedContentHash = opened.review.rounds[opened.review.rounds.length - 1].contentHash;
+        planFsPath = params.planFsPath;
+        return loaded;
+      } finally {
+        loadsInFlight--;
+      }
     },
     async saveProgress(update) {
       const currentLoaded = current();
@@ -56,13 +62,16 @@ export function createMessageHandlers(deps?: {
     },
     async submitReview(req) {
       const currentLoaded = current();
-      const submittingContentHash = loadedContentHash;
+      const expected = { round: currentLoaded.review.round, contentHash: loadedContentHash };
+      if (loadsInFlight) {
+        throw new Error('The plan changed. Review the updated plan and submit again.');
+      }
       const targets = await deps?.chooseTargets?.();
-      if (loadedContentHash !== submittingContentHash) {
+      if (loadsInFlight || loadedContentHash !== expected.contentHash) {
         throw new Error('The plan changed. Review the updated plan and submit again.');
       }
       if (!targets?.length) throw new Error('Submit cancelled — no destination chosen.');
-      const review = await submitRound(store, currentLoaded.review.id, req, now());
+      const review = await submitRound(store, currentLoaded.review.id, req, now(), expected);
       const output = formatReviewOutput(review, currentLoaded.items, currentLoaded.document);
       await deps?.deliver?.({ planFsPath, output, targets });
       return { ok: true, output };
