@@ -109,7 +109,9 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       if (!state.ui.composing) return state;
       return withUi(state, { composing: { ...state.ui.composing, body: action.body } });
     case 'addThread': {
+      // The single guard against posting a detached draft (the Comment button is only UX).
       if (state.ui.composing?.detached) return state;
+      // The open composer wins over the action's fields: a reload may have re-anchored it.
       const target = state.ui.composing ?? action;
       const thread: Thread = {
         id: newThreadId(),

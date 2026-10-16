@@ -22,9 +22,7 @@ export function Composer({ sectionId, anchor, body, loc, detached = false }: Com
   }, [sectionId]);
 
   const cancel = () => dispatch({ type: 'cancelCompose' });
-  const post = () => {
-    if (!detached) dispatch({ type: 'addThread', sectionId, anchor, body: body.trim() });
-  };
+  const post = () => dispatch({ type: 'addThread', sectionId, anchor, body: body.trim() });
   const reattach = () => {
     const button = document.querySelector<HTMLButtonElement>('.doc .para-add');
     button?.scrollIntoView({ block: 'nearest' });
