@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdtemp, writeFile, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, writeFile, readdir, readFile, rm, stat } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, tmpdir } from 'node:os';
@@ -63,6 +63,13 @@ describe('FileReviewStore', () => {
     expect(await readdir(nested)).toEqual(['rv_abc12345.json']);
     const raw = await readFile(join(nested, 'rv_abc12345.json'), 'utf-8');
     expect(raw).toContain('\n  "version": 2');
+  });
+
+  it.skipIf(process.platform === 'win32')('creates the store dir as 0700 and review files as 0600', async () => {
+    const nested = join(dir, 'private');
+    await new FileReviewStore({ dir: nested }).save(makeReview());
+    expect((await stat(nested)).mode & 0o777).toBe(0o700);
+    expect((await stat(join(nested, 'rv_abc12345.json'))).mode & 0o777).toBe(0o600);
   });
 
   it('returns null for missing ids', async () => {
@@ -152,6 +159,8 @@ describe('isReview', () => {
     ['missing updatedAt', { ...makeReview(), updatedAt: undefined }],
     ['non-string updatedAt', { ...makeReview(), updatedAt: 1 }],
     ['array answers', { ...makeReview(), answers: [] }],
+    ['empty answer value', { ...makeReview(), answers: { db: {} } }],
+    ['answer missing note', { ...makeReview(), answers: { db: { choice: 'a', itemHash: 'h', round: 1, updatedAt: 'x' } } }],
     ['null thread', { ...makeReview(), threads: [null] }],
     ['array thread', { ...makeReview(), threads: [[]] }],
     ...['id', 'sectionId', 'resolved', 'outdated', 'createdRound', 'comments'].flatMap<[string, unknown]>((field) => [

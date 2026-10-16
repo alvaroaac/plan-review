@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent, screen } from '@testing-library/preact';
+import { act, fireEvent, screen } from '@testing-library/preact';
 import type { LineAnchor, Thread } from '@plan-review/core';
 import { CommentsList } from '../src/components/CommentsList.js';
+import { SectionView } from '../src/components/SectionView.js';
 import type { ReviewAction } from '../src/state/reducer.js';
 import { lineAnchor, mockLoaded, renderWithReview, thread } from './test-utils.js';
 
@@ -104,6 +105,28 @@ describe('CommentsList', () => {
   });
 
   describe('composer', () => {
+    it('shows a detached notice and re-attaches the draft through a paragraph comment button', () => {
+      const loaded = mockLoaded();
+      const section = { ...loaded.document.sections[1], body: 'Replacement text.' };
+      const revised = { ...loaded, document: { ...loaded.document, sections: [section] }, items: [] };
+      const { container, review } = renderWithReview(<><article class="doc"><SectionView section={section} num="1" /></article><CommentsList /></>, loaded);
+      act(() => startCompose(review.current.dispatch));
+      fireEvent.input(container.querySelector('.composer textarea')!, { target: { value: 'Draft to preserve' } });
+      act(() => review.current.dispatch({ type: 'reload', loaded: revised }));
+      expect(screen.getByText('The text this comment was on changed')).toBeTruthy();
+      expect(button('Comment')).toHaveProperty('disabled', true);
+      expect(container.querySelector('.is-pending')).toBeNull();
+      fireEvent.click(button('Re-attach'));
+      expect(document.activeElement).toBe(button('Comment on this paragraph'));
+      fireEvent.click(button('Comment on this paragraph'));
+      expect(screen.queryByText('The text this comment was on changed')).toBeNull();
+      expect(container.querySelector<HTMLTextAreaElement>('.composer textarea')!.value).toBe('Draft to preserve');
+      expect(button('Comment')).toHaveProperty('disabled', false);
+      fireEvent.click(button('Comment'));
+      expect(review.current.state.review.threads[0]).toMatchObject({ sectionId: section.id, anchor: lineAnchor(0, ['Replacement text.']) });
+      expect(review.current.state.review.threads[0].comments[0].body).toBe('Draft to preserve');
+    });
+
     it('appears at the top while composing, with the section and the quoted block text', () => {
       const { container, review } = renderList();
       expect(container.querySelector('.composer')).toBeNull();

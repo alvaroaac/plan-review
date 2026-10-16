@@ -257,10 +257,19 @@ describe('formatReviewOutput (v2)', () => {
 
   it('includes the plan path in the resume command when the review has one', () => {
     expect(formatPausedNotice(makeReview({ planPath: '/w/plan.md' }), [])).toContain(
-      'Resume with: plan-review /w/plan.md --review rv_8f3a',
+      "Resume with: plan-review '/w/plan.md' --review rv_8f3a",
     );
-    expect(formatPausedNotice(makeReview({ planPath: '/w/my plan.md' }), [])).toContain(
-      "Resume with: plan-review '/w/my plan.md' --review rv_8f3a",
+  });
+
+  it.each([
+    ['spaces', '/w/my plan.md', "'/w/my plan.md'"],
+    ['a semicolon', '/w/a;rm -rf x.md', "'/w/a;rm -rf x.md'"],
+    ['${IFS}', '/w/a${IFS}b.md', "'/w/a${IFS}b.md'"],
+    ['command substitution', '/w/$(touch pwned).md', "'/w/$(touch pwned).md'"],
+    ['apostrophes', "/w/it's.md", "'/w/it'\\''s.md'"],
+  ])('shell-quotes a plan path containing %s in the resume command', (_name, planPath, quoted) => {
+    expect(formatPausedNotice(makeReview({ planPath }), [])).toContain(
+      `Resume with: plan-review ${quoted} --review rv_8f3a`,
     );
   });
 

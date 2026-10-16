@@ -7,7 +7,7 @@ import {
   type ReviewAction,
   type ReviewState,
 } from '../src/state/reducer.js';
-import { mockLoaded } from './test-utils.js';
+import { lineAnchor, mockLoaded } from './test-utils.js';
 
 const NOW = '2026-10-15T12:00:00.000Z';
 
@@ -240,7 +240,7 @@ describe('reviewReducer — ui', () => {
     expect(next.ui.composing).toMatchObject({ sectionId: '1.1' });
   });
 
-  it('reload clears focus on a vanished item or thread and composing in a vanished section', () => {
+  it('reload clears vanished focus but preserves a detached draft in a vanished section', () => {
     const loaded = mockLoaded();
     const withoutTask1 = {
       ...loaded,
@@ -251,11 +251,45 @@ describe('reviewReducer — ui', () => {
     s = reviewReducer(s, { type: 'startCompose', sectionId: '1.1', anchor: null });
     let next = reviewReducer(s, { type: 'reload', loaded: withoutTask1 });
     expect(next.ui.focus).toBeNull();
-    expect(next.ui.composing).toBeNull();
+    expect(next.ui.composing).toMatchObject({ sectionId: '1.1', detached: true });
 
     s = reviewReducer(stateWith([thread]), { type: 'focus', target: { kind: 'thread', id: thread.id } });
     next = reviewReducer(s, { type: 'reload', loaded: mockLoaded() });
     expect(next.ui.focus).toBeNull();
+  });
+
+  it.each([false, true])('reload follows composer text when sections shift, paragraph inserted=%s', (insertParagraph) => {
+    const loaded = mockLoaded({ items: [] });
+    const original = { id: 'section-1', heading: 'Tests', level: 2, body: 'Original text.' };
+    let state = initReviewState({ ...loaded, document: { ...loaded.document, sections: [original] } }, 'light');
+    state = reviewReducer(state, { type: 'startCompose', sectionId: original.id, anchor: lineAnchor(0, ['Original text.']) });
+    state = reviewReducer(state, { type: 'composeBody', body: 'Keep my draft' });
+    const beforeReload = state.ui.composing!;
+    const sections = [
+      { id: 'section-1', heading: 'Introduction', level: 2, body: 'New content.' },
+      { ...original, id: 'section-2', body: insertParagraph ? 'Before.\n\nOriginal text.' : original.body },
+    ];
+    state = reviewReducer(state, { type: 'reload', loaded: { ...loaded, document: { ...loaded.document, sections } } });
+    const composing = state.ui.composing!;
+    expect(composing).toMatchObject({ sectionId: 'section-2', anchor: lineAnchor(insertParagraph ? 1 : 0, ['Original text.']), body: 'Keep my draft' });
+    expect(composing.detached).not.toBe(true);
+    state = reviewReducer(state, { type: 'addThread', ...beforeReload });
+    expect(state.review.threads[0]).toMatchObject({ sectionId: 'section-2', anchor: composing.anchor });
+  });
+
+  it('keeps an unresolved composer detached and unpostable until a new block is selected', () => {
+    let state = reviewReducer(stateWith(), { type: 'startCompose', sectionId: '1.1', anchor: lineAnchor(0, ['Bold and code']) });
+    state = reviewReducer(state, { type: 'composeBody', body: 'Keep this draft' });
+    const loaded = mockLoaded();
+    state = reviewReducer(state, { type: 'reload', loaded: {
+      ...loaded, document: { ...loaded.document, sections: loaded.document.sections.map((section) => ({ ...section, body: 'Replaced.' })) },
+    } });
+    expect(state.ui.composing).toMatchObject({ body: 'Keep this draft', detached: true });
+    expect(reviewReducer(state, { type: 'addThread', ...state.ui.composing! })).toBe(state);
+    state = reviewReducer(state, { type: 'startCompose', sectionId: '1.2', anchor: lineAnchor(0, ['Replaced.']) });
+    expect(state.ui.composing).toEqual({ sectionId: '1.2', anchor: lineAnchor(0, ['Replaced.']), body: 'Keep this draft' });
+    state = reviewReducer(state, { type: 'addThread', ...state.ui.composing! });
+    expect(state.review.threads[0].comments[0].body).toBe('Keep this draft');
   });
 });
 

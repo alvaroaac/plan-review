@@ -10,6 +10,7 @@ import type {
   ThreadComment,
 } from '@plan-review/core';
 import { newCommentId, newThreadId } from '@plan-review/core/review';
+import { findLineRun, renderToLineBlocks } from '@plan-review/core/items';
 import type { Theme } from '../theme.js';
 import { isListed } from '../threads.js';
 
@@ -27,7 +28,7 @@ export interface ReviewState {
     filter: ThreadFilter;
     focus: FocusTarget | null;
     /** The open composer; its body is kept here so moving it to another block keeps the text. */
-    composing: { sectionId: string; anchor: LineAnchor | null; body: string } | null;
+    composing: { sectionId: string; anchor: LineAnchor | null; body: string; detached?: boolean } | null;
     theme: Theme;
     submitOpen: boolean;
     submitted: { output: string } | null;
@@ -108,10 +109,12 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
       if (!state.ui.composing) return state;
       return withUi(state, { composing: { ...state.ui.composing, body: action.body } });
     case 'addThread': {
+      if (state.ui.composing?.detached) return state;
+      const target = state.ui.composing ?? action;
       const thread: Thread = {
         id: newThreadId(),
-        sectionId: action.sectionId,
-        anchor: action.anchor,
+        sectionId: target.sectionId,
+        anchor: target.anchor,
         resolved: false,
         outdated: false,
         createdRound: state.review.round,
@@ -159,16 +162,43 @@ export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewS
 // The new round may drop the focused item or thread, or the section being commented on.
 function reload(state: ReviewState, loaded: LoadedReview): ReviewState {
   const next = { ...state, ...fromLoaded(loaded) };
-  const { focus, composing } = state.ui;
+  const { focus } = state.ui;
   const focusExists = !focus || (focus.kind === 'item'
     ? next.items.some((i) => i.id === focus.id)
     : next.review.threads.some((t) => t.id === focus.id));
-  const composingExists = !composing || next.doc.sections.some((s) => s.id === composing.sectionId);
   return withUi(next, {
     focus: focusExists ? focus : null,
-    composing: composingExists ? composing : null,
+    composing: reanchorComposer(state, next),
     tab: next.items.length === 0 ? 'comments' : state.ui.tab,
   });
+}
+
+function reanchorComposer(previous: ReviewState, next: ReviewState): ReviewState['ui']['composing'] {
+  const composing = previous.ui.composing;
+  if (!composing) return null;
+  const oldSection = previous.doc.sections.find((section) => section.id === composing.sectionId);
+  const ordinal = previous.doc.sections.filter((section) => section.heading === oldSection?.heading)
+    .findIndex((section) => section.id === composing.sectionId);
+  const preferred = next.doc.sections.filter((section) => section.heading === oldSection?.heading)[ordinal];
+  if (!composing.anchor) {
+    return preferred ? { ...composing, sectionId: preferred.id, detached: false } : { ...composing, detached: true };
+  }
+  const { anchor } = composing;
+  const sections = preferred ? [preferred, ...next.doc.sections.filter((section) => section !== preferred)] : next.doc.sections;
+  for (const section of sections) {
+    const itemIds = new Set(next.items.filter((item) => item.sectionId === section.id).map((item) => item.id));
+    const blocks = renderToLineBlocks(section.body, itemIds);
+    const range = findLineRun(blocks, anchor.lineTexts, anchor);
+    if (!range) continue;
+    return {
+      ...composing, sectionId: section.id, detached: false,
+      anchor: {
+        ...anchor, startLine: range.start, endLine: range.end,
+        lineTexts: blocks.slice(range.start, range.end + 1).map((block) => block.text),
+      },
+    };
+  }
+  return { ...composing, detached: true };
 }
 
 function fromLoaded(loaded: LoadedReview): Omit<ReviewState, 'ui'> {

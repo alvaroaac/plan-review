@@ -35,6 +35,8 @@ export function extractItems(doc: PlanDocument): ExtractResult {
     }
     let offset = 0;
     let keptFrom = 0;
+    let lineStart = 0; // body offset of the last computed line number
+    let lineNumber = 1;
     let body = '';
     for (const token of marked.lexer(section.body)) {
       const start = offsets[offset];
@@ -43,7 +45,9 @@ export function extractItems(doc: PlanDocument): ExtractResult {
       const info: string[] = (token.lang ?? '').trim().split(/\s+/);
       const kind = info[0];
       if (kind !== 'decision' && kind !== 'assumption' && kind !== 'reply') continue;
-      const line = section.body.slice(0, start).split(/\r\n|\r|\n/).length;
+      lineNumber += section.body.slice(lineStart, start).split(/\r\n|\r|\n/).length - 1;
+      lineStart = start;
+      const line = lineNumber;
       if (kind === 'reply') {
         body += section.body.slice(keptFrom, start);
         keptFrom = offsets[offset];

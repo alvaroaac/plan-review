@@ -4,7 +4,7 @@ import type { LoadedReview } from '@plan-review/core';
 import { DocView } from '../src/components/DocView.js';
 import { renderMermaidBlocks } from '../src/mermaid.js';
 import { renderMathBlocks } from '../src/katex.js';
-import { answer, decisionItem, mockLoaded, renderWithReview } from './test-utils.js';
+import { answer, decisionItem, lineAnchor, mockLoaded, renderWithReview, thread } from './test-utils.js';
 
 vi.mock('../src/mermaid.js', () => ({ renderMermaidBlocks: vi.fn(async () => {}) }));
 vi.mock('../src/katex.js', () => ({ renderMathBlocks: vi.fn(async () => {}) }));
@@ -47,6 +47,19 @@ describe('DocView', () => {
   it('renders every section', () => {
     const { container } = renderDoc();
     expect(Array.from(container.querySelectorAll('[id^="sec-"]'), (h) => h.id)).toEqual(['sec-milestone-1', 'sec-1.1', 'sec-1.2']);
+  });
+
+  it('highlights only the stored second occurrence of a repeated paragraph', () => {
+    const base = mockLoaded();
+    const { container } = renderDoc({
+      items: [],
+      document: { ...base.document, sections: [{ id: 'section-1', heading: 'Tests', level: 2, body: 'Same.\n\nBetween.\n\nSame.' }] },
+    }, { threads: [thread('repeated', 'section-1', lineAnchor(2, ['Same.']))] });
+    const paragraphs = container.querySelectorAll('.para');
+    expect(paragraphs[0].querySelector('.hl')).toBeNull();
+    expect(paragraphs[2].querySelector('#hl-repeated')).not.toBeNull();
+    expect(container.querySelectorAll('.hl')).toHaveLength(1);
+    expect(container.querySelectorAll('#hl-repeated')).toHaveLength(1);
   });
 
   describe('banners', () => {

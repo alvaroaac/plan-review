@@ -31,10 +31,17 @@ describe('messageHandlers.saveProgress', () => {
     const panel = createMessageHandlers({ reviewStore: f.store });
     const loaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown });
     await panel.saveProgress({ answers: {}, threads: [thread(loaded.document.sections[0].id)] });
-    const moved = '# Plan\n\n## New section\nOriginal text.\n';
+    const moved = '# Plan\n\n## Introduction\n\nNew content.\n\n## New section\n\nA new paragraph.\n\nOriginal text.\n';
     const reloaded = await panel.loadDocument({ planFsPath: f.planFsPath, markdown: moved });
     expect(reloaded.review.id).toBe(loaded.review.id);
-    expect(reloaded.review.threads[0]).toMatchObject({ sectionId: reloaded.document.sections[0].id, outdated: false });
+    const destination = reloaded.document.sections[1].id;
+    expect(destination).not.toBe(loaded.document.sections[0].id);
+    const expected = {
+      sectionId: destination, outdated: false,
+      anchor: { type: 'lines', startLine: 1, endLine: 1, lineTexts: ['Original text.'] },
+    };
+    expect(reloaded.review.threads[0]).toMatchObject(expected);
+    expect((await f.store.get(loaded.review.id))?.threads[0]).toMatchObject(expected);
     expect((await f.store.get(loaded.review.id))?.threads).toEqual(reloaded.review.threads);
   });
 
