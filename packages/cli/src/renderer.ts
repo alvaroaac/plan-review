@@ -1,11 +1,12 @@
 import { marked } from 'marked';
+import type { Tokens } from 'marked';
 import { markedTerminal } from 'marked-terminal';
 import chalk from 'chalk';
-import type { Section, PlanDocument } from '@plan-review/core';
+import type { Section, PlanDocument, ReviewItem } from '@plan-review/core';
 
 marked.use(markedTerminal());
 
-export function renderSection(section: Section): string {
+export function renderSection(section: Section, items: ReviewItem[] = []): string {
   const parts: string[] = [];
 
   if (section.level === 3 && section.dependencies) {
@@ -14,11 +15,54 @@ export function renderSection(section: Section): string {
   }
 
   const heading = `${'#'.repeat(section.level)} ${section.heading}`;
-  const body = section.body || '';
-  const markdown = `${heading}\n\n${body}`;
-  parts.push(marked.parse(markdown) as string);
+  parts.push(renderBody(`${heading}\n\n${section.body || ''}`, items.filter((item) => item.sectionId === section.id)));
 
   return parts.join('\n');
+}
+
+// Valid item fences become text blocks; everything else goes through marked.
+function renderBody(markdown: string, items: ReviewItem[]): string {
+  const itemsById = new Map(items.map((item) => [item.id, item]));
+  const rendered: string[] = [];
+  let pending = '';
+  const flush = (): void => {
+    if (pending.trim()) rendered.push(marked.parse(pending) as string);
+    pending = '';
+  };
+  for (const token of marked.lexer(markdown)) {
+    const item = token.type === 'code' ? itemForFence(token as Tokens.Code, itemsById) : undefined;
+    if (item) {
+      flush();
+      rendered.push(renderItem(item));
+    } else {
+      pending += token.raw;
+    }
+  }
+  flush();
+  return rendered.join('\n');
+}
+
+function itemForFence(token: Tokens.Code, itemsById: Map<string, ReviewItem>): ReviewItem | undefined {
+  const info = (token.lang ?? '').trim().split(/\s+/);
+  if (token.codeBlockStyle === 'indented' || (info[0] !== 'decision' && info[0] !== 'assumption')) return undefined;
+  const id = info.find((part) => part.startsWith('id='))?.slice(3);
+  if (id === undefined) return undefined;
+  const item = itemsById.get(id);
+  // The extractor accepts at most the first occurrence of an id.
+  if (item) itemsById.delete(id);
+  return item;
+}
+
+function renderItem(item: ReviewItem): string {
+  const isDecision = item.kind === 'decision';
+  const lines = [
+    chalk.bold.magenta(`${isDecision ? '◆ DECISION' : '◇ ASSUMPTION'} ${item.label}`),
+    item.question,
+    ...(item.options ?? []).map((option) =>
+      `  ${option.key}. ${option.text}${option.detail ? ` — ${option.detail}` : ''}${option.pick ? " (author's pick)" : ''}`),
+    ...(item.context ? [chalk.dim(item.context)] : []),
+  ];
+  return lines.join('\n') + '\n';
 }
 
 function renderMetadataHeader(section: Section): string {

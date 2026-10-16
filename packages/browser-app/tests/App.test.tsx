@@ -1,559 +1,305 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/preact';
-import { FakeReviewClient } from '@plan-review/core';
+import { FakeReviewClient } from '@plan-review/core/client';
 import type { ReviewClient } from '@plan-review/core';
 import { App } from '../src/App.js';
-import { mockPlanDoc } from './test-utils.js';
+import { answer, assumptionItem, decisionItem, mockLoaded, thread } from './test-utils.js';
+
+const THEME_KEY = 'plan-review-theme';
+
+function mockColorScheme(dark: boolean) {
+  window.matchMedia = vi.fn((query: string) => ({
+    matches: dark && query === '(prefers-color-scheme: dark)',
+    media: query,
+  })) as unknown as typeof window.matchMedia;
+}
+
+async function renderLoaded(client: ReviewClient = new FakeReviewClient({ loaded: mockLoaded() })) {
+  const utils = render(<App client={client} />);
+  await waitFor(() => expect(utils.container.querySelector('header.top')).toBeTruthy());
+  return utils;
+}
+
+const html = () => document.documentElement;
 
 describe('App', () => {
   beforeEach(() => {
-    window.HTMLElement.prototype.scrollIntoView = vi.fn();
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(null, { status: 204 }));
+    localStorage.clear();
+    mockColorScheme(false);
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    document.body.className = '';
+    html().removeAttribute('data-theme');
   });
 
-  // ── Basic rendering ────────────────────────────────────────────────────────
-
-  it('shows loading state initially', () => {
+  it('shows a loading state until the document arrives', () => {
     const client: ReviewClient = {
-      loadDocument: () => new Promise(() => {}), // never resolves
-      saveSession: async () => {},
-      submitReview: async () => ({ ok: true }),
+      loadDocument: () => new Promise(() => {}),
+      saveProgress: async () => {},
+      submitReview: async () => ({ ok: true, output: '' }),
     };
     render(<App client={client} />);
     expect(screen.getByText('Loading...')).toBeTruthy();
   });
 
-  it('fetches and renders document', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    render(<App client={client} />);
-    await waitFor(() => expect(screen.getByText('Test Plan')).toBeTruthy());
-  });
-
-  it('renders three panels after load', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-    expect(container.querySelector('.toc-panel')).toBeTruthy();
-    expect(container.querySelector('.content-area')).toBeTruthy();
-    expect(container.querySelector('.comment-sidebar')).toBeTruthy();
-  });
-
-  it('shows mode badge', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    render(<App client={client} />);
-    await waitFor(() => expect(screen.getByText('plan')).toBeTruthy());
-  });
-
-  it('shows error state on fetch failure', async () => {
+  it('shows the error when loading fails', async () => {
     const client: ReviewClient = {
       loadDocument: () => Promise.reject(new Error('Network error')),
-      saveSession: async () => {},
-      submitReview: async () => ({ ok: true }),
+      saveProgress: async () => {},
+      submitReview: async () => ({ ok: true, output: '' }),
     };
     render(<App client={client} />);
-    await waitFor(() => expect(screen.getByText(/Error:/)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Error: Network error')).toBeTruthy());
   });
 
-  it('hydrates sidebar from restored session comments', async () => {
-    const restoredComments = [
-      { sectionId: '1.1', text: 'persisted one', timestamp: new Date('2026-04-15') },
-      { sectionId: '1.2', text: 'persisted two', timestamp: new Date('2026-04-15') },
-    ];
-    const client: ReviewClient = {
-      loadDocument: async () => ({
-        document: mockPlanDoc,
-        contentHash: 'sha256:test',
-        restoredSession: { comments: restoredComments, activeSection: null, stale: false },
-      }),
-      saveSession: async () => {},
-      submitReview: async () => ({ ok: true }),
-    };
-
-    render(<App client={client} />);
-
-    // Comments sidebar shows both rehydrated entries.
-    await waitFor(() => expect(screen.getByText('persisted one')).toBeTruthy());
-    expect(screen.getByText('persisted two')).toBeTruthy();
-    expect(screen.getByText('Comments (2)')).toBeTruthy();
-  });
-
-  it('does not save stale restored comments during initial hydration', async () => {
-    vi.useFakeTimers();
-
-    try {
-      const saves: unknown[] = [];
-      const client: ReviewClient = {
-        loadDocument: async () => ({
-          document: mockPlanDoc,
-          contentHash: 'hash-new',
-          restoredSession: {
-            comments: [
-              { sectionId: '1.1', text: 'stale restored comment', timestamp: new Date('2026-04-15') },
-            ],
-            activeSection: '1.1',
-            stale: true,
-          },
-        }),
-        saveSession: async (session) => { saves.push(session); },
-        submitReview: async () => ({ ok: true }),
-      };
-
-      render(<App client={client} />);
-
-      await waitFor(() => expect(screen.getByText('stale restored comment')).toBeTruthy());
-      expect(screen.getByText(/comments may no longer match/i)).toBeTruthy();
-
-      await vi.advanceTimersByTimeAsync(600);
-      window.dispatchEvent(new Event('beforeunload'));
-      await Promise.resolve();
-
-      expect(saves).toHaveLength(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('does not create an empty saved session for an untouched document load', async () => {
-    vi.useFakeTimers();
-
-    try {
-      const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-abc' });
-
-      render(<App client={client} />);
-      await waitFor(() => screen.getByText('Test Plan'));
-
-      await vi.advanceTimersByTimeAsync(600);
-      window.dispatchEvent(new Event('beforeunload'));
-      await Promise.resolve();
-
-      expect(client.sessionSaves).toHaveLength(0);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('autosaves the first user comment after stale restored hydration', async () => {
-    vi.useFakeTimers();
-
-    try {
-      const saves: Array<{
-        comments: Array<{ text: string }>;
-        contentHash: string;
-      }> = [];
-      const client: ReviewClient = {
-        loadDocument: async () => ({
-          document: mockPlanDoc,
-          contentHash: 'hash-new',
-          restoredSession: {
-            comments: [
-              { sectionId: '1.1', text: 'stale restored comment', timestamp: new Date('2026-04-15') },
-            ],
-            activeSection: '1.1',
-            stale: true,
-          },
-        }),
-        saveSession: async (session) => { saves.push(session); },
-        submitReview: async () => ({ ok: true }),
-      };
-
-      render(<App client={client} />);
-
-      await waitFor(() => expect(screen.getByText('stale restored comment')).toBeTruthy());
-
-      const links = screen.getAllByText('Add comment to entire section');
-      fireEvent.click(links[0]);
-      const textarea = screen.getByPlaceholderText('Add a comment...');
-      fireEvent.input(textarea, { target: { value: 'first real edit' } });
-      fireEvent.click(screen.getByText('Add'));
-      await waitFor(() => expect(screen.getByText('first real edit')).toBeTruthy());
-
-      await vi.advanceTimersByTimeAsync(600);
-
-      expect(saves).toHaveLength(1);
-      expect(saves[0].contentHash).toBe('hash-new');
-      expect(saves[0].comments.map((comment) => comment.text)).toEqual([
-        'stale restored comment',
-        'first real edit',
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('keeps submit button enabled when no comments so reviewers can approve', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-    const btn = screen.getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
-    expect(btn.disabled).toBe(false);
-  });
-
-  // ── Gap 1: Full add-comment flow (section-level) ───────────────────────────
-
-  it('full section-level comment flow: click link → input → add → sidebar updates', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
+  it('retries a failed load', async () => {
+    const loadDocument = vi.fn()
+      .mockRejectedValueOnce(new Error('Network error'))
+      .mockResolvedValueOnce(mockLoaded());
+    const client: ReviewClient = { loadDocument, saveProgress: async () => {}, submitReview: async () => ({ ok: true, output: '' }) };
     const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    // Click "Add comment to entire section" on the first reviewable section (1.1 = Task 1)
-    const links = screen.getAllByText('Add comment to entire section');
-    fireEvent.click(links[0]);
-
-    // CommentInput opens in sidebar with section-level label
-    const textarea = screen.getByPlaceholderText('Add a comment...');
-    expect(screen.getByText('Commenting on entire section:')).toBeTruthy();
-
-    // Section 1.1 gets being-commented highlight
-    expect(container.querySelector('#section-1\\.1')?.classList.contains('being-commented')).toBe(true);
-
-    // Type a comment and submit
-    fireEvent.input(textarea, { target: { value: 'Looks good' } });
-    fireEvent.click(screen.getByText('Add'));
-
-    // Comment card appears in sidebar
-    await waitFor(() => expect(screen.getByText('Looks good')).toBeTruthy());
-    expect(screen.getByText('Comments (1)')).toBeTruthy();
-    expect(screen.getByText('Entire section')).toBeTruthy();
-
-    // being-commented cleared after submission
-    expect(container.querySelector('.section-view.being-commented')).toBeNull();
-
-    // Submit button is now enabled
-    const submitBtn = screen.getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
-    expect(submitBtn.disabled).toBe(false);
+    await waitFor(() => expect(screen.getByText('Error: Network error')).toBeTruthy());
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await waitFor(() => expect(container.querySelector('header.top')).toBeTruthy());
+    expect(loadDocument).toHaveBeenCalledTimes(2);
   });
 
-  // ── Gap 2: Line range selection end-to-end ─────────────────────────────────
-
-  it('full line-anchored comment flow: gutter click → shift-click → input → add → sidebar', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    // Section 1.1 body is "**Bold** and `code`" — renders as 1 paragraph LineBlock
-    const gutters = container.querySelectorAll('#section-1\\.1 .line-gutter');
-    expect(gutters.length).toBeGreaterThan(0);
-
-    // First click: sets rangeStart, range-start-hint appears
-    fireEvent.click(gutters[0]);
-    expect(container.querySelector('.range-start-hint')).toBeTruthy();
-
-    // Shift-click same gutter: single-line selection confirmed
-    fireEvent.click(gutters[0], { shiftKey: true });
-
-    // CommentInput opens with line-anchored label (line 1, 1-indexed)
-    expect(screen.getByText('Commenting on line 1:')).toBeTruthy();
-    // range-start-hint cleared after selection confirmed
-    expect(container.querySelector('.range-start-hint')).toBeNull();
-
-    // Type and submit
-    const textarea = screen.getByPlaceholderText('Add a comment...');
-    fireEvent.input(textarea, { target: { value: 'Anchored comment' } });
-    fireEvent.click(screen.getByText('Add'));
-
-    // Anchored comment card appears in sidebar
-    await waitFor(() => expect(screen.getByText('Anchored comment')).toBeTruthy());
-    expect(screen.getByText('Line 1')).toBeTruthy();
-    expect(screen.getByText('Comments (1)')).toBeTruthy();
-
-    // The commented line gets ◆ gutter marker
-    const gutter = container.querySelector('#section-1\\.1 .line-gutter');
-    expect(gutter?.textContent).toBe('◆');
+  it('renders the top bar with brand, plan title crumb, theme toggle and Submit review', async () => {
+    const { container } = await renderLoaded();
+    const top = container.querySelector('header.top')!;
+    expect(top.querySelector('.brand')!.textContent).toBe('plan-review');
+    expect(top.querySelector('.crumb b')!.textContent).toBe('Test Plan');
+    expect(screen.getByRole('button', { name: 'Toggle theme' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Submit review' })).toBeTruthy();
   });
 
-  // ── Gap 3: Delete + submit sequence ────────────────────────────────────────
+  it('renders the three-column grid: contents, document, rail', async () => {
+    const { container } = await renderLoaded();
+    const main = container.querySelector('.app > .main')!;
+    expect(main.children).toHaveLength(3);
+    expect(main.children[0].matches('nav.index')).toBe(true);
+    expect(main.children[1].matches('.scroll')).toBe(true);
+    expect(main.children[1].querySelector('article.doc')).toBeTruthy();
+    expect(main.children[2].matches('aside.side')).toBe(true);
+  });
 
-  async function addSectionComment(linkIndex: number, text: string) {
-    const links = screen.getAllByText('Add comment to entire section');
-    fireEvent.click(links[linkIndex]);
-    const textarea = screen.getByPlaceholderText('Add a comment...');
-    fireEvent.input(textarea, { target: { value: text } });
-    fireEvent.click(screen.getByText('Add'));
-    await waitFor(() => expect(screen.getByText(text)).toBeTruthy());
-  }
+  it('Submit review toggles the submit popover', async () => {
+    await renderLoaded();
+    const btn = screen.getByRole('button', { name: 'Submit review' });
+    expect(btn.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(btn);
+    expect(btn.getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByRole('dialog', { name: 'Submit review' })).toBeTruthy();
+    fireEvent.click(btn);
+    expect(screen.queryByRole('dialog', { name: 'Submit review' })).toBeNull();
+  });
 
-  it('delete removes correct comment and submit sends remaining comments', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
+  it('closes the submit popover on a click outside it', async () => {
+    const { container } = await renderLoaded();
+    fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
+    fireEvent.mouseDown(container.querySelector('article.doc')!);
+    expect(screen.queryByRole('dialog', { name: 'Submit review' })).toBeNull();
+  });
 
-    render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
+  it('shows the stepper in the top bar between the crumb and the theme toggle', async () => {
+    const { container } = await renderLoaded();
+    const children = Array.from(container.querySelector('header.top')!.children);
+    const stepper = children.findIndex((el) => el.matches('.stepper'));
+    expect(children[stepper - 1].matches('.sp')).toBe(true);
+    expect(children[stepper + 1].matches('.sp')).toBe(true);
+    expect(children[stepper - 2].matches('.crumb')).toBe(true);
+  });
 
-    // Add two comments
-    await addSectionComment(0, 'First comment');
-    await addSectionComment(0, 'Second comment');
-    expect(screen.getByText('Comments (2)')).toBeTruthy();
+  it('hides the stepper when the plan has no items', async () => {
+    const { container } = await renderLoaded(new FakeReviewClient({ loaded: mockLoaded({ items: [] }) }));
+    expect(container.querySelector('.stepper')).toBeNull();
+  });
 
-    // Delete the first comment
-    const deleteButtons = screen.getAllByText('Delete');
-    fireEvent.click(deleteButtons[0]);
+  it('renders the contents and the document', async () => {
+    const { container } = await renderLoaded();
+    expect(container.querySelectorAll('nav.index .idx-row')).toHaveLength(3);
+    expect(container.querySelector('article.doc h1.doc-title')!.textContent).toBe('Test Plan');
+  });
 
-    // Only second comment remains
-    expect(screen.queryByText('First comment')).toBeNull();
-    expect(screen.getByText('Second comment')).toBeTruthy();
-    expect(screen.getByText('Comments (1)')).toBeTruthy();
-
-    // Submit — client.submitReview should carry only the remaining comment
-    const submitBtn = screen.getByText(/Submit Review/i).closest('button') as HTMLButtonElement;
-    expect(submitBtn.disabled).toBe(false);
-    fireEvent.click(submitBtn);
-    fireEvent.click(screen.getByLabelText(/Approve/i));
-    fireEvent.click(screen.getByText('Submit'));
-
+  it('marks the section scrolled past the top as active in the contents', async () => {
+    const { container } = await renderLoaded();
+    const scroll = container.querySelector<HTMLElement>('.main > .scroll')!;
+    const tops: Record<string, number> = { 'sec-milestone-1': -300, 'sec-1.1': 100, 'sec-1.2': 400 };
+    for (const [id, top] of Object.entries(tops)) {
+      document.getElementById(id)!.getBoundingClientRect = () => ({ top } as DOMRect);
+    }
+    // The scroll listener is attached in an effect, which runs after paint.
     await waitFor(() => {
-      expect(client.submits).toHaveLength(1);
-      expect(client.submits[0]).toEqual({
-        comments: [expect.objectContaining({ text: 'Second comment' })],
-        verdict: 'approved',
-        summary: '',
+      fireEvent.scroll(scroll);
+      expect(container.querySelector('.idx-row.on .idx-t')!.textContent).toBe('Task 1');
+    });
+  });
+
+  describe('theme', () => {
+    it('defaults to prefers-color-scheme', async () => {
+      mockColorScheme(true);
+      await renderLoaded();
+      expect(html().dataset.theme).toBe('dark');
+    });
+
+    it('prefers the stored theme over prefers-color-scheme', async () => {
+      mockColorScheme(true);
+      localStorage.setItem(THEME_KEY, 'light');
+      await renderLoaded();
+      expect(html().dataset.theme).toBe('light');
+    });
+
+    it('applies the theme while still loading', () => {
+      localStorage.setItem(THEME_KEY, 'dark');
+      const client: ReviewClient = {
+        loadDocument: () => new Promise(() => {}),
+        saveProgress: async () => {},
+        submitReview: async () => ({ ok: true, output: '' }),
+      };
+      render(<App client={client} />);
+      expect(html().dataset.theme).toBe('dark');
+    });
+
+    it('toggle flips data-theme and persists the choice', async () => {
+      await renderLoaded();
+      expect(html().dataset.theme).toBe('light');
+      expect(localStorage.getItem(THEME_KEY)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }));
+      expect(html().dataset.theme).toBe('dark');
+      expect(localStorage.getItem(THEME_KEY)).toBe('dark');
+    });
+
+    it('survives localStorage throwing', async () => {
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('denied'); });
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('denied'); });
+      mockColorScheme(true);
+      await renderLoaded();
+      expect(html().dataset.theme).toBe('dark');
+      fireEvent.click(screen.getByRole('button', { name: 'Toggle theme' }));
+      expect(html().dataset.theme).toBe('light');
+    });
+
+    it('inside VS Code ignores the stored theme and follows the body class', async () => {
+      localStorage.setItem(THEME_KEY, 'light');
+      document.body.className = 'vscode-dark';
+      await renderLoaded();
+      expect(html().dataset.theme).toBe('dark');
+    });
+
+    it('inside VS Code hides the toggle, tracks body class changes and stores nothing', async () => {
+      document.body.className = 'vscode-dark';
+      await renderLoaded();
+      expect(screen.queryByRole('button', { name: 'Toggle theme' })).toBeNull();
+
+      document.body.className = 'vscode-light';
+      await waitFor(() => expect(html().dataset.theme).toBe('light'));
+      expect(localStorage.getItem(THEME_KEY)).toBeNull();
+    });
+  });
+
+  describe('submit', () => {
+    const answered = () => {
+      const base = mockLoaded();
+      return mockLoaded({
+        review: {
+          ...base.review,
+          answers: { 'retry-backoff': answer(decisionItem, 'B'), 'auth-latency': answer(assumptionItem, 'no') },
+          threads: [thread('t_1', '1.1', null)],
+        },
+      });
+    };
+
+    async function submitWith(client: ReviewClient, verdict: 'Approve' | 'Request changes', summary = '') {
+      await renderLoaded(client);
+      fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
+      if (summary) fireEvent.input(document.querySelector('.submit-pop textarea')!, { target: { value: summary } });
+      fireEvent.click(screen.getByRole('button', { name: verdict }));
+    }
+
+    it('on success shows the submitted view and a toast summing up the review', async () => {
+      await submitWith(new FakeReviewClient({ loaded: answered() }), 'Approve');
+      await waitFor(() => expect(screen.getByRole('heading', { name: 'Review submitted' })).toBeTruthy());
+      expect(screen.getByText('You can close this tab.')).toBeTruthy();
+      expect(document.querySelector('header.top')).toBeNull();
+      expect(document.querySelector('.toast')!.textContent).toBe('Review sent · 2 answered, 1 assumption flagged, 1 comment');
+    });
+
+    it('omits item counts from the toast for a plan without items', async () => {
+      await submitWith(new FakeReviewClient({ loaded: mockLoaded({ items: [] }) }), 'Approve');
+      await waitFor(() => expect(document.querySelector('.toast')!.textContent).toBe('Review sent'));
+    });
+
+    describe('on failure', () => {
+      const failing = (loaded = answered()): ReviewClient => ({
+        loadDocument: async () => loaded,
+        saveProgress: async () => {},
+        submitReview: () => Promise.reject(new Error('Submit cancelled — no destination chosen.')),
+      });
+
+      it('shows the error and the review formatted from the current state', async () => {
+        await submitWith(failing(), 'Request changes', 'Rethink the retries');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        expect(screen.getByText('Submit cancelled — no destination chosen.')).toBeTruthy();
+        const text = document.querySelector<HTMLTextAreaElement>('textarea.submit-failure-review')!.value;
+        expect(text).toContain('# Plan Review: Test Plan');
+        expect(text).toContain('Review `rv_abc12345` · Round 2 · **Changes requested**');
+        expect(text).toContain('Rethink the retries');
+        expect(text).toContain('### `retry-backoff` · Retry backoff — **B**: Circuit breaker');
+      });
+
+      it('keeps the heartbeat alive while the failure is shown, so the server does not exit', async () => {
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        await new Promise((r) => setTimeout(r, 50)); // let the shell's effects settle
+        vi.mocked(fetch).mockClear();
+        document.dispatchEvent(new Event('visibilitychange'));
+        expect(fetch).toHaveBeenCalledWith('/api/heartbeat', expect.anything());
+      });
+
+      it('copies the review to the clipboard', async () => {
+        const writeText = vi.fn(async () => {});
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Copy review to clipboard' }));
+        await waitFor(() => expect(screen.getByText('Copied')).toBeTruthy());
+        expect(writeText).toHaveBeenCalledWith(document.querySelector<HTMLTextAreaElement>('textarea.submit-failure-review')!.value);
+      });
+
+      it('says so when the clipboard is unavailable', async () => {
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText: () => Promise.reject(new Error('denied')) }, configurable: true });
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Copy review to clipboard' }));
+        await waitFor(() => expect(screen.getByText('Could not copy. Select the review below.')).toBeTruthy());
+      });
+
+      it('Back to review returns to the review with its answers and threads intact', async () => {
+        await submitWith(failing(), 'Approve');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+        expect(screen.queryByRole('heading', { name: 'Submit failed' })).toBeNull();
+        expect(document.querySelector('header.top')).toBeTruthy();
+        expect(document.querySelector('.side .tab.on')!.textContent).toContain('Decisions');
+        const answers = Array.from(document.querySelectorAll('.side .item-card .answer'), (a) => a.textContent);
+        expect(answers).toHaveLength(2);
+        expect(answers[0]).toContain('B · Circuit breaker');
+        expect(answers[1]).toContain("Doesn't hold");
+        fireEvent.click(screen.getByRole('tab', { name: /Comments/ }));
+        expect(document.querySelectorAll('.side .thread')).toHaveLength(1);
+      });
+
+      it('Back to review restores the summary in the submit popover', async () => {
+        await submitWith(failing(), 'Request changes', 'Rethink the retries');
+        await waitFor(() => expect(screen.getByRole('heading', { name: 'Submit failed' })).toBeTruthy());
+        fireEvent.click(screen.getByRole('button', { name: 'Back to review' }));
+        fireEvent.click(screen.getByRole('button', { name: 'Submit review' }));
+        expect(document.querySelector<HTMLTextAreaElement>('.submit-pop textarea')!.value).toBe('Rethink the retries');
       });
     });
-
-    // Submitted state shown
-    await waitFor(() => expect(screen.getByText(/Review submitted/)).toBeTruthy());
-  });
-
-  it('shows a copyable review recovery screen when submit fails', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(navigator, 'clipboard', {
-      configurable: true,
-      value: { writeText },
-    });
-    const client: ReviewClient = {
-      loadDocument: async () => ({ document: mockPlanDoc }),
-      saveSession: async () => {},
-      submitReview: async () => {
-        throw new Error('submit failed');
-      },
-    };
-
-    render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    await addSectionComment(0, 'Do not lose this');
-
-    fireEvent.click(screen.getByText(/Submit Review/i));
-    fireEvent.click(screen.getByLabelText(/Approve/i));
-    fireEvent.click(screen.getByText('Submit'));
-
-    await waitFor(() => expect(screen.getByText('Submit failed')).toBeTruthy());
-    expect(screen.getByText('Copy the review and paste it into your agent session.')).toBeTruthy();
-    expect(screen.queryByText(/Submit Review/i)).toBeNull();
-    expect(screen.queryByText(/^Error:/)).toBeNull();
-
-    const reviewText = (screen.getByDisplayValue(/Do not lose this/) as HTMLTextAreaElement).value;
-    expect(reviewText).toContain('# Plan Review: Test Plan');
-    expect(reviewText).toContain('Do not lose this');
-
-    fireEvent.click(screen.getByText('Copy review to clipboard'));
-    await waitFor(() => expect(writeText).toHaveBeenCalledWith(reviewText));
-    expect(screen.getByText('Copied')).toBeTruthy();
-  });
-
-  // ── Gap 4: Navigation + active section sync ────────────────────────────────
-
-  it('clicking TOC item marks the correct SectionView as active', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    // Initially no section is active
-    expect(container.querySelector('.section-view.active')).toBeNull();
-
-    // Click "Task 2" TOC item (use toc-panel scope to avoid matching the h2 in the content area)
-    const tocPanel = container.querySelector('.toc-panel')!;
-    const tocItems = tocPanel.querySelectorAll('.toc-heading');
-    const task2TocItem = Array.from(tocItems).find((el) => el.textContent === 'Task 2')!;
-    fireEvent.click(task2TocItem);
-
-    // Section 1.2 has .active class; section 1.1 does not
-    expect(container.querySelector('#section-1\\.2')?.classList.contains('active')).toBe(true);
-    expect(container.querySelector('#section-1\\.1')?.classList.contains('active')).toBe(false);
-
-    // scrollIntoView was called on the section element
-    expect(window.HTMLElement.prototype.scrollIntoView).toHaveBeenCalled();
-
-    // Navigate to Task 1 — active switches
-    const task1TocItem = Array.from(tocPanel.querySelectorAll('.toc-heading')).find(
-      (el) => el.textContent === 'Task 1',
-    )!;
-    fireEvent.click(task1TocItem);
-    expect(container.querySelector('#section-1\\.1')?.classList.contains('active')).toBe(true);
-    expect(container.querySelector('#section-1\\.2')?.classList.contains('active')).toBe(false);
-  });
-
-  it('section gains being-commented class while comment input is open', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc });
-    const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    // Before clicking: no section is being-commented
-    expect(container.querySelector('.section-view.being-commented')).toBeNull();
-
-    // Open comment input on Task 1 (1.1)
-    const links = screen.getAllByText('Add comment to entire section');
-    fireEvent.click(links[0]);
-
-    // Section 1.1 is highlighted as being-commented
-    expect(container.querySelector('#section-1\\.1')?.classList.contains('being-commented')).toBe(true);
-    // Section 1.2 is not
-    expect(container.querySelector('#section-1\\.2')?.classList.contains('being-commented')).toBe(false);
-
-    // Cancel the comment input
-    fireEvent.click(screen.getByText('Cancel'));
-
-    // being-commented class removed
-    expect(container.querySelector('.section-view.being-commented')).toBeNull();
-  });
-
-  // ── Auto-save session on comment change ──────────────────────────────────
-
-  it('calls client.saveSession after adding a comment', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-abc' });
-
-    render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    // Add a section-level comment
-    const links = screen.getAllByText('Add comment to entire section');
-    fireEvent.click(links[0]);
-    const textarea = screen.getByPlaceholderText('Add a comment...');
-    fireEvent.input(textarea, { target: { value: 'Test auto-save' } });
-    fireEvent.click(screen.getByText('Add'));
-    await waitFor(() => expect(screen.getByText('Test auto-save')).toBeTruthy());
-
-    // Wait for debounce (500ms) + margin
-    await new Promise((r) => setTimeout(r, 600));
-
-    // Verify saveSession was called with the new comment + contentHash from loadDocument
-    expect(client.sessionSaves.length).toBeGreaterThan(0);
-    const lastSave = client.sessionSaves[client.sessionSaves.length - 1];
-    expect(lastSave.comments).toHaveLength(1);
-    expect(lastSave.comments[0].text).toBe('Test auto-save');
-    expect(lastSave.contentHash).toBe('hash-abc');
-  });
-
-  it('flushes the pending debounced save on beforeunload', async () => {
-    vi.useFakeTimers();
-
-    try {
-      const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-abc' });
-
-      render(<App client={client} />);
-      await waitFor(() => screen.getByText('Test Plan'));
-
-      const links = screen.getAllByText('Add comment to entire section');
-      fireEvent.click(links[0]);
-      const textarea = screen.getByPlaceholderText('Add a comment...');
-      fireEvent.input(textarea, { target: { value: 'Flush me' } });
-      fireEvent.click(screen.getByText('Add'));
-      await waitFor(() => expect(screen.getByText('Flush me')).toBeTruthy());
-
-      expect(client.sessionSaves).toHaveLength(0);
-      window.dispatchEvent(new Event('beforeunload'));
-      await Promise.resolve();
-
-      expect(client.sessionSaves).toHaveLength(1);
-      expect(client.sessionSaves[0]).toMatchObject({ contentHash: 'hash-abc' });
-      expect(client.sessionSaves[0].comments[0].text).toBe('Flush me');
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it('swallows autosave failures without scheduling an async rethrow', async () => {
-    vi.useFakeTimers();
-
-    try {
-      let saveAttempts = 0;
-      const client: ReviewClient = {
-        loadDocument: async () => ({ document: mockPlanDoc, contentHash: 'hash-abc' }),
-        saveSession: async () => {
-          saveAttempts += 1;
-          throw new Error('autosave failed');
-        },
-        submitReview: async () => ({ ok: true }),
-      };
-
-      render(<App client={client} />);
-      await waitFor(() => screen.getByText('Test Plan'));
-
-      const links = screen.getAllByText('Add comment to entire section');
-      fireEvent.click(links[0]);
-      const textarea = screen.getByPlaceholderText('Add a comment...');
-      fireEvent.input(textarea, { target: { value: 'Best effort' } });
-      fireEvent.click(screen.getByText('Add'));
-      await waitFor(() => expect(screen.getByText('Best effort')).toBeTruthy());
-
-      await vi.advanceTimersByTimeAsync(600);
-
-      expect(saveAttempts).toBe(1);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  function fireMessage(data: unknown) {
-    // jsdom's MessageEvent constructor strips unknown init keys — define `data` manually.
-    const ev = new Event('message') as MessageEvent;
-    Object.defineProperty(ev, 'data', { value: data });
-    window.dispatchEvent(ev);
-  }
-
-  it('shows stale banner when host broadcasts planChanged with a different hash', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-orig' });
-    const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-    // Let the contentHash effect register its listener after state settles.
-    await new Promise((r) => setTimeout(r, 50));
-
-    // No banner yet.
-    expect(container.querySelector('.banner-warn')).toBeNull();
-
-    // Simulate the extension host posting a planChanged event with a new hash.
-    fireMessage({ kind: 'event', type: 'planChanged', newContentHash: 'hash-new' });
-
-    await waitFor(() => expect(container.querySelector('.banner-warn')).toBeTruthy());
-  });
-
-  it('ignores planChanged event when newContentHash matches the loaded hash', async () => {
-    const client = new FakeReviewClient({ document: mockPlanDoc, contentHash: 'hash-same' });
-    const { container } = render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-    await new Promise((r) => setTimeout(r, 50));
-
-    fireMessage({ kind: 'event', type: 'planChanged', newContentHash: 'hash-same' });
-
-    // Give any state update a tick, then confirm no banner.
-    await new Promise((r) => setTimeout(r, 20));
-    expect(container.querySelector('.banner-warn')).toBeNull();
-  });
-
-  it('does not saveSession when loadDocument did not supply contentHash', async () => {
-    // Stub client that omits contentHash from loadDocument result.
-    const saves: unknown[] = [];
-    const client: ReviewClient = {
-      loadDocument: async () => ({ document: mockPlanDoc }),
-      saveSession: async (s) => { saves.push(s); },
-      submitReview: async () => ({ ok: true as const }),
-    };
-
-    render(<App client={client} />);
-    await waitFor(() => screen.getByText('Test Plan'));
-
-    const links = screen.getAllByText('Add comment to entire section');
-    fireEvent.click(links[0]);
-    const textarea = screen.getByPlaceholderText('Add a comment...');
-    fireEvent.input(textarea, { target: { value: 'Hash-less' } });
-    fireEvent.click(screen.getByText('Add'));
-    await waitFor(() => expect(screen.getByText('Hash-less')).toBeTruthy());
-
-    await new Promise((r) => setTimeout(r, 600));
-
-    // No saveSession should have fired because contentHash is unknown.
-    expect(saves).toHaveLength(0);
   });
 });

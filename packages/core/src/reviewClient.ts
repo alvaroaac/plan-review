@@ -1,28 +1,17 @@
-import type { PlanDocument, ReviewComment, ReviewSubmission } from './types.js';
-
-export interface SessionState {
-  comments: ReviewComment[];
-  activeSection: string | null;
-  contentHash: string;
-}
+import type { LoadedReview, ProgressUpdate, SubmitRequest } from './types.js';
 
 export interface ReviewClient {
-  loadDocument(): Promise<{
-    document: PlanDocument;
-    contentHash?: string;
-    restoredSession?: { comments: ReviewComment[]; activeSection: string | null; stale: boolean };
-  }>;
-  saveSession(state: SessionState): Promise<void>;
-  submitReview(submission: ReviewSubmission): Promise<{ ok: true }>;
+  loadDocument(): Promise<LoadedReview>;
+  /** `keepalive` asks the transport to let this save outlive the page (the beforeunload save). */
+  saveProgress(update: ProgressUpdate, opts?: { keepalive?: boolean }): Promise<void>;
+  submitReview(req: SubmitRequest): Promise<{ ok: true; output: string }>;
 }
 
 export class FakeReviewClient implements ReviewClient {
-  readonly sessionSaves: SessionState[] = [];
-  readonly submits: ReviewSubmission[] = [];
-  constructor(private readonly opts: { document: PlanDocument; contentHash?: string }) {}
-  async loadDocument() {
-    return { document: this.opts.document, contentHash: this.opts.contentHash };
-  }
-  async saveSession(state: SessionState) { this.sessionSaves.push(state); }
-  async submitReview(submission: ReviewSubmission) { this.submits.push(submission); return { ok: true as const }; }
+  readonly progressSaves: ProgressUpdate[] = [];
+  readonly submits: SubmitRequest[] = [];
+  constructor(private readonly opts: { loaded: LoadedReview }) {}
+  async loadDocument() { return this.opts.loaded; }
+  async saveProgress(update: ProgressUpdate) { this.progressSaves.push(update); }
+  async submitReview(req: SubmitRequest) { this.submits.push(req); return { ok: true as const, output: '' }; }
 }

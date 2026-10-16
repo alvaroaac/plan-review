@@ -1,34 +1,30 @@
 import type { Server } from 'node:http';
-import type { PlanDocument, ReviewComment, ReviewSubmission } from '@plan-review/core';
+import type { LoadedReview, ProgressUpdate, SubmitRequest } from '@plan-review/core';
 import { createReviewServer, startServer, stopServer } from './server/server.js';
 import { getAssetHtml } from './server/assets.js';
 
-export type { ReviewSubmission, ReviewVerdict } from '@plan-review/core';
-
 export interface Transport {
-  sendDocument(doc: PlanDocument): void;
-  onReviewSubmit(handler: (submission: ReviewSubmission) => void): void;
+  setLoaded(loaded: LoadedReview): void;
+  onProgress(handler: (update: ProgressUpdate) => Promise<void>): void;
+  onSubmit(handler: (request: SubmitRequest) => Promise<string>): void;
+  onSubmitFinished(handler: () => void): void;
   start(port: number): Promise<{ url: string }>;
   stop(): Promise<void>;
 }
 
 export class HttpTransport implements Transport {
-  private doc: PlanDocument | null = null;
-  private initialActiveSection: string | null = null;
+  private loaded: LoadedReview | null = null;
   private assetBaseDir: string | null = null;
-  private submitHandler: ((submission: ReviewSubmission) => void) | null = null;
-  private sessionSaveHandler: ((comments: ReviewComment[], activeSection: string | null) => void) | null = null;
+  private progressHandler: ((update: ProgressUpdate) => Promise<void>) | null = null;
+  private submitHandler: ((request: SubmitRequest) => Promise<string>) | null = null;
+  private submitFinishedHandler: (() => void) | null = null;
   private heartbeatHandler: (() => void) | null = null;
   private pauseHandler: (() => void) | null = null;
   private cancelHandler: (() => void) | null = null;
   private server: Server | null = null;
 
-  sendDocument(doc: PlanDocument): void {
-    this.doc = doc;
-  }
-
-  setInitialActiveSection(section: string | null): void {
-    this.initialActiveSection = section;
+  setLoaded(loaded: LoadedReview): void {
+    this.loaded = loaded;
   }
 
   // Plan-file directory used to serve relative images via /_assets/<rel>.
@@ -37,12 +33,16 @@ export class HttpTransport implements Transport {
     this.assetBaseDir = dir;
   }
 
-  onReviewSubmit(handler: (submission: ReviewSubmission) => void): void {
+  onProgress(handler: (update: ProgressUpdate) => Promise<void>): void {
+    this.progressHandler = handler;
+  }
+
+  onSubmit(handler: (request: SubmitRequest) => Promise<string>): void {
     this.submitHandler = handler;
   }
 
-  onSessionSave(handler: (comments: ReviewComment[], activeSection: string | null) => void): void {
-    this.sessionSaveHandler = handler;
+  onSubmitFinished(handler: () => void): void {
+    this.submitFinishedHandler = handler;
   }
 
   onHeartbeat(handler: () => void): void {
@@ -58,15 +58,17 @@ export class HttpTransport implements Transport {
   }
 
   async start(port: number): Promise<{ url: string }> {
-    if (!this.doc) throw new Error('No document set');
+    if (!this.loaded) throw new Error('No review loaded');
 
     this.server = createReviewServer({
-      getDocument: () => this.doc!,
-      getInitialActiveSection: () => this.initialActiveSection,
+      getLoaded: () => this.loaded!,
       getAssetBaseDir: () => this.assetBaseDir,
-      onSubmit: (submission) => this.submitHandler?.(submission),
       getAssetHtml: () => getAssetHtml(),
-      onSessionSave: (comments, activeSection) => this.sessionSaveHandler?.(comments, activeSection),
+      onProgress: async (update) => {
+        await this.progressHandler?.(update);
+      },
+      onSubmit: async (request) => (await this.submitHandler?.(request)) ?? '',
+      onSubmitFinished: () => this.submitFinishedHandler?.(),
       onHeartbeat: () => this.heartbeatHandler?.(),
       onPause: () => this.pauseHandler?.(),
       onCancel: () => this.cancelHandler?.(),

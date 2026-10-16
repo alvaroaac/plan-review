@@ -1,4 +1,8 @@
-import type { PlanDocument } from '@plan-review/core';
+import { h, type ComponentChildren } from 'preact';
+import { render } from '@testing-library/preact';
+import type { Answer, LineAnchor, LoadedReview, PlanDocument, ReviewItem, Thread } from '@plan-review/core';
+import { FakeReviewClient, type ReviewClient } from '@plan-review/core/client';
+import { ReviewProvider, useReview } from '../src/state/ReviewContext.js';
 
 export const mockPlanDoc: PlanDocument = {
   title: 'Test Plan',
@@ -20,13 +24,65 @@ export const mockPlanDoc: PlanDocument = {
   comments: [],
 };
 
-export const mockGenericDoc: PlanDocument = {
-  title: 'Generic Doc',
-  metadata: {},
-  mode: 'generic',
-  sections: [
-    { id: 'section-1', heading: 'Section One', level: 2, body: 'First section' },
-    { id: 'section-2', heading: 'Section Two', level: 2, body: 'Second section' },
+export const decisionItem: ReviewItem = {
+  id: 'retry-backoff',
+  kind: 'decision',
+  label: 'Retry backoff',
+  question: 'How should retries back off?',
+  options: [
+    { key: 'A', text: 'Exponential', pick: true },
+    { key: 'B', text: 'Circuit breaker', detail: 'after 90 s', pick: false },
   ],
-  comments: [],
+  sectionId: '1.1',
+  hash: 'h-retry',
 };
+
+export const assumptionItem: ReviewItem = {
+  id: 'auth-latency',
+  kind: 'assumption',
+  label: 'Auth server latency',
+  question: 'The auth server answers within 200 ms.',
+  sectionId: '1.2',
+  hash: 'h-latency',
+};
+
+export function mockLoaded(overrides: Partial<LoadedReview> = {}): LoadedReview {
+  return {
+    document: mockPlanDoc,
+    items: [decisionItem, assumptionItem],
+    warnings: [],
+    review: { id: 'rv_abc12345', round: 2, status: 'open', updatedAt: '2026-10-15T09:00:00.000Z', answers: {}, threads: [] },
+    ...overrides,
+  };
+}
+
+export function answer(item: ReviewItem, choice: string, hash = item.hash): Answer {
+  return { choice, note: '', itemHash: hash, round: 1, updatedAt: '2026-10-15T10:00:00.000Z' };
+}
+
+export function thread(id: string, sectionId: string, anchor: LineAnchor | null, patch: Partial<Thread> = {}): Thread {
+  return {
+    id, sectionId, anchor, resolved: false, outdated: false, createdRound: 1,
+    comments: [{ id: `c-${id}`, author: 'reviewer', body: 'Comment', createdAt: '2026-10-15T10:00:00.000Z' }],
+    ...patch,
+  };
+}
+
+export function lineAnchor(startLine: number, lineTexts: string[]): LineAnchor {
+  return { type: 'lines', startLine, endLine: startLine + lineTexts.length - 1, lineTexts };
+}
+
+/** Renders `ui` inside a ReviewProvider; `review.current` always holds the latest state and dispatch. */
+export function renderWithReview(
+  ui: ComponentChildren,
+  loaded: LoadedReview = mockLoaded(),
+  client: ReviewClient = new FakeReviewClient({ loaded }),
+) {
+  const review = {} as { current: ReturnType<typeof useReview> };
+  function Probe() {
+    review.current = useReview();
+    return null;
+  }
+  const utils = render(h(ReviewProvider, { client, loaded, theme: 'light', children: [h(Probe, null), ui] }));
+  return { ...utils, review };
+}

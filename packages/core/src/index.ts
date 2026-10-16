@@ -2,6 +2,9 @@ export * from './types.js';
 export * from './parser.js';
 export * from './formatter.js';
 export * from './reviewClient.js';
+export * from './reviewModel.js';
+export * from './items.js';
+export * from './rounds.js';
 export {
   computeContentHash,
   DEFAULT_SESSION_DIR,
@@ -11,6 +14,12 @@ export {
   type SessionMeta,
   type SessionStore,
 } from './session.js';
+export {
+  DEFAULT_REVIEW_DIR,
+  FileReviewStore,
+  isReview,
+  type ReviewStore,
+} from './reviewStore.js';
 export {
   createAutosave,
   type Autosave,

@@ -13,6 +13,18 @@
       "types": "./dist/formatter.d.ts",
       "default": "./dist/formatter.js"
     },
+    "./items": {
+      "types": "./dist/items.d.ts",
+      "default": "./dist/items.js"
+    },
+    "./review": {
+      "types": "./dist/reviewModel.d.ts",
+      "default": "./dist/reviewModel.js"
+    },
+    "./client": {
+      "types": "./dist/reviewClient.d.ts",
+      "default": "./dist/reviewClient.js"
+    },
     "./autosave": {
       "types": "./dist/autosave.d.ts",
       "default": "./dist/autosave.js"
@@ -27,11 +39,16 @@
     "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json"
   },
   "dependencies": {
-    "marked": "^15.0.12"
+    "entities": "^6.0.1",
+    "marked": "^15.0.12",
+    "marked-footnote": "^1.4.0"
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
     "typescript": "^6.0.2",
     "vitest": "^4.1.4"
+  },
+  "engines": {
+    "node": ">=20"
   }
 }

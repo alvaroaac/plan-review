@@ -1,32 +1,29 @@
 import { describe, it, expect } from 'vitest';
 import { FakeReviewClient } from '../src/reviewClient.js';
-import type { PlanDocument, ReviewComment, ReviewSubmission } from '../src/types.js';
+import type { LoadedReview, ProgressUpdate, SubmitRequest } from '../src/types.js';
 
-const doc: PlanDocument = {
-  title: 'T',
-  metadata: {},
-  mode: 'generic',
-  sections: [],
-  comments: [],
+const loaded: LoadedReview = {
+  document: { title: 'T', metadata: {}, mode: 'generic', sections: [], comments: [] },
+  items: [],
+  warnings: [],
+  review: { id: 'rv_abc12345', round: 1, status: 'open', updatedAt: '2026-10-15T09:00:00.000Z', answers: {}, threads: [] },
 };
 
 describe('FakeReviewClient', () => {
-  it('returns the document supplied at construction', async () => {
-    const client = new FakeReviewClient({ document: doc });
-    await expect(client.loadDocument()).resolves.toEqual({ document: doc, contentHash: undefined });
+  it('returns the loaded review supplied at construction', async () => {
+    const client = new FakeReviewClient({ loaded });
+    await expect(client.loadDocument()).resolves.toBe(loaded);
   });
 
-  it('records session saves', async () => {
-    const client = new FakeReviewClient({ document: doc });
-    await client.saveSession({ comments: [], activeSection: null, contentHash: 'h' });
-    expect(client.sessionSaves).toHaveLength(1);
-  });
-
-  it('records submits and resolves ok', async () => {
-    const client = new FakeReviewClient({ document: doc });
-    const comments: ReviewComment[] = [{ sectionId: 's1', text: 'hi', timestamp: new Date() }];
-    const submission: ReviewSubmission = { comments, verdict: 'approved', summary: 'LGTM' };
-    await expect(client.submitReview(submission)).resolves.toEqual({ ok: true });
-    expect(client.submits).toEqual([submission]);
+  it('records progress saves and submits in order', async () => {
+    const client = new FakeReviewClient({ loaded });
+    const first: ProgressUpdate = { answers: {}, threads: [] };
+    const second: ProgressUpdate = { answers: {}, threads: [] };
+    const submit: SubmitRequest = { verdict: 'approved', summary: 'LGTM' };
+    await client.saveProgress(first);
+    await expect(client.submitReview(submit)).resolves.toEqual({ ok: true, output: '' });
+    await client.saveProgress(second);
+    expect(client.progressSaves).toEqual([first, second]);
+    expect(client.submits).toEqual([submit]);
   });
 });

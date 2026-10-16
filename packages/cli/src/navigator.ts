@@ -1,9 +1,19 @@
 import * as readline from 'node:readline';
 import chalk from 'chalk';
-import type { PlanDocument, ReviewComment, Section } from '@plan-review/core';
+import type { PlanDocument, ReviewComment, ReviewItem, Section } from '@plan-review/core';
 import { renderSection, renderToc } from './renderer.js';
 
-export async function navigate(doc: PlanDocument, inputFromStdin: boolean = false, onCommentChange?: () => void): Promise<PlanDocument> {
+export interface NavigateOptions {
+  items?: ReviewItem[];
+  onApprove?: () => void;
+}
+
+export async function navigate(
+  doc: PlanDocument,
+  inputFromStdin: boolean = false,
+  onCommentChange?: () => void | Promise<void>,
+  { items = [], onApprove }: NavigateOptions = {},
+): Promise<PlanDocument> {
   // When input was read from stdin, stdin is exhausted.
   // Open /dev/tty directly for interactive prompts.
   const ttyInput = inputFromStdin
@@ -27,18 +37,21 @@ export async function navigate(doc: PlanDocument, inputFromStdin: boolean = fals
   while (running) {
     console.error(renderToc(doc));
     const input = await ask(
-      chalk.cyan('> Enter section (e.g. 1.1), \'all\' for linear review, or \'done\' to finish: '),
+      chalk.cyan('> Enter section (e.g. 1.1), \'all\' for linear review, \'done\' to submit as changes requested, \'approve\' to approve: '),
     );
 
     if (input === 'done' || input === 'q') {
       running = false;
+    } else if (input === 'approve') {
+      onApprove?.();
+      running = false;
     } else if (input === 'all') {
-      await linearReview(doc, reviewableSections, ask, onCommentChange);
+      await linearReview(doc, reviewableSections, ask, items, onCommentChange);
     } else {
       const section = findSection(doc, input);
       if (section) {
         const startIdx = reviewableSections.indexOf(section);
-        await linearReview(doc, reviewableSections.slice(startIdx), ask, onCommentChange);
+        await linearReview(doc, reviewableSections.slice(startIdx), ask, items, onCommentChange);
       } else {
         console.error(chalk.red(`Section "${input}" not found. Try again.`));
       }
@@ -54,11 +67,12 @@ async function linearReview(
   doc: PlanDocument,
   sections: Section[],
   ask: (prompt: string) => Promise<string>,
-  onCommentChange?: () => void,
+  items: ReviewItem[],
+  onCommentChange?: () => void | Promise<void>,
 ): Promise<void> {
   for (let i = 0; i < sections.length; i++) {
     const section = sections[i];
-    console.error(renderSection(section));
+    console.error(renderSection(section, items));
 
     const input = await ask(
       chalk.cyan('> Comment (enter to skip, \'toc\' for menu, \'back\' for previous): '),
@@ -75,7 +89,7 @@ async function linearReview(
         text: input,
         timestamp: new Date(),
       });
-      onCommentChange?.();
+      await onCommentChange?.();
     }
   }
 }

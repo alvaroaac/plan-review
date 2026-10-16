@@ -1,243 +1,254 @@
 // @vitest-environment jsdom
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/preact';
-import { SectionView } from '../src/SectionView.js';
-import type { Section } from '@plan-review/core';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { act, fireEvent } from '@testing-library/preact';
+import type { LoadedReview, ReviewItem, Section, Thread } from '@plan-review/core';
+import { SectionView } from '../src/components/SectionView.js';
+import { CommentsList } from '../src/components/CommentsList.js';
+import * as highlight from '../src/highlight.js';
+import {
+  answer, assumptionItem, decisionItem, lineAnchor, mockLoaded, mockPlanDoc, renderWithReview, thread,
+} from './test-utils.js';
 
-const planTask: Section = {
-  id: '1.1',
-  heading: 'Create schema',
-  level: 3,
-  body: '**Bold text** and `inline code`',
-  parent: 'milestone-1',
-  dependencies: { dependsOn: ['1.0'], blocks: ['1.2'] },
-  verification: 'npm test',
-  relatedFiles: ['src/schema.ts'],
-};
+const PARA_1 = 'We need to settle how token refresh retries back off when the auth server degrades.';
+const PARA_2 = 'Every browser exposes **SubtleCrypto** for challenges.';
 
-const milestone: Section = {
-  id: 'milestone-1',
-  heading: 'Foundation',
-  level: 2,
-  body: 'Setup work for the feature.',
-};
+const body = [
+  PARA_1,
+  '',
+  '```decision id=retry-backoff',
+  'question: How should retries back off?',
+  '```',
+  '',
+  PARA_2,
+  '',
+  '```assumption id=auth-latency',
+  'statement: x',
+  '```',
+].join('\n');
 
-const genericSection: Section = {
-  id: 'section-1',
-  heading: 'Introduction',
-  level: 2,
-  body: 'Some introductory text.',
-};
+const section: Section = { id: '1.1', heading: 'Task 1', level: 3, body, parent: 'milestone-1' };
 
-const multiLineSection: Section = {
-  id: 'section-2',
-  heading: 'Multi-line',
-  level: 2,
-  body: 'First paragraph.\n\nSecond paragraph.\n\nThird paragraph.',
-};
+const decision: ReviewItem = { ...decisionItem, sectionId: '1.1', quote: 'how token refresh retries back off' };
+const assumption: ReviewItem = { ...assumptionItem, sectionId: '1.1' };
 
-const defaultProps = {
-  commentedLines: new Set<number>(),
-  onLineComment: vi.fn(),
-  onSectionComment: vi.fn(),
-};
+function loaded(items: ReviewItem[], patch: Partial<LoadedReview['review']> = {}, sectionBody = body): LoadedReview {
+  const base = mockLoaded();
+  return {
+    ...base,
+    document: { ...mockPlanDoc, sections: [{ ...section, body: sectionBody }] },
+    items,
+    review: { ...base.review, ...patch },
+  };
+}
+
+function renderSection(items: ReviewItem[] = [decision, assumption], patch: Partial<LoadedReview['review']> = {}, sectionBody = body) {
+  return renderWithReview(<SectionView section={{ ...section, body: sectionBody }} num="1.1" />, loaded(items, patch, sectionBody));
+}
 
 describe('SectionView', () => {
-  it('renders section heading', () => {
-    render(<SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />);
-    expect(screen.getByText('Create schema')).toBeTruthy();
-  });
+  beforeEach(() => vi.restoreAllMocks());
 
-  it('renders markdown body content', () => {
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />
+  it('caches highlights across composer typing and refreshes them for answers, focus and threads', () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const quote = vi.spyOn(highlight, 'markQuote');
+    const all = vi.spyOn(highlight, 'markAll');
+    const anchored = thread('cached', section.id, lineAnchor(0, [PARA_1]));
+    const { container, review } = renderWithReview(
+      <><SectionView section={section} num="1.1" /><CommentsList /></>, loaded([decision, assumption], { threads: [anchored] }),
     );
-    const bodyDiv = container.querySelector('.section-body');
-    expect(bodyDiv?.innerHTML).toContain('Bold text');
-    expect(bodyDiv?.innerHTML).toContain('inline code');
+    expect(quote).toHaveBeenCalled();
+    expect(all).toHaveBeenCalled();
+    const counts = () => [quote.mock.calls.length, all.mock.calls.length];
+    const initial = counts();
+    fireEvent.click(container.querySelector('.para-add')!);
+    expect(container.querySelector('.is-pending')).not.toBeNull();
+    const textarea = container.querySelector('.composer textarea')!;
+    for (const value of ['Draft', 'Draft with more text']) fireEvent.input(textarea, { target: { value } });
+    expect(review.current.state.ui.composing!.body).toBe('Draft with more text');
+    expect(counts()).toEqual(initial);
+
+    act(() => review.current.dispatch({ type: 'answer', itemId: decision.id, choice: 'A', note: '' }));
+    expect(quote.mock.calls.length).toBeGreaterThan(initial[0]);
+    expect(container.querySelector('#mk-retry-backoff')!.classList.contains('is-done')).toBe(true);
+    const answered = counts();
+    act(() => review.current.dispatch({ type: 'focus', target: { kind: 'thread', id: anchored.id } }));
+    expect(all.mock.calls.length).toBeGreaterThan(answered[1]);
+    expect(container.querySelector('#hl-cached')!.classList.contains('is-focus')).toBe(true);
+    const focused = counts();
+    act(() => review.current.dispatch({ type: 'reply', threadId: anchored.id, body: 'Another comment' }));
+    expect(quote.mock.calls.length).toBeGreaterThan(focused[0]);
+    expect(all.mock.calls.length).toBeGreaterThan(focused[1]);
+    act(() => review.current.dispatch({ type: 'resolve', threadId: anchored.id }));
+    expect(container.querySelector('#hl-cached')).toBeNull();
   });
 
-  it('shows dependency metadata in plan mode for tasks', () => {
-    render(<SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />);
-    expect(screen.getByText(/Depends on:/)).toBeTruthy();
-    expect(screen.getByText(/Blocks:/)).toBeTruthy();
-    expect(screen.getByText(/Verify:/)).toBeTruthy();
+  it('renders the section heading with its number', () => {
+    const { container } = renderSection();
+    const heading = container.querySelector('#sec-1\\.1')!;
+    expect(heading.textContent).toBe('1.1Task 1');
+    expect(heading.querySelector('.h2-num')!.textContent).toBe('1.1');
   });
 
-  it('hides metadata for milestones in plan mode', () => {
-    render(<SectionView section={milestone} mode="plan" isActive={false} {...defaultProps} />);
-    expect(screen.queryByText(/Depends on:/)).toBeNull();
+  it('renders level-2 sections as h2 and deeper ones as h3', () => {
+    const milestone: Section = { id: 'milestone-1', heading: 'Milestone 1', level: 2, body: 'Setup' };
+    const { container } = renderWithReview(<><SectionView section={milestone} num="01" /><SectionView section={section} num="1.1" /></>, loaded([]));
+    expect(container.querySelector('h2#sec-milestone-1')).toBeTruthy();
+    expect(container.querySelector('h3#sec-1\\.1')).toBeTruthy();
   });
 
-  it('hides metadata in generic mode', () => {
-    render(<SectionView section={genericSection} mode="generic" isActive={false} {...defaultProps} />);
-    expect(screen.queryByText(/Depends on:/)).toBeNull();
+  describe('quote highlights', () => {
+    it('wraps the first occurrence of the quote in a highlight with the item id', () => {
+      const { container } = renderSection();
+      const q = container.querySelector('#mk-retry-backoff')!;
+      expect(q.matches('.q.q-decision.is-open')).toBe(true);
+      expect(q.closest('.para')!.textContent).toContain(PARA_1.slice(0, 20));
+      expect(q.textContent).toBe('how token refresh retries back off?');
+    });
+
+    it.each([
+      ['open decision', decision, undefined, 'is-open', '?'],
+      ['open assumption', { ...assumption, quote: 'SubtleCrypto' }, undefined, 'is-open', 'A'],
+      ['done decision', decision, 'A', 'is-done', '✓'],
+      ['holding assumption', { ...assumption, quote: 'SubtleCrypto' }, 'holds', 'is-done', '✓'],
+      ['deferred item', decision, 'deferred', 'is-deferred', '–'],
+    ])('marks an %s with its state class and badge', (_name, item, choice, cls, badge) => {
+      const answers = choice ? { [item.id]: answer(item, choice) } : {};
+      const { container } = renderSection([item], { answers });
+      const marks = container.querySelectorAll(`[data-item="${item.id}"]`);
+      expect(marks[0].classList.contains(cls)).toBe(true);
+      expect(marks[marks.length - 1].querySelector('.q-badge')!.textContent).toBe(badge);
+    });
+
+    it('treats a changed item like an open one', () => {
+      const answers = { [decision.id]: answer(decision, 'A', 'old-hash') };
+      const { container } = renderSection([decision], { answers });
+      expect(container.querySelector('#mk-retry-backoff .q-badge')!.textContent).toBe('?');
+    });
+
+    it('highlights a quote that spans inline formatting', () => {
+      const item = { ...assumption, quote: 'exposes SubtleCrypto for' };
+      const { container } = renderSection([item]);
+      const marks = container.querySelectorAll('[data-item="auth-latency"]');
+      expect(Array.from(marks, (m) => m.textContent).join('')).toBe('exposes SubtleCrypto forA');
+      expect(container.querySelector('#mk-auth-latency')!.textContent).toBe('exposes ');
+    });
+
+    it('hides the item marker block once the quote is highlighted', () => {
+      const { container } = renderSection([decision]);
+      expect(container.querySelectorAll('#mk-retry-backoff')).toHaveLength(1);
+      expect(container.querySelector('.mk-chip')).toBeNull();
+    });
+
+    it('uses the nearest preceding paragraph that contains the quote', () => {
+      const md = ['Retry soon.', '', 'Then retry later.', '', '```decision id=retry-backoff', '```', '', 'After: retry.'].join('\n');
+      const { container } = renderSection([{ ...decision, quote: 'retry' }], {}, md);
+      expect(container.querySelector('#mk-retry-backoff')!.closest('.para')!.textContent).toBe('Then retry? later.');
+    });
+
+    it('matches the quote case-sensitively and falls back to a chip', () => {
+      const { container } = renderSection([{ ...decision, quote: 'How Token Refresh' }]);
+      expect(container.querySelector('.q:not(.mk-chip)')).toBeNull();
+      expect(container.querySelector('.mk-chip#mk-retry-backoff')).toBeTruthy();
+    });
+
+    it('renders a marker chip at the item position when there is no quote', () => {
+      const { container } = renderSection([decision, assumption]);
+      const chip = container.querySelector('#mk-auth-latency')!;
+      expect(chip.matches('.mk-chip.q-assumption.is-open')).toBe(true);
+      expect(chip.textContent).toBe('Auth server latencyA');
+      const paras = Array.from(container.querySelectorAll('.para, .mk-row'));
+      expect(paras.map((p) => p.classList.contains('mk-row'))).toEqual([false, false, true]);
+    });
+
+    it('renders a later fence repeating an item id as a visible code block', () => {
+      const repeated = `${body}\n\n\`\`\`assumption id=auth-latency\nstatement: repeated\n\`\`\``;
+      const { container } = renderSection([decision, assumption], {}, repeated);
+      expect(container.querySelectorAll('#mk-auth-latency')).toHaveLength(1);
+      expect(container.querySelector('pre code')!.textContent).toBe('statement: repeated');
+    });
+
+    it('outlines the focused item', () => {
+      const { container, review } = renderSection();
+      fireEvent.click(container.querySelector('#mk-auth-latency')!);
+      expect(container.querySelector('#mk-auth-latency')!.classList.contains('is-focus')).toBe(true);
+      expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'auth-latency' });
+    });
+
+    it('focuses the item and switches to the Decisions tab when a highlight is clicked', () => {
+      const { container, review } = renderSection();
+      review.current.dispatch({ type: 'setTab', tab: 'comments' });
+      fireEvent.click(container.querySelector('#mk-retry-backoff')!);
+      expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'retry-backoff' });
+      expect(review.current.state.ui.tab).toBe('decisions');
+    });
   });
 
-  it('shows "Add comment to entire section" for reviewable sections', () => {
-    render(<SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />);
-    expect(screen.getByText('Add comment to entire section')).toBeTruthy();
+  describe('thread highlights', () => {
+    const anchored = (patch: Partial<Thread> = {}) => thread('t1', '1.1', lineAnchor(0, [PARA_2.replace(/\*/g, '')]), patch);
+
+    it('highlights the anchored block of an open thread in amber', () => {
+      const { container } = renderSection([], { threads: [anchored()] });
+      const hl = container.querySelector('#hl-t1')!;
+      expect(hl.matches('.hl')).toBe(true);
+      expect(hl.closest('.para')!.textContent).toContain('SubtleCrypto');
+    });
+
+    it.each([
+      ['resolved', { resolved: true }],
+      ['outdated', { outdated: true }],
+    ])('does not highlight a %s thread', (_name, patch) => {
+      const { container } = renderSection([], { threads: [anchored(patch)] });
+      expect(container.querySelector('.hl')).toBeNull();
+    });
+
+    it('puts the scroll-target id only on the first block of a multi-block highlight', () => {
+      const t = thread('t1', '1.1', lineAnchor(0, ['Alpha line.', 'Beta line.']));
+      const { container } = renderSection([], { threads: [t] }, 'Alpha line.\n\nBeta line.');
+      expect(container.querySelectorAll('.hl')).toHaveLength(2);
+      expect(container.querySelectorAll('[id="hl-t1"]')).toHaveLength(1);
+      expect(container.querySelector('#hl-t1')!.textContent).toBe('Alpha line.');
+    });
+
+    it('does not fall back to the stored line range when the anchored text is gone', () => {
+      const t = thread('t1', '1.1', lineAnchor(0, ['Removed line.']));
+      const { container } = renderSection([], { threads: [t] }, 'Alpha line.\n\nBeta line.');
+      expect(container.querySelector('.hl')).toBeNull();
+    });
+
+    it('does not highlight a section-level thread', () => {
+      const { container } = renderSection([], { threads: [thread('t1', '1.1', null)] });
+      expect(container.querySelector('.hl')).toBeNull();
+    });
+
+    it('focuses the thread and switches to the Comments tab when clicked', () => {
+      const { container, review } = renderSection([], { threads: [anchored()] });
+      fireEvent.click(container.querySelector('#hl-t1')!);
+      expect(review.current.state.ui.focus).toEqual({ kind: 'thread', id: 't1' });
+      expect(review.current.state.ui.tab).toBe('comments');
+      expect(container.querySelector('#hl-t1')!.classList.contains('is-focus')).toBe(true);
+    });
   });
 
-  it('hides "Add comment to entire section" for milestones in plan mode', () => {
-    render(<SectionView section={milestone} mode="plan" isActive={false} {...defaultProps} />);
-    expect(screen.queryByText('Add comment to entire section')).toBeNull();
-  });
+  describe('composing', () => {
+    it('starts composing on a block when its + is clicked', () => {
+      const { container, review } = renderSection([]);
+      const add = container.querySelectorAll<HTMLButtonElement>('.para-add');
+      fireEvent.click(add[0]);
+      expect(review.current.state.ui.composing).toEqual({ sectionId: '1.1', anchor: lineAnchor(0, [PARA_1]), body: '' });
+      expect(review.current.state.ui.tab).toBe('comments');
+      expect(container.querySelectorAll('.para.is-pending')).toHaveLength(1);
+    });
 
-  it('shows "Add comment to entire section" for level 2 in generic mode', () => {
-    render(<SectionView section={genericSection} mode="generic" isActive={false} {...defaultProps} />);
-    expect(screen.getByText('Add comment to entire section')).toBeTruthy();
-  });
-
-  it('calls onSectionComment when "Add comment to entire section" clicked', () => {
-    const onSectionComment = vi.fn();
-    render(
-      <SectionView
-        section={planTask}
-        mode="plan"
-        isActive={false}
-        commentedLines={new Set()}
-        onLineComment={vi.fn()}
-        onSectionComment={onSectionComment}
-      />
-    );
-    fireEvent.click(screen.getByText('Add comment to entire section'));
-    expect(onSectionComment).toHaveBeenCalledWith('1.1');
-  });
-
-  it('shows range-start-hint after gutter click', () => {
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />
-    );
-    const gutter = container.querySelector('.line-gutter');
-    if (gutter) fireEvent.click(gutter);
-    expect(container.querySelector('.range-start-hint')).toBeTruthy();
-  });
-
-  it('calls onLineComment on shift-click after initial click', () => {
-    const onLineComment = vi.fn();
-    const { container } = render(
-      <SectionView
-        section={planTask}
-        mode="plan"
-        isActive={false}
-        commentedLines={new Set()}
-        onLineComment={onLineComment}
-        onSectionComment={vi.fn()}
-      />
-    );
-    const gutters = container.querySelectorAll('.line-gutter');
-    if (gutters.length > 0) {
-      fireEvent.click(gutters[0]);
-      fireEvent.click(gutters[0], { shiftKey: true });
-      expect(onLineComment).toHaveBeenCalledOnce();
-    }
-  });
-
-  it('applies being-commented class when pendingAnchor is null (section-level)', () => {
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} pendingAnchor={null} />
-    );
-    expect(container.querySelector('.section-view.being-commented')).toBeTruthy();
-  });
-
-  it('does not apply being-commented class when pendingAnchor is undefined', () => {
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />
-    );
-    expect(container.querySelector('.section-view.being-commented')).toBeNull();
-  });
-
-  it('marks pending lines with pending-comment class when pendingAnchor is set', () => {
-    const anchor = { type: 'lines' as const, startLine: 0, endLine: 0, lineTexts: ['Bold text and inline code'] };
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} pendingAnchor={anchor} />
-    );
-    expect(container.querySelector('.line-block.pending-comment')).toBeTruthy();
-    // section box itself should NOT have being-commented class
-    expect(container.querySelector('.section-view.being-commented')).toBeNull();
-  });
-
-  it('applies active class when isActive', () => {
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={true} {...defaultProps} />
-    );
-    expect(container.querySelector('.section-view.active')).toBeTruthy();
-  });
-
-  it('sets id attribute for scroll targeting', () => {
-    const { container } = render(
-      <SectionView section={planTask} mode="plan" isActive={false} {...defaultProps} />
-    );
-    expect(container.querySelector('#section-1\\.1')).toBeTruthy();
-  });
-
-  it('marks commented lines with hasComment prop', () => {
-    const { container } = render(
-      <SectionView
-        section={planTask}
-        mode="plan"
-        isActive={false}
-        commentedLines={new Set([0])}
-        onLineComment={vi.fn()}
-        onSectionComment={vi.fn()}
-      />
-    );
-    // First line block should have has-comment class
-    const firstBlock = container.querySelector('.line-block');
-    expect(firstBlock?.classList.contains('has-comment')).toBe(true);
-  });
-
-  it('shows in-range class on hovered line after gutter click (single-line preview)', () => {
-    const { container } = render(
-      <SectionView section={multiLineSection} mode="generic" isActive={false} {...defaultProps} />
-    );
-    const gutters = container.querySelectorAll('.line-gutter');
-    const blocks = container.querySelectorAll('.line-block');
-    // Click first gutter to set rangeStart
-    fireEvent.click(gutters[0]);
-    // Hover over same line — should show in-range
-    fireEvent.mouseEnter(blocks[0]);
-    expect(blocks[0].classList.contains('in-range')).toBe(true);
-  });
-
-  it('shows in-range on all lines between rangeStart and hovered line', () => {
-    const { container } = render(
-      <SectionView section={multiLineSection} mode="generic" isActive={false} {...defaultProps} />
-    );
-    const gutters = container.querySelectorAll('.line-gutter');
-    const blocks = container.querySelectorAll('.line-block');
-
-    // Click first gutter to set rangeStart=0
-    fireEvent.click(gutters[0]);
-    // Hover over third line — lines 0,1,2 should all be in-range
-    fireEvent.mouseEnter(blocks[2]);
-
-    expect(blocks[0].classList.contains('in-range')).toBe(true);
-    expect(blocks[1].classList.contains('in-range')).toBe(true);
-    expect(blocks[2].classList.contains('in-range')).toBe(true);
-  });
-
-  it('clears range state after shift-click confirms selection', () => {
-    const onLineComment = vi.fn();
-    const { container } = render(
-      <SectionView
-        section={multiLineSection}
-        mode="generic"
-        isActive={false}
-        commentedLines={new Set()}
-        onLineComment={onLineComment}
-        onSectionComment={vi.fn()}
-      />
-    );
-    const gutters = container.querySelectorAll('.line-gutter');
-
-    // Click first gutter, then shift-click third
-    fireEvent.click(gutters[0]);
-    fireEvent.click(gutters[2], { shiftKey: true });
-
-    expect(onLineComment).toHaveBeenCalledOnce();
-    // rangeStart should be cleared — no hint shown
-    expect(container.querySelector('.range-start-hint')).toBeNull();
+    it('extends the range with shift-click', () => {
+      const { container, review } = renderSection([]);
+      const add = container.querySelectorAll<HTMLButtonElement>('.para-add');
+      fireEvent.click(add[2]);
+      fireEvent.click(add[0], { shiftKey: true });
+      const anchor = review.current.state.ui.composing!.anchor!;
+      expect(anchor.startLine).toBe(0);
+      expect(anchor.endLine).toBe(2);
+      expect(anchor.lineTexts).toHaveLength(3);
+      expect(container.querySelectorAll('.para.is-pending')).toHaveLength(3);
+    });
   });
 });

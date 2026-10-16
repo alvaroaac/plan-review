@@ -18,6 +18,8 @@ If you use Claude Code, install the companion skill so you can say *"review this
 plan-review install-skill
 ```
 
+This copies the skill to `~/.claude/skills/plan-review/` and adds a short note to `~/.claude/CLAUDE.md` (between `<!-- plan-review:begin -->` and `<!-- plan-review:end -->` markers) telling Claude to draft specs and plans with open choices as plan-review decision blocks. Re-running it updates both in place.
+
 ## Quick start
 
 ```bash

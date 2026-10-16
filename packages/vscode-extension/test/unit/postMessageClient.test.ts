@@ -28,10 +28,30 @@ describe('PostMessageReviewClient', () => {
     await expect(p).resolves.toEqual({ document: { title: 't' } });
   });
 
+  it('sends v2 progress and resolves the acknowledgement', async () => {
+    const { sent, emit } = setupWindow();
+    const c = new PostMessageReviewClient();
+    const update = { answers: {}, threads: [] };
+    const p = c.saveProgress(update);
+    expect(sent[0]).toMatchObject({ method: 'saveProgress', params: update });
+    emit({ id: sent[0].id, kind: 'res', result: null });
+    await expect(p).resolves.toBeNull();
+  });
+
+  it('returns submit output', async () => {
+    const { sent, emit } = setupWindow();
+    const c = new PostMessageReviewClient();
+    const req = { verdict: 'approved' as const, summary: 'LGTM' };
+    const p = c.submitReview(req);
+    expect(sent[0]).toMatchObject({ method: 'submitReview', params: req });
+    emit({ id: sent[0].id, kind: 'res', result: { ok: true, output: '# Review' } });
+    await expect(p).resolves.toEqual({ ok: true, output: '# Review' });
+  });
+
   it('rejects on err response', async () => {
     const { sent, emit } = setupWindow();
     const c = new PostMessageReviewClient();
-    const p = c.submitReview({ comments: [], verdict: null, summary: '' });
+    const p = c.submitReview({ verdict: 'changes_requested', summary: '' });
     emit({ id: sent[0].id, kind: 'err', error: 'boom' });
     await expect(p).rejects.toThrow('boom');
   });
@@ -39,7 +59,7 @@ describe('PostMessageReviewClient', () => {
   it('times out after 30s with no response', async () => {
     setupWindow();
     const c = new PostMessageReviewClient();
-    const p = c.saveSession({ comments: [], activeSection: null, contentHash: 'h' });
+    const p = c.saveProgress({ answers: {}, threads: [] });
     vi.advanceTimersByTime(30_000);
     await expect(p).rejects.toThrow(/timeout/i);
   });

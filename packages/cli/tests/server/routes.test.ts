@@ -1,17 +1,45 @@
 import { describe, it, expect, vi } from 'vitest';
-import { createServer, type Server } from 'node:http';
-import { createRouteHandler } from '../../src/server/routes.js';
-import type { PlanDocument, ReviewComment } from '@plan-review/core';
+import { EventEmitter } from 'node:events';
+import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { createRouteHandler, isProgressUpdate, isSubmitRequest } from '../../src/server/routes.js';
+import type { Answer, LoadedReview, ProgressUpdate, Thread } from '@plan-review/core';
 
-const mockDoc: PlanDocument = {
-  title: 'Test Plan',
-  metadata: {},
-  mode: 'plan',
-  sections: [
-    { id: '1.1', heading: 'Task 1', level: 3, body: 'Task body' },
-  ],
-  comments: [],
+const loaded: LoadedReview = {
+  document: {
+    title: 'Test Plan',
+    metadata: {},
+    mode: 'plan',
+    sections: [{ id: '1.1', heading: 'Task 1', level: 3, body: 'Task body' }],
+    comments: [],
+  },
+  items: [],
+  warnings: [],
+  review: { id: 'rv_1', round: 1, status: 'open', updatedAt: '2026-10-15T09:00:00.000Z', answers: {}, threads: [] },
 };
+
+const answer: Answer = { choice: 'A', note: '', itemHash: 'h1', round: 1, updatedAt: '2026-10-15T00:00:00.000Z' };
+
+const thread: Thread = {
+  id: 't_1',
+  sectionId: '1.1',
+  anchor: { type: 'lines', startLine: 0, endLine: 1, lineTexts: ['a', 'b'] },
+  resolved: false,
+  outdated: false,
+  createdRound: 1,
+  comments: [{ id: 'c_1', author: 'reviewer', body: 'hi', createdAt: '2026-10-15T00:00:00.000Z' }],
+};
+
+const progress: ProgressUpdate = { answers: { 'item-1': answer }, threads: [thread] };
+
+function baseCtx(overrides: Partial<Parameters<typeof createRouteHandler>[0]> = {}) {
+  return {
+    getLoaded: () => loaded,
+    getAssetHtml: () => '<html></html>',
+    onProgress: vi.fn().mockResolvedValue(undefined),
+    onSubmit: vi.fn().mockResolvedValue('formatted output'),
+    ...overrides,
+  };
+}
 
 function startTestServer(ctx: Parameters<typeof createRouteHandler>[0]): Promise<{ server: Server; port: number }> {
   return new Promise((resolve) => {
@@ -28,419 +56,309 @@ function stopTestServer(server: Server): Promise<void> {
   return new Promise((resolve) => server.close(() => resolve()));
 }
 
+function send(port: number, method: string, path: string, body?: unknown): Promise<Response> {
+  return fetch(`http://localhost:${port}${path}`, {
+    method,
+    headers: { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : typeof body === 'string' ? body : JSON.stringify(body),
+  });
+}
+
 describe('server routes', () => {
-  it('GET /api/doc returns document JSON', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/doc`);
-    const data = await res.json();
-
+  it('GET /api/doc returns the LoadedReview JSON', async () => {
+    const { server, port } = await startTestServer(baseCtx());
+    const res = await send(port, 'GET', '/api/doc');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('application/json');
-    expect(data.document.title).toBe('Test Plan');
-    expect(data.document.sections).toHaveLength(1);
-
-    await stopTestServer(server);
-  });
-
-  it('GET /api/doc includes initialState.activeSection for session resume', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      getInitialActiveSection: () => '1.1',
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/doc`);
-    const data = await res.json();
-
-    expect(data.initialState).toEqual({ activeSection: '1.1' });
-
-    await stopTestServer(server);
-  });
-
-  it('GET /api/doc defaults initialState.activeSection to null when no session', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/doc`);
-    const data = await res.json();
-
-    expect(data.initialState).toEqual({ activeSection: null });
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/review calls onSubmit with parsed review submission', async () => {
-    const onSubmit = vi.fn();
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit,
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const comments: ReviewComment[] = [
-      { sectionId: '1.1', text: 'Looks good', timestamp: new Date('2026-04-13') },
-    ];
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments, verdict: 'approved', summary: 'Ship it.' }),
-    });
-    const data = await res.json();
-
-    expect(res.status).toBe(200);
-    expect(data.success).toBe(true);
-    expect(onSubmit).toHaveBeenCalledOnce();
-    expect(onSubmit.mock.calls[0][0]).toMatchObject({
-      verdict: 'approved',
-      summary: 'Ship it.',
-    });
-    expect(onSubmit.mock.calls[0][0].comments).toHaveLength(1);
-    expect(onSubmit.mock.calls[0][0].comments[0].sectionId).toBe('1.1');
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/review rejects invalid body', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: 'not json',
-    });
-
-    expect(res.status).toBe(400);
-
+    expect(await res.json()).toEqual(loaded);
     await stopTestServer(server);
   });
 
   it('GET / serves HTML from getAssetHtml', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html><body>Review App</body></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/`);
-    const html = await res.text();
-
+    const { server, port } = await startTestServer(baseCtx({ getAssetHtml: () => '<html><body>Hi</body></html>' }));
+    const res = await send(port, 'GET', '/');
     expect(res.status).toBe(200);
     expect(res.headers.get('content-type')).toContain('text/html');
-    expect(html).toContain('Review App');
-
+    expect(await res.text()).toContain('Hi');
     await stopTestServer(server);
   });
 
   it('returns 404 for unknown routes', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/unknown`);
-    expect(res.status).toBe(404);
-
+    const { server, port } = await startTestServer(baseCtx());
+    expect((await send(port, 'GET', '/nope')).status).toBe(404);
     await stopTestServer(server);
   });
 
-  it('POST /api/review rejects comment missing sectionId', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
+  describe('PUT /api/session', () => {
+    it('calls onProgress with a valid body and returns 204', async () => {
+      const ctx = baseCtx();
+      const { server, port } = await startTestServer(ctx);
+      const res = await send(port, 'PUT', '/api/session', progress);
+      expect(res.status).toBe(204);
+      expect(ctx.onProgress).toHaveBeenCalledWith(progress);
+      await stopTestServer(server);
     });
 
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [{ text: 'no section id' }], verdict: null, summary: '' }),
+    it.each([
+      { choice: 'C', note: 'Invalid option' },
+      { choice: 'holds', note: '' },
+      { choice: 'other', note: '' },
+      { choice: 'other', note: ' \t\n' },
+    ])('returns 400 without saving an invalid answer: %j', async (invalid) => {
+      const current: LoadedReview = { ...loaded, items: [{
+        id: 'item-1', kind: 'decision', label: 'Storage', question: 'Which storage?',
+        sectionId: '1.1', hash: 'h1', options: [{ key: 'A', text: 'Files', pick: false }],
+      }] };
+      const ctx = baseCtx({ getLoaded: () => current });
+      const { server, port } = await startTestServer(ctx);
+      try {
+        const res = await send(port, 'PUT', '/api/session', { ...progress, answers: { 'item-1': { ...answer, ...invalid } } });
+        expect(res.status).toBe(400);
+        expect(await res.json()).toHaveProperty('error');
+        expect(ctx.onProgress).not.toHaveBeenCalled();
+      } finally {
+        await stopTestServer(server);
+      }
     });
 
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain('sectionId');
+    it('validates a merge update with the full-save rules and passes the flag on', async () => {
+      const current: LoadedReview = { ...loaded, items: [{
+        id: 'item-1', kind: 'decision', label: 'Storage', question: 'Which storage?',
+        sectionId: '1.1', hash: 'h1', options: [{ key: 'A', text: 'Files', pick: false }],
+      }] };
+      const ctx = baseCtx({ getLoaded: () => current });
+      const { server, port } = await startTestServer(ctx);
+      try {
+        const invalid = { answers: { 'item-1': { ...answer, choice: 'C' } }, threads: [], merge: true };
+        expect((await send(port, 'PUT', '/api/session', invalid)).status).toBe(400);
+        expect(ctx.onProgress).not.toHaveBeenCalled();
+        const merge = { answers: {}, threads: [thread], merge: true };
+        expect((await send(port, 'PUT', '/api/session', merge)).status).toBe(204);
+        expect(ctx.onProgress).toHaveBeenCalledWith(merge);
+      } finally {
+        await stopTestServer(server);
+      }
+    });
 
-    await stopTestServer(server);
+    it('returns 400 with error for an invalid shape', async () => {
+      const ctx = baseCtx();
+      const { server, port } = await startTestServer(ctx);
+      const res = await send(port, 'PUT', '/api/session', { answers: [], threads: [] });
+      expect(res.status).toBe(400);
+      expect(await res.json()).toHaveProperty('error');
+      expect(ctx.onProgress).not.toHaveBeenCalled();
+      await stopTestServer(server);
+    });
+
+    it('returns 400 for malformed JSON', async () => {
+      const { server, port } = await startTestServer(baseCtx());
+      const res = await send(port, 'PUT', '/api/session', '{nope');
+      expect(res.status).toBe(400);
+      await stopTestServer(server);
+    });
+
+    it('returns 409 when the handler throws ReviewApprovedError', async () => {
+      const err = new Error('review is approved');
+      err.name = 'ReviewApprovedError';
+      const { server, port } = await startTestServer(baseCtx({ onProgress: vi.fn().mockRejectedValue(err) }));
+      const res = await send(port, 'PUT', '/api/session', progress);
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'review is approved' });
+      await stopTestServer(server);
+    });
+
+    it('returns 500 when the handler throws anything else', async () => {
+      const { server, port } = await startTestServer(baseCtx({ onProgress: vi.fn().mockRejectedValue(new Error('disk')) }));
+      const res = await send(port, 'PUT', '/api/session', progress);
+      expect(res.status).toBe(500);
+      await stopTestServer(server);
+    });
+
+    it('returns 413 for an oversized body', async () => {
+      const { server, port } = await startTestServer(baseCtx());
+      const res = await send(port, 'PUT', '/api/session', 'x'.repeat(1024 * 1024 + 1));
+      expect(res.status).toBe(413);
+      await stopTestServer(server);
+    });
   });
 
-  it('POST /api/review rejects comment missing text', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
+  describe('POST /api/review', () => {
+    it('calls onSubmit and returns { ok, output }', async () => {
+      const ctx = baseCtx();
+      const { server, port } = await startTestServer(ctx);
+      const body = { verdict: 'changes_requested', summary: 'Fix it' };
+      const res = await send(port, 'POST', '/api/review', body);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, output: 'formatted output' });
+      expect(ctx.onSubmit).toHaveBeenCalledWith(body);
+      await stopTestServer(server);
     });
 
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [{ sectionId: '1.1' }], verdict: null, summary: '' }),
+    it.each([
+      { verdict: 'nope', summary: '' },
+      { verdict: null, summary: '' },
+      { verdict: 'approved', summary: 5 },
+      { verdict: 'approved' },
+    ])('returns 400 for %j', async (body) => {
+      const ctx = baseCtx();
+      const { server, port } = await startTestServer(ctx);
+      const res = await send(port, 'POST', '/api/review', body);
+      expect(res.status).toBe(400);
+      expect(ctx.onSubmit).not.toHaveBeenCalled();
+      await stopTestServer(server);
     });
 
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain('text');
+    it('returns 409 when onSubmit throws ReviewApprovedError', async () => {
+      const err = new Error('already approved');
+      err.name = 'ReviewApprovedError';
+      const { server, port } = await startTestServer(baseCtx({ onSubmit: vi.fn().mockRejectedValue(err) }));
+      const res = await send(port, 'POST', '/api/review', { verdict: 'approved', summary: '' });
+      expect(res.status).toBe(409);
+      await stopTestServer(server);
+    });
 
-    await stopTestServer(server);
+    it('returns 413 for an oversized body', async () => {
+      const { server, port } = await startTestServer(baseCtx());
+      const res = await send(port, 'POST', '/api/review', 'x'.repeat(1024 * 1024 + 1));
+      expect(res.status).toBe(413);
+      await stopTestServer(server);
+    });
   });
 
-  it('POST /api/review rejects non-object comment elements', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [null, 42, 'string'], verdict: null, summary: '' }),
-    });
-
-    expect(res.status).toBe(400);
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/review accepts valid comments with optional anchor', async () => {
-    const onSubmit = vi.fn();
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit,
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const comments = [
-      { sectionId: '1.1', text: 'Section comment', timestamp: new Date().toISOString() },
-      {
-        sectionId: '1.1', text: 'Line comment', timestamp: new Date().toISOString(),
-        anchor: { startLine: 0, endLine: 1, lineTexts: ['line 1', 'line 2'] },
-      },
-    ];
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments, verdict: null, summary: '' }),
-    });
-
-    expect(res.status).toBe(200);
-    expect(onSubmit).toHaveBeenCalledOnce();
-    expect(onSubmit.mock.calls[0][0].comments).toHaveLength(2);
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/review rejects invalid verdict', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [], verdict: 'changes-requested', summary: '' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain('verdict');
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/review rejects missing summary', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: [], verdict: null }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain('summary');
-
-    await stopTestServer(server);
-  });
-
-  it('PUT /api/session awaits async onSessionSave before responding', async () => {
-    const onSessionSave = vi.fn().mockResolvedValue(undefined);
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      onSessionSave,
-      getAssetHtml: () => '<html></html>',
-    });
-    const comments: ReviewComment[] = [
-      { sectionId: '1.1', text: 'Save me', timestamp: new Date('2026-04-13') },
-    ];
-    const res = await fetch(`http://localhost:${port}/api/session`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments, activeSection: '1.1' }),
-    });
-    expect(res.status).toBe(200);
-    expect(onSessionSave).toHaveBeenCalledWith(expect.arrayContaining([
-      expect.objectContaining({ sectionId: '1.1', text: 'Save me' }),
-    ]), '1.1');
-    await stopTestServer(server);
-  });
-
-  it('PUT /api/session rejects non-array comments', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-      onSessionSave: vi.fn(),
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/session`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments: 'not an array' }),
-    });
-
-    expect(res.status).toBe(400);
-    const data = await res.json();
-    expect(data.error).toContain('comments must be an array');
-
-    await stopTestServer(server);
-  });
-
-  it('PUT /api/session returns 500 when onSessionSave rejects', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-      onSessionSave: vi.fn().mockRejectedValue(new Error('disk full')),
-    });
-
-    const comments: ReviewComment[] = [
-      { sectionId: '1.1', text: 'Save me', timestamp: new Date('2026-04-13') },
-    ];
-    const res = await fetch(`http://localhost:${port}/api/session`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ comments, activeSection: '1.1' }),
-    });
-
-    expect(res.status).toBe(500);
-    await expect(res.json()).resolves.toEqual({ error: 'Failed to save session' });
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/heartbeat calls onHeartbeat and returns 204', async () => {
+  it('heartbeat / pause / cancel call their handlers and return 204', async () => {
     const onHeartbeat = vi.fn();
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-      onHeartbeat,
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/heartbeat`, { method: 'POST' });
-
-    expect(res.status).toBe(204);
-    expect(onHeartbeat).toHaveBeenCalledOnce();
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/pause calls onPause and returns 204', async () => {
     const onPause = vi.fn();
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-      onPause,
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/pause`, { method: 'POST' });
-
-    expect(res.status).toBe(204);
-    expect(onPause).toHaveBeenCalledOnce();
-
-    await stopTestServer(server);
-  });
-
-  it('POST /api/cancel calls onCancel and returns 204', async () => {
     const onCancel = vi.fn();
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-      onCancel,
-    });
-
-    const res = await fetch(`http://localhost:${port}/api/cancel`, { method: 'POST' });
-
-    expect(res.status).toBe(204);
+    const { server, port } = await startTestServer(baseCtx({ onHeartbeat, onPause, onCancel }));
+    for (const path of ['/api/heartbeat', '/api/pause', '/api/cancel']) {
+      expect((await send(port, 'POST', path)).status).toBe(204);
+    }
+    expect(onHeartbeat).toHaveBeenCalledOnce();
+    expect(onPause).toHaveBeenCalledOnce();
     expect(onCancel).toHaveBeenCalledOnce();
-
     await stopTestServer(server);
   });
 
-  it('heartbeat/pause/cancel endpoints no-op when handlers are not provided', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    const [hb, pause, cancel] = await Promise.all([
-      fetch(`http://localhost:${port}/api/heartbeat`, { method: 'POST' }),
-      fetch(`http://localhost:${port}/api/pause`, { method: 'POST' }),
-      fetch(`http://localhost:${port}/api/cancel`, { method: 'POST' }),
-    ]);
-
-    expect(hb.status).toBe(204);
-    expect(pause.status).toBe(204);
-    expect(cancel.status).toBe(204);
-
+  it('heartbeat / pause / cancel no-op without handlers', async () => {
+    const { server, port } = await startTestServer(baseCtx());
+    for (const path of ['/api/heartbeat', '/api/pause', '/api/cancel']) {
+      expect((await send(port, 'POST', path)).status).toBe(204);
+    }
     await stopTestServer(server);
   });
 
-  it('POST /api/review returns 413 for oversized body', async () => {
-    const { server, port } = await startTestServer({
-      getDocument: () => mockDoc,
-      onSubmit: vi.fn(),
-      getAssetHtml: () => '<html></html>',
-    });
-
-    // Send >1MB body
-    const bigBody = 'x'.repeat(1024 * 1024 + 1);
-
-    const res = await fetch(`http://localhost:${port}/api/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: bigBody,
-    });
-
-    expect(res.status).toBe(413);
-
+  it('GET /_assets returns 404 without an asset base dir', async () => {
+    const { server, port } = await startTestServer(baseCtx());
+    expect((await send(port, 'GET', '/_assets/a.png')).status).toBe(404);
     await stopTestServer(server);
   });
+});
+
+describe('isProgressUpdate', () => {
+  const clone = () => structuredClone(progress) as any;
+
+  it('accepts a valid update, including null anchor and empty collections', () => {
+    expect(isProgressUpdate(progress)).toBe(true);
+    const nullAnchor = clone();
+    nullAnchor.threads[0].anchor = null;
+    expect(isProgressUpdate(nullAnchor)).toBe(true);
+    expect(isProgressUpdate({ answers: {}, threads: [] })).toBe(true);
+    expect(isProgressUpdate({ ...progress, merge: true })).toBe(true);
+  });
+
+  it.each([1, 'true', null])('rejects a non-boolean merge flag %j', (merge) => {
+    expect(isProgressUpdate({ ...progress, merge })).toBe(false);
+  });
+
+  it.each([null, 'x', [], { threads: [] }, { answers: {} }])('rejects non-update %j', (x) => {
+    expect(isProgressUpdate(x)).toBe(false);
+  });
+
+  it('rejects non-object answers', () => {
+    expect(isProgressUpdate({ answers: [], threads: [] })).toBe(false);
+    expect(isProgressUpdate({ answers: 'x', threads: [] })).toBe(false);
+    expect(isProgressUpdate({ answers: { a: 'B' }, threads: [] })).toBe(false);
+  });
+
+  it.each(['choice', 'note', 'itemHash', 'round', 'updatedAt'])('rejects answer missing %s', (key) => {
+    const p = clone();
+    delete p.answers['item-1'][key];
+    expect(isProgressUpdate(p)).toBe(false);
+  });
+
+  it('rejects answers with wrong types', () => {
+    const p = clone();
+    p.answers['item-1'].round = '1';
+    expect(isProgressUpdate(p)).toBe(false);
+    const q = clone();
+    q.answers['item-1'].note = 3;
+    expect(isProgressUpdate(q)).toBe(false);
+  });
+
+  it.each(['id', 'sectionId', 'resolved', 'outdated', 'createdRound', 'comments'])('rejects thread missing %s', (key) => {
+    const p = clone();
+    delete p.threads[0][key];
+    expect(isProgressUpdate(p)).toBe(false);
+  });
+
+  it('rejects a comment author other than reviewer|agent', () => {
+    const p = clone();
+    p.threads[0].comments[0].author = 'bot';
+    expect(isProgressUpdate(p)).toBe(false);
+  });
+
+  it('rejects malformed comments', () => {
+    const p = clone();
+    p.threads[0].comments[0].body = 1;
+    expect(isProgressUpdate(p)).toBe(false);
+  });
+
+  it('rejects an anchor that is neither null nor a valid LineAnchor', () => {
+    const badAnchors = [
+      undefined,
+      'x',
+      { type: 'lines' },
+      { type: 'range', startLine: 0, endLine: 1, lineTexts: [] },
+      { type: 'lines', startLine: 0, endLine: 1, lineTexts: [1] },
+    ];
+    for (const anchor of badAnchors) {
+      const p = clone();
+      p.threads[0].anchor = anchor;
+      expect(isProgressUpdate(p)).toBe(false);
+    }
+  });
+});
+
+describe('isSubmitRequest', () => {
+  it('accepts valid requests', () => {
+    expect(isSubmitRequest({ verdict: 'approved', summary: '' })).toBe(true);
+    expect(isSubmitRequest({ verdict: 'changes_requested', summary: 'x' })).toBe(true);
+  });
+
+  it.each([null, {}, { verdict: 'rejected', summary: '' }, { verdict: 'approved', summary: 1 }])('rejects %j', (x) => {
+    expect(isSubmitRequest(x)).toBe(false);
+  });
+});
+
+it('completes a saved submit when the response closes before onSubmit resolves', async () => {
+  const req = new EventEmitter() as IncomingMessage;
+  req.method = 'POST';
+  req.url = '/api/review';
+  const res = Object.assign(new EventEmitter(), { writeHead: vi.fn(), end: vi.fn() }) as unknown as ServerResponse;
+  let release!: (output: string) => void;
+  const saved = new Promise<string>((resolve) => { release = resolve; });
+  const onSubmitFinished = vi.fn();
+  const ctx = baseCtx({ onSubmit: vi.fn(() => saved), onSubmitFinished });
+  createRouteHandler(ctx)(req, res);
+  req.emit('data', Buffer.from(JSON.stringify({ verdict: 'approved', summary: '' })));
+  req.emit('end');
+  await Promise.resolve();
+  expect(ctx.onSubmit).toHaveBeenCalledOnce();
+  res.emit('close');
+  expect(onSubmitFinished).not.toHaveBeenCalled();
+  release('saved output');
+  await vi.waitFor(() => expect(onSubmitFinished).toHaveBeenCalledOnce());
+  res.emit('finish');
+  expect(onSubmitFinished).toHaveBeenCalledOnce();
+  expect(res.end).not.toHaveBeenCalled();
 });

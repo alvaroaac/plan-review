@@ -51,6 +51,7 @@ function isSessionData(value: unknown): value is SessionData {
   );
 }
 
+/** @deprecated Use FileReviewStore for persisted v2 reviews. */
 export class FileSessionStore implements SessionStore {
   private readonly dir: string;
   private readonly keyHashLength: number;

@@ -1,33 +1,48 @@
-import type {
-  ReviewClient,
-  SessionState,
-  PlanDocument,
-  ReviewSubmission,
-} from '@plan-review/core';
+import type { LoadedReview, ProgressUpdate, SubmitRequest } from '@plan-review/core';
+import type { ReviewClient } from '@plan-review/core/client';
+
+const JSON_HEADERS = { 'Content-Type': 'application/json' };
 
 export class HttpReviewClient implements ReviewClient {
-  async loadDocument(): Promise<{ document: PlanDocument }> {
+  async loadDocument(): Promise<LoadedReview> {
     const res = await fetch('/api/doc');
-    if (!res.ok) throw new Error(`loadDocument failed: ${res.status}`);
+    await ensureOk(res, 'loadDocument');
     return res.json();
   }
 
-  async saveSession(state: SessionState): Promise<void> {
+  async saveProgress(update: ProgressUpdate, opts: { keepalive?: boolean } = {}): Promise<void> {
     const res = await fetch('/api/session', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state),
+      headers: JSON_HEADERS,
+      body: JSON.stringify(update),
+      // Only the beforeunload save needs to outlive the page; keepalive caps bodies at 64 KB.
+      ...(opts.keepalive && { keepalive: true }),
     });
-    if (!res.ok) throw new Error(`saveSession failed: ${res.status}`);
+    await ensureOk(res, 'saveProgress');
   }
 
-  async submitReview(submission: ReviewSubmission): Promise<{ ok: true }> {
+  async submitReview(req: SubmitRequest): Promise<{ ok: true; output: string }> {
     const res = await fetch('/api/review', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(submission),
+      headers: JSON_HEADERS,
+      body: JSON.stringify(req),
     });
-    if (!res.ok) throw new Error(`submitReview failed: ${res.status}`);
-    return { ok: true };
+    await ensureOk(res, 'submitReview');
+    const body = (await res.json()) as { output: string };
+    return { ok: true, output: body.output };
+  }
+}
+
+async function ensureOk(res: Response, operation: string): Promise<void> {
+  if (res.ok) return;
+  throw new Error((await serverError(res)) ?? `${operation} failed: ${res.status}`);
+}
+
+async function serverError(res: Response): Promise<string | null> {
+  try {
+    const body = (await res.json()) as { error?: unknown };
+    return typeof body.error === 'string' ? body.error : null;
+  } catch {
+    return null;
   }
 }

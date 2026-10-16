@@ -31,7 +31,7 @@ describe('browser build', () => {
   it('contains inline CSS', () => {
     const html = readFileSync(outHtml, 'utf-8');
     expect(html).toContain('<style>');
-    expect(html).toContain('--bg-primary');
+    expect(html).toContain('--bg:');
   });
 
   it('is a valid HTML document', () => {

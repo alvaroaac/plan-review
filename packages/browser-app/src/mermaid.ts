@@ -196,7 +196,7 @@ export async function renderMermaidBlocks(root: ParentNode = document): Promise<
 
   mermaid.initialize({
     startOnLoad: false,
-    theme: 'dark',
+    theme: document.documentElement.dataset.theme === 'dark' ? 'dark' : 'default',
     securityLevel: 'loose',
     fontFamily: 'inherit',
   });
