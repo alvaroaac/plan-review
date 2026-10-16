@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { LineAnchor } from '@plan-review/core';
 import { useReview } from '../state/ReviewContext.js';
+import { sectionElementId } from '../scroll.js';
 import { anchorQuote } from './ThreadCard.js';
 
 interface ComposerProps {
@@ -22,22 +23,20 @@ export function Composer({ sectionId, anchor, body, loc, detached = false }: Com
   }, [sectionId]);
 
   const cancel = () => dispatch({ type: 'cancelCompose' });
-  const post = () => {
-    if (!detached) dispatch({ type: 'addThread', sectionId, anchor, body: body.trim() });
-  };
+  const post = () => dispatch({ type: 'addThread', sectionId, anchor, body: body.trim() });
+  // A script-moved focus only counts as visible when asked to, and the button shows on :focus-visible.
   const reattach = () => {
-    const button = document.querySelector<HTMLButtonElement>('.doc .para-add');
-    button?.scrollIntoView({ block: 'nearest' });
-    button?.focus({ preventScroll: true });
+    const button = nearestCommentButton(sectionId, anchor?.startLine ?? 0);
+    button?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    button?.focus({ preventScroll: true, focusVisible: true });
   };
 
   return (
     <div class="card composer">
       <div class="lbl">{detached ? 'New comment' : `New comment · ${loc}`}</div>
       {detached && (
-        <div role="status">
+        <div class="detached" role="status">
           <p>The text this comment was on changed</p>
-          <p>Choose a paragraph’s comment button to re-attach.</p>
           <button type="button" class="btn sm ghost" onClick={reattach}>Re-attach</button>
         </div>
       )}
@@ -56,4 +55,15 @@ export function Composer({ sectionId, anchor, body, loc, detached = false }: Com
       </div>
     </div>
   );
+}
+
+/** The comment button of the paragraph nearest `line` in the section, or the document's first one. */
+function nearestCommentButton(sectionId: string, line: number): HTMLButtonElement | null {
+  const section = document.getElementById(sectionElementId(sectionId))?.closest('section');
+  const distance = (para: HTMLElement) => Math.abs(Number(para.dataset.line) - line);
+  let nearest: HTMLElement | undefined;
+  for (const para of section?.querySelectorAll<HTMLElement>('.para[data-line]') ?? []) {
+    if (!nearest || distance(para) < distance(nearest)) nearest = para;
+  }
+  return nearest?.querySelector<HTMLButtonElement>('.para-add') ?? document.querySelector('.doc .para-add');
 }

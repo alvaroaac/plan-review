@@ -4,7 +4,7 @@ import { render, act, waitFor } from '@testing-library/preact';
 import { FakeReviewClient } from '@plan-review/core/client';
 import type { LoadedReview, ProgressUpdate, ReviewClient } from '@plan-review/core';
 import { ReviewProvider, useReview } from '../src/state/ReviewContext.js';
-import { answer, decisionItem, mockLoaded, thread } from './test-utils.js';
+import { answer, decisionItem, lineAnchor, mockLoaded, thread } from './test-utils.js';
 
 let current: ReturnType<typeof useReview>;
 
@@ -114,6 +114,27 @@ describe('ReviewProvider autosave', () => {
     const [update] = client.unloadSaves;
     expect(update).toEqual({ answers: {}, threads: [expect.objectContaining({ id: current.state.review.threads[1].id })], merge: true });
     expect(update.threads[0].comments[0].body).toBe('final');
+  });
+
+  it.each([
+    ['a reply', { type: 'reply', threadId: 't-big', body: 'short reply' }, false, ['short reply']],
+    ['resolving', { type: 'resolve', threadId: 't-big' }, true, []],
+  ] as const)('sends only new comments of a long saved thread on beforeunload after %s', async (_, action, resolved, bodies) => {
+    const big = thread('t-big', '1.1', null, {
+      comments: [{ id: 'c-big', author: 'reviewer', body: 'x'.repeat(70_000), createdAt: '2026-10-15T10:00:00.000Z' }],
+    });
+    const loaded = mockLoaded({ review: { ...mockLoaded().review, threads: [big] } });
+    const client = new KeepaliveLimitedClient({ loaded });
+    renderProvider(client, loaded);
+
+    current.dispatch(action);
+    await Promise.resolve();
+    window.dispatchEvent(new Event('beforeunload'));
+    await act(async () => { await Promise.resolve(); });
+    expect(client.unloadSaves).toHaveLength(1);
+    const [update] = client.unloadSaves;
+    expect(update).toMatchObject({ answers: {}, merge: true, threads: [{ id: 't-big', resolved }] });
+    expect(update.threads[0].comments.map((c) => c.body)).toEqual(bodies);
   });
 
   it('includes an unacknowledged in-flight save in the beforeunload changes', async () => {
@@ -277,6 +298,30 @@ describe('ReviewProvider reload ordering', () => {
     await waitFor(() => expect(current.state.review.round).toBe(3));
     const oldHash = first.items.find((item) => item.id === 'retry-backoff')!.hash;
     expect(current.state.review.answers['retry-backoff'].itemHash).toBe(oldHash);
+  });
+
+  it('posts a held comment on its own re-anchored block when another composer opens during the reload', async () => {
+    const first = mockLoaded();
+    const sections = first.document.sections.map((s) => (s.id === '1.1' ? { ...s, body: 'Intro.\n\n' + s.body } : s));
+    const second = mockLoaded({ document: { ...first.document, sections }, review: { ...first.review, round: 3 } });
+    const client = new FakeReviewClient({ loaded: first });
+    let finishLoad!: (loaded: LoadedReview) => void;
+    client.loadDocument = vi.fn(() => new Promise<LoadedReview>((resolve) => { finishLoad = resolve; }));
+    renderProvider(client, first);
+    const onA = { sectionId: '1.1', anchor: lineAnchor(0, ['Bold and code']) };
+    const onB = { sectionId: '1.2', anchor: lineAnchor(0, ['Second task content']) };
+    act(() => current.dispatch({ type: 'startCompose', ...onA }));
+    window.dispatchEvent(new MessageEvent('message', { data: { kind: 'event', type: 'planChanged' } }));
+    await waitFor(() => expect(client.loadDocument).toHaveBeenCalled());
+
+    act(() => current.dispatch({ type: 'addThread', ...onA, body: 'about A' }));
+    act(() => current.dispatch({ type: 'startCompose', ...onB }));
+    await act(async () => { finishLoad(second); });
+    await waitFor(() => expect(current.state.review.round).toBe(3));
+    expect(current.state.review.threads).toHaveLength(1);
+    expect(current.state.review.threads[0]).toMatchObject({ sectionId: '1.1', anchor: lineAnchor(1, ['Bold and code']) });
+    expect(current.state.review.threads[0].comments[0].body).toBe('about A');
+    expect(current.state.ui.composing).toMatchObject(onB);
   });
 
   it('replays held edits when the reload fails', async () => {

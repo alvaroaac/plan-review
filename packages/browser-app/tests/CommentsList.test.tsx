@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, fireEvent, screen } from '@testing-library/preact';
-import type { LineAnchor, Thread } from '@plan-review/core';
+import type { LineAnchor, LoadedReview, Thread } from '@plan-review/core';
 import { CommentsList } from '../src/components/CommentsList.js';
 import { SectionView } from '../src/components/SectionView.js';
+import { useReview } from '../src/state/ReviewContext.js';
 import type { ReviewAction } from '../src/state/reducer.js';
 import { lineAnchor, mockLoaded, renderWithReview, thread } from './test-utils.js';
 
@@ -113,7 +114,9 @@ describe('CommentsList', () => {
       act(() => startCompose(review.current.dispatch));
       fireEvent.input(container.querySelector('.composer textarea')!, { target: { value: 'Draft to preserve' } });
       act(() => review.current.dispatch({ type: 'reload', loaded: revised }));
-      expect(screen.getByText('The text this comment was on changed')).toBeTruthy();
+      const notice = container.querySelector('.composer .detached')!;
+      expect(notice.getAttribute('role')).toBe('status');
+      expect(Array.from(notice.children, (el) => el.textContent)).toEqual(['The text this comment was on changed', 'Re-attach']);
       expect(button('Comment')).toHaveProperty('disabled', true);
       expect(container.querySelector('.is-pending')).toBeNull();
       fireEvent.click(button('Re-attach'));
@@ -125,6 +128,46 @@ describe('CommentsList', () => {
       fireEvent.click(button('Comment'));
       expect(review.current.state.review.threads[0]).toMatchObject({ sectionId: section.id, anchor: lineAnchor(0, ['Replacement text.']) });
       expect(review.current.state.review.threads[0].comments[0].body).toBe('Draft to preserve');
+    });
+
+    describe('Re-attach', () => {
+      function Doc() {
+        const { state } = useReview();
+        return <article class="doc">{state.doc.sections.map((s) => <SectionView key={s.id} section={s} num={s.id} />)}</article>;
+      }
+
+      const withBodies = (loaded: LoadedReview, bodies: Record<string, string>, keep = (_id: string) => true): LoadedReview => ({
+        ...loaded,
+        items: [],
+        document: {
+          ...loaded.document,
+          sections: loaded.document.sections.filter((s) => keep(s.id)).map((s) => ({ ...s, body: bodies[s.id] ?? s.body })),
+        },
+      });
+
+      // Drafts on the third paragraph of § 1.2, then reloads so that paragraph's text is gone.
+      function detachDraft(revise: (loaded: LoadedReview) => LoadedReview) {
+        const loaded = withBodies(mockLoaded(), { '1.2': 'One.\n\nTwo.\n\nThree.\n\nFour.' });
+        const utils = renderWithReview(<><Doc /><CommentsList /></>, loaded);
+        act(() => utils.review.current.dispatch({ type: 'startCompose', sectionId: '1.2', anchor: lineAnchor(2, ['Three.']) }));
+        act(() => utils.review.current.dispatch({ type: 'reload', loaded: revise(loaded) }));
+        expect(utils.review.current.state.ui.composing).toMatchObject({ detached: true });
+        fireEvent.click(button('Re-attach'));
+        return utils;
+      }
+
+      it('scrolls to and focuses the comment button nearest the old line in the draft’s section', () => {
+        detachDraft((loaded) => withBodies(loaded, { '1.2': 'One.\n\nTwo.\n\nThree, rewritten.\n\nFour.' }));
+        const para = document.activeElement!.closest('.para')!;
+        expect(document.activeElement!.classList.contains('para-add')).toBe(true);
+        expect(para.textContent).toBe('Three, rewritten.');
+        expect(document.activeElement!.scrollIntoView).toHaveBeenCalled();
+      });
+
+      it('falls back to the first paragraph when the draft’s section is gone', () => {
+        detachDraft((loaded) => withBodies(loaded, {}, (id) => id !== '1.2'));
+        expect(document.activeElement!.closest('.para')!.textContent).toBe('Setup work');
+      });
     });
 
     it('appears at the top while composing, with the section and the quoted block text', () => {

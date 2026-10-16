@@ -45,13 +45,16 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
 
   // While a host reload runs, progress edits wait and are replayed on the new round,
   // so no pre-reload snapshot can be saved over it. A held answer keeps the hash of the
-  // item the reviewer saw, so a revised item still shows as changed.
+  // item the reviewer saw, so a revised item still shows as changed. Composer changes made
+  // after a held post wait behind it, so the post replays on its own (re-anchored) composer.
   const items = useRef(state.items);
   items.current = state.items;
   const held = useRef<ReviewAction[] | null>(null);
   const dispatch = useCallback((action: ReviewAction) => {
-    if (held.current && isProgressAction(action)) {
-      held.current.push(pinItemHash(action, items.current));
+    const queue = held.current;
+    if (queue && (isProgressAction(action)
+      || (COMPOSER_ACTIONS.has(action.type) && queue.some((a) => a.type === 'addThread')))) {
+      queue.push(pinItemHash(action, items.current));
       return;
     }
     // A reload is the server's truth: never echo it back as a save.
@@ -135,6 +138,9 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
   return <ReviewContext.Provider value={value}>{children}</ReviewContext.Provider>;
 }
 
+/** UI actions that change `ui.composing` (besides `addThread` and `reload`). */
+const COMPOSER_ACTIONS: ReadonlySet<ReviewAction['type']> = new Set(['startCompose', 'cancelCompose', 'composeBody']);
+
 function pinItemHash(action: ReviewAction, items: ReviewItem[]): ReviewAction {
   if (action.type !== 'answer' && action.type !== 'defer') return action;
   return { ...action, itemHash: items.find((item) => item.id === action.itemId)?.hash };
@@ -149,11 +155,15 @@ function isUnsaved(progress: ProgressUpdate, synced: ProgressUpdate): boolean {
   return progress.answers !== synced.answers || progress.threads !== synced.threads;
 }
 
-// A cleared answer is not carried by a merge; the server keeps the synced one.
+// A cleared answer is not carried by a merge; the server keeps the synced one. A synced
+// thread goes with only its new or changed comments, which the server merges by id.
 function changesSince(synced: ProgressUpdate, progress: ProgressUpdate): ProgressUpdate {
   return {
     answers: Object.fromEntries(Object.entries(progress.answers).filter(([id, a]) => a !== synced.answers[id])),
-    threads: progress.threads.filter((thread) => !synced.threads.includes(thread)),
+    threads: progress.threads.filter((thread) => !synced.threads.includes(thread)).map((thread) => {
+      const before = synced.threads.find((t) => t.id === thread.id);
+      return before ? { ...thread, comments: thread.comments.filter((c) => !before.comments.includes(c)) } : thread;
+    }),
     merge: true,
   };
 }

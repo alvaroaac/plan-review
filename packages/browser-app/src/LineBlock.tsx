@@ -9,7 +9,7 @@ interface LineBlockProps {
 
 export function LineBlock({ index, html, pending = false, onAdd }: LineBlockProps) {
   return (
-    <div class={pending ? 'para is-pending' : 'para'}>
+    <div class={pending ? 'para is-pending' : 'para'} data-line={index}>
       <button
         type="button"
         class="para-add"
