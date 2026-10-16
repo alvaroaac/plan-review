@@ -12,7 +12,8 @@ rmSync(dist, { recursive: true, force: true });
 mkdirSync(dist, { recursive: true });
 
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf-8'));
-const external = Object.keys(pkg.dependencies ?? {}).filter((d) => d !== '@plan-review/core');
+// Runtime dependencies stay external; @plan-review/core is a dev dependency and gets bundled.
+const external = Object.keys(pkg.dependencies ?? {});
 
 await esbuild.build({
   entryPoints: [join(root, 'src/index.ts')],
