@@ -6,7 +6,7 @@ import { parse } from './parser.js';
 import { contentHash, newCommentId, newReviewId } from './reviewModel.js';
 import type { ReviewStore } from './reviewStore.js';
 import type {
-  Banner, LoadedReview, ProgressUpdate, Review, Section, SplitStrategy, SubmitRequest,
+  Banner, LoadedReview, ProgressUpdate, Review, Section, SplitStrategy, SubmitRequest, Thread,
 } from './types.js';
 
 export interface OpenReviewInput {
@@ -227,14 +227,25 @@ export async function saveProgress(
     const review = await getReview(store, reviewId);
     if (review.status === 'approved') throw new ReviewApprovedError(review.id);
     if (review.rounds.at(-1)?.submittedAt) throw new Error('Round already submitted');
+    // A merge carries only changed entries, so every persisted answer and thread is kept.
     const answers = Object.fromEntries([
-      ...Object.entries(review.answers).filter(([id]) => !currentItemIds.has(id)),
+      ...Object.entries(review.answers).filter(([id]) => update.merge || !currentItemIds.has(id)),
       ...Object.entries(update.answers).filter(([id]) => currentItemIds.has(id)),
     ]);
-    const updated = { ...review, answers, threads: update.threads, updatedAt: now.toISOString() };
+    const threads = update.merge ? mergeThreads(review.threads, update.threads) : update.threads;
+    const updated = { ...review, answers, threads, updatedAt: now.toISOString() };
     await store.save(updated);
     return updated;
   });
+}
+
+function mergeThreads(persisted: Thread[], changed: Thread[]): Thread[] {
+  const byId = new Map(changed.map((thread) => [thread.id, thread]));
+  const known = new Set(persisted.map((thread) => thread.id));
+  return [
+    ...persisted.map((thread) => byId.get(thread.id) ?? thread),
+    ...changed.filter((thread) => !known.has(thread.id)),
+  ];
 }
 
 export async function submitRound(

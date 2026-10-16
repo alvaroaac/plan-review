@@ -2,11 +2,21 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, act, waitFor } from '@testing-library/preact';
 import { FakeReviewClient } from '@plan-review/core/client';
-import type { LoadedReview, ReviewClient } from '@plan-review/core';
+import type { LoadedReview, ProgressUpdate, ReviewClient } from '@plan-review/core';
 import { ReviewProvider, useReview } from '../src/state/ReviewContext.js';
-import { answer, decisionItem, mockLoaded } from './test-utils.js';
+import { answer, decisionItem, mockLoaded, thread } from './test-utils.js';
 
 let current: ReturnType<typeof useReview>;
+
+/** Like a browser, rejects keepalive bodies over 64 KiB; keepalive saves are kept apart from routine ones. */
+class KeepaliveLimitedClient extends FakeReviewClient {
+  readonly unloadSaves: ProgressUpdate[] = [];
+  async saveProgress(update: ProgressUpdate, opts: { keepalive?: boolean } = {}) {
+    if (!opts.keepalive) return super.saveProgress(update);
+    if (new TextEncoder().encode(JSON.stringify(update)).length > 65_536) throw new TypeError('keepalive body too large');
+    this.unloadSaves.push(update);
+  }
+}
 
 function Probe() {
   current = useReview();
@@ -83,6 +93,42 @@ describe('ReviewProvider autosave', () => {
     // The unload save replaces the queued autosave instead of racing it.
     await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
     expect(client.saveProgress).toHaveBeenCalledTimes(1);
+  });
+
+  it('sends only the changes since the last acknowledged save on beforeunload, within the keepalive limit', async () => {
+    const big = thread('t-big', '1.1', null, {
+      comments: [{ id: 'c-big', author: 'reviewer', body: 'x'.repeat(70_000), createdAt: '2026-10-15T10:00:00.000Z' }],
+    });
+    const loaded = mockLoaded({ review: { ...mockLoaded().review, threads: [big] } });
+    const client = new KeepaliveLimitedClient({ loaded });
+    renderProvider(client, loaded);
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(client.progressSaves).toHaveLength(1);
+
+    current.dispatch({ type: 'addThread', sectionId: '1.1', anchor: null, body: 'final' });
+    await Promise.resolve();
+    window.dispatchEvent(new Event('beforeunload'));
+    await act(async () => { await Promise.resolve(); });
+    expect(client.unloadSaves).toHaveLength(1);
+    const [update] = client.unloadSaves;
+    expect(update).toEqual({ answers: {}, threads: [expect.objectContaining({ id: current.state.review.threads[1].id })], merge: true });
+    expect(update.threads[0].comments[0].body).toBe('final');
+  });
+
+  it('includes an unacknowledged in-flight save in the beforeunload changes', async () => {
+    const client = new KeepaliveLimitedClient({ loaded: mockLoaded() });
+    const save = vi.spyOn(FakeReviewClient.prototype, 'saveProgress').mockReturnValue(new Promise(() => {}));
+    renderProvider(client);
+    act(() => current.dispatch({ type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+    expect(save).toHaveBeenCalledTimes(1);
+    act(() => current.dispatch({ type: 'addThread', sectionId: '1.1', anchor: null, body: 'final' }));
+    window.dispatchEvent(new Event('beforeunload'));
+    save.mockRestore();
+    expect(client.unloadSaves).toHaveLength(1);
+    expect(Object.keys(client.unloadSaves[0].answers)).toEqual(['retry-backoff']);
+    expect(client.unloadSaves[0].threads).toHaveLength(1);
   });
 
   it('sends nothing on beforeunload once the latest progress has been saved', async () => {

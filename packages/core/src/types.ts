@@ -130,6 +130,8 @@ export interface LoadedReview {
 export interface ProgressUpdate {
   answers: Record<string, Answer>;
   threads: Thread[];
+  /** Only changed entries: answers overwrite by item id, threads replace by id or append; nothing is removed. */
+  merge?: boolean;
 }
 
 export interface SubmitRequest {

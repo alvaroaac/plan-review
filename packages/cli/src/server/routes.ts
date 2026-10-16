@@ -94,7 +94,8 @@ export function isProgressUpdate(x: unknown, items: readonly ReviewItem[] = []):
     items.every((item) => !Object.hasOwn(x.answers as object, item.id)
       || validateAnswer(item, (x.answers as Record<string, Answer>)[item.id]) === null) &&
     Array.isArray(x.threads) &&
-    x.threads.every(isThread)
+    x.threads.every(isThread) &&
+    (x.merge === undefined || typeof x.merge === 'boolean')
   );
 }
 

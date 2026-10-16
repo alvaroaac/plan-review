@@ -87,12 +87,16 @@ export function ReviewProvider({ client, loaded, theme, children }: ReviewProvid
 
   // A tab can close before the autosave effect has run, so compare the rendered progress
   // itself and send it past the debounce queue, with keepalive so it outlives the page.
+  // Keepalive caps bodies at 64 KB, so only the changes since the last acknowledged save
+  // go, merged server-side; that includes any routine save still in flight.
   useEffect(() => {
     const saveOnUnload = () => {
-      if (!isUnsaved(progress.current, synced.current)) return;
+      const sent = progress.current;
+      const changes = changesSince(synced.current, sent);
+      if (!Object.keys(changes.answers).length && !changes.threads.length) return;
       autosave.cancel();
-      synced.current = progress.current;
-      void client.saveProgress(progress.current, { keepalive: true }).catch(() => {});
+      void client.saveProgress(changes, { keepalive: true })
+        .then(() => { synced.current = sent; }, () => {});
     };
     window.addEventListener('beforeunload', saveOnUnload);
     return () => {
@@ -143,6 +147,15 @@ function progressOf({ answers, threads }: ProgressUpdate): ProgressUpdate {
 // The reducer returns new objects for every change, so identity tells saved from unsaved.
 function isUnsaved(progress: ProgressUpdate, synced: ProgressUpdate): boolean {
   return progress.answers !== synced.answers || progress.threads !== synced.threads;
+}
+
+// A cleared answer is not carried by a merge; the server keeps the synced one.
+function changesSince(synced: ProgressUpdate, progress: ProgressUpdate): ProgressUpdate {
+  return {
+    answers: Object.fromEntries(Object.entries(progress.answers).filter(([id, a]) => a !== synced.answers[id])),
+    threads: progress.threads.filter((thread) => !synced.threads.includes(thread)),
+    merge: true,
+  };
 }
 
 function useHostPlanChanges(onPlanChanged: () => void) {

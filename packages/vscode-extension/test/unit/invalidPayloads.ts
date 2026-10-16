@@ -18,6 +18,7 @@ export const invalidProgress: [string, unknown][] = [
     delete comment[key];
     return [[`comment missing ${key}`, { answers: {}, threads: [{ ...thread('s'), comments: [comment] }] }], [`comment wrong ${key}`, { answers: {}, threads: [{ ...thread('s'), comments: [{ ...thread('s').comments[0], [key]: 1 }] }] }]];
   }),
+  ...[1, 'true', null].map((merge): [string, unknown] => [`merge ${JSON.stringify(merge)}`, { answers: {}, threads: [], merge }]),
   ['invalid comment author', { answers: {}, threads: [{ ...thread('s'), comments: [{ ...thread('s').comments[0], author: 'user' }] }] }],
   ...[{}, { type: 'other', startLine: 0, endLine: 0, lineTexts: [] }, { type: 'lines', startLine: '0', endLine: 0, lineTexts: [] }, { type: 'lines', startLine: 0, endLine: '0', lineTexts: [] }, { type: 'lines', startLine: 0, endLine: 0, lineTexts: [1] }].map((anchor): [string, unknown] => [`invalid anchor ${JSON.stringify(anchor)}`, { answers: {}, threads: [{ ...thread('s'), anchor }] }]),
 ];

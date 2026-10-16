@@ -121,6 +121,25 @@ describe('server routes', () => {
       }
     });
 
+    it('validates a merge update with the full-save rules and passes the flag on', async () => {
+      const current: LoadedReview = { ...loaded, items: [{
+        id: 'item-1', kind: 'decision', label: 'Storage', question: 'Which storage?',
+        sectionId: '1.1', hash: 'h1', options: [{ key: 'A', text: 'Files', pick: false }],
+      }] };
+      const ctx = baseCtx({ getLoaded: () => current });
+      const { server, port } = await startTestServer(ctx);
+      try {
+        const invalid = { answers: { 'item-1': { ...answer, choice: 'C' } }, threads: [], merge: true };
+        expect((await send(port, 'PUT', '/api/session', invalid)).status).toBe(400);
+        expect(ctx.onProgress).not.toHaveBeenCalled();
+        const merge = { answers: {}, threads: [thread], merge: true };
+        expect((await send(port, 'PUT', '/api/session', merge)).status).toBe(204);
+        expect(ctx.onProgress).toHaveBeenCalledWith(merge);
+      } finally {
+        await stopTestServer(server);
+      }
+    });
+
     it('returns 400 with error for an invalid shape', async () => {
       const ctx = baseCtx();
       const { server, port } = await startTestServer(ctx);
@@ -244,6 +263,11 @@ describe('isProgressUpdate', () => {
     nullAnchor.threads[0].anchor = null;
     expect(isProgressUpdate(nullAnchor)).toBe(true);
     expect(isProgressUpdate({ answers: {}, threads: [] })).toBe(true);
+    expect(isProgressUpdate({ ...progress, merge: true })).toBe(true);
+  });
+
+  it.each([1, 'true', null])('rejects a non-boolean merge flag %j', (merge) => {
+    expect(isProgressUpdate({ ...progress, merge })).toBe(false);
   });
 
   it.each([null, 'x', [], { threads: [] }, { answers: {} }])('rejects non-update %j', (x) => {

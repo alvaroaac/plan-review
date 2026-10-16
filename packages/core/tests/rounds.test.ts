@@ -408,6 +408,28 @@ describe('saveProgress', () => {
     expect(review.threads).toEqual([]);
   });
 
+  it('merges a partial update into persisted progress without deleting anything', async () => {
+    const kept = makeThread({ id: 't_kept12' });
+    const edited = makeThread({ id: 't_edit12' });
+    const existing = makeReview({
+      answers: { kept: makeAnswer(), edited: makeAnswer(), earlier: makeAnswer() },
+      threads: [kept, edited],
+    });
+    const store = makeStore(existing);
+    const update = {
+      answers: { edited: makeAnswer({ choice: 'B' }), removed: makeAnswer() },
+      threads: [makeThread({ id: 't_edit12', resolved: true }), makeThread({ id: 't_new123' })],
+      merge: true,
+    };
+    const review = await saveProgress(store, existing.id, update, NOW, new Set(['kept', 'edited']));
+    expect(review.answers).toEqual({ kept: makeAnswer(), edited: makeAnswer({ choice: 'B' }), earlier: makeAnswer() });
+    expect(review.threads).toEqual([kept, update.threads[0], update.threads[1]]);
+    expect(review).not.toHaveProperty('merge');
+    expect(await store.get(existing.id)).toEqual(review);
+    // Replaying the same merge changes nothing.
+    expect(await saveProgress(store, existing.id, update, NOW, new Set(['kept', 'edited']))).toEqual(review);
+  });
+
   it('rejects missing reviews without saving', async () => {
     const store = makeStore();
     await expect(saveProgress(store, 'rv_missing', { answers: {}, threads: [] }, NOW, new Set(['removed'])))
