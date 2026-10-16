@@ -1,6 +1,6 @@
 # plan-review
 
-Interactive CLI for reviewing AI-generated markdown plans. Parses a plan into sections, opens a three-panel browser review UI, collects line-anchored comments, and pipes structured feedback back — to the AI that wrote the plan, your clipboard, or a file.
+Interactive CLI for reviewing AI-generated markdown plans. Opens the plan in a browser review UI where you answer the agent's open decisions, check its assumptions and comment on any paragraph, then pipes the review back — to the AI that wrote the plan, your clipboard, or a file. When the agent revises the plan, the same review continues into the next round with your answers carried over.
 
 ![Browser mode demo](https://raw.githubusercontent.com/alvaroaac/plan-review/main/examples/demo-browser.gif)
 

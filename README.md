@@ -1,6 +1,8 @@
 # plan-review
 
-Interactive tool for reviewing AI-generated markdown plans. Parses a plan into sections, collects line-anchored comments, and pipes structured feedback back to the AI that wrote it.
+Interactive tool for reviewing AI-generated markdown plans. Answer the agent's open decisions, check its assumptions and comment on any paragraph, then send the review back to the AI that wrote the plan, round after round until you approve it.
+
+![Browser mode demo](examples/demo-browser.gif)
 
 ## Packages
 
@@ -8,7 +10,7 @@ Interactive tool for reviewing AI-generated markdown plans. Parses a plan into s
 |---------|-------------|
 | [plan-review](packages/cli) | CLI and browser review UI |
 | [@plan-review/core](packages/core) | Markdown parsing and plan detection |
-| [@plan-review/browser-app](packages/browser-app) | Three-panel browser review interface |
+| [@plan-review/browser-app](packages/browser-app) | Browser review interface |
 | [plan-review-vscode](packages/vscode-extension) | VS Code extension |
 
 ## Quick start
