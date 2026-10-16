@@ -116,6 +116,27 @@ describe('ReviewProvider autosave', () => {
     expect(update.threads[0].comments[0].body).toBe('final');
   });
 
+  it.each([
+    ['a reply', { type: 'reply', threadId: 't-big', body: 'short reply' }, false, ['short reply']],
+    ['resolving', { type: 'resolve', threadId: 't-big' }, true, []],
+  ] as const)('sends only new comments of a long saved thread on beforeunload after %s', async (_, action, resolved, bodies) => {
+    const big = thread('t-big', '1.1', null, {
+      comments: [{ id: 'c-big', author: 'reviewer', body: 'x'.repeat(70_000), createdAt: '2026-10-15T10:00:00.000Z' }],
+    });
+    const loaded = mockLoaded({ review: { ...mockLoaded().review, threads: [big] } });
+    const client = new KeepaliveLimitedClient({ loaded });
+    renderProvider(client, loaded);
+
+    current.dispatch(action);
+    await Promise.resolve();
+    window.dispatchEvent(new Event('beforeunload'));
+    await act(async () => { await Promise.resolve(); });
+    expect(client.unloadSaves).toHaveLength(1);
+    const [update] = client.unloadSaves;
+    expect(update).toMatchObject({ answers: {}, merge: true, threads: [{ id: 't-big', resolved }] });
+    expect(update.threads[0].comments.map((c) => c.body)).toEqual(bodies);
+  });
+
   it('includes an unacknowledged in-flight save in the beforeunload changes', async () => {
     const client = new KeepaliveLimitedClient({ loaded: mockLoaded() });
     const save = vi.spyOn(FakeReviewClient.prototype, 'saveProgress').mockReturnValue(new Promise(() => {}));

@@ -430,6 +430,26 @@ describe('saveProgress', () => {
     expect(await saveProgress(store, existing.id, update, NOW, new Set(['kept', 'edited']))).toEqual(review);
   });
 
+  it('merges a thread update at comment granularity, keeping persisted comments', async () => {
+    const comment = (id: string, body: string) => ({ id, author: 'reviewer' as const, body, createdAt: BEFORE });
+    const existing = makeReview({
+      threads: [makeThread({ id: 't_long12', comments: [comment('c_one', 'one'), comment('c_two', 'two')] })],
+    });
+    const store = makeStore(existing);
+    const update = {
+      answers: {},
+      threads: [makeThread({ id: 't_long12', resolved: true, comments: [comment('c_new', 'new'), comment('c_two', 'two, edited')] })],
+      merge: true,
+    };
+    const review = await saveProgress(store, existing.id, update, NOW, new Set());
+    expect(review.threads).toEqual([makeThread({
+      id: 't_long12', resolved: true,
+      comments: [comment('c_one', 'one'), comment('c_two', 'two, edited'), comment('c_new', 'new')],
+    })]);
+    // Replaying the same merge changes nothing.
+    expect(await saveProgress(store, existing.id, update, NOW, new Set())).toEqual(review);
+  });
+
   it('rejects missing reviews without saving', async () => {
     const store = makeStore();
     await expect(saveProgress(store, 'rv_missing', { answers: {}, threads: [] }, NOW, new Set(['removed'])))

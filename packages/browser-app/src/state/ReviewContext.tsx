@@ -155,11 +155,15 @@ function isUnsaved(progress: ProgressUpdate, synced: ProgressUpdate): boolean {
   return progress.answers !== synced.answers || progress.threads !== synced.threads;
 }
 
-// A cleared answer is not carried by a merge; the server keeps the synced one.
+// A cleared answer is not carried by a merge; the server keeps the synced one. A synced
+// thread goes with only its new or changed comments, which the server merges by id.
 function changesSince(synced: ProgressUpdate, progress: ProgressUpdate): ProgressUpdate {
   return {
     answers: Object.fromEntries(Object.entries(progress.answers).filter(([id, a]) => a !== synced.answers[id])),
-    threads: progress.threads.filter((thread) => !synced.threads.includes(thread)),
+    threads: progress.threads.filter((thread) => !synced.threads.includes(thread)).map((thread) => {
+      const before = synced.threads.find((t) => t.id === thread.id);
+      return before ? { ...thread, comments: thread.comments.filter((c) => !before.comments.includes(c)) } : thread;
+    }),
     merge: true,
   };
 }

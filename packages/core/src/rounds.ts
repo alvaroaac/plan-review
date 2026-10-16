@@ -239,12 +239,21 @@ export async function saveProgress(
   });
 }
 
+// A changed thread's own fields replace the persisted ones; its comments merge the same way.
 function mergeThreads(persisted: Thread[], changed: Thread[]): Thread[] {
-  const byId = new Map(changed.map((thread) => [thread.id, thread]));
-  const known = new Set(persisted.map((thread) => thread.id));
+  return mergeById(persisted, changed, (thread, update) => ({ ...update, comments: mergeById(thread.comments, update.comments) }));
+}
+
+/** Replaces entries by id and appends new ones in `changed` order; nothing is removed. */
+function mergeById<T extends { id: string }>(persisted: T[], changed: T[], merge = (_entry: T, update: T) => update): T[] {
+  const byId = new Map(changed.map((entry) => [entry.id, entry]));
+  const known = new Set(persisted.map((entry) => entry.id));
   return [
-    ...persisted.map((thread) => byId.get(thread.id) ?? thread),
-    ...changed.filter((thread) => !known.has(thread.id)),
+    ...persisted.map((entry) => {
+      const update = byId.get(entry.id);
+      return update ? merge(entry, update) : entry;
+    }),
+    ...changed.filter((entry) => !known.has(entry.id)),
   ];
 }
 
