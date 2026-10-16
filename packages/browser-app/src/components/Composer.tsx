@@ -35,9 +35,8 @@ export function Composer({ sectionId, anchor, body, loc, detached = false }: Com
     <div class="card composer">
       <div class="lbl">{detached ? 'New comment' : `New comment · ${loc}`}</div>
       {detached && (
-        <div role="status">
+        <div class="detached" role="status">
           <p>The text this comment was on changed</p>
-          <p>Choose a paragraph’s comment button to re-attach.</p>
           <button type="button" class="btn sm ghost" onClick={reattach}>Re-attach</button>
         </div>
       )}

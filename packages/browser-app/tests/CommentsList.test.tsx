@@ -114,7 +114,9 @@ describe('CommentsList', () => {
       act(() => startCompose(review.current.dispatch));
       fireEvent.input(container.querySelector('.composer textarea')!, { target: { value: 'Draft to preserve' } });
       act(() => review.current.dispatch({ type: 'reload', loaded: revised }));
-      expect(screen.getByText('The text this comment was on changed')).toBeTruthy();
+      const notice = container.querySelector('.composer .detached')!;
+      expect(notice.getAttribute('role')).toBe('status');
+      expect(Array.from(notice.children, (el) => el.textContent)).toEqual(['The text this comment was on changed', 'Re-attach']);
       expect(button('Comment')).toHaveProperty('disabled', true);
       expect(container.querySelector('.is-pending')).toBeNull();
       fireEvent.click(button('Re-attach'));

@@ -304,6 +304,8 @@ textarea.field { resize: vertical; min-height: 56px; }
 .th-reply input { height: 32px; }
 .composer { border-color: var(--ink-4); }
 .composer .lbl { font: 11px var(--mono); color: var(--ink-4); margin-bottom: 8px; }
+.composer .detached { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.composer .detached p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ink-2); }
 
 /* ── Rail ───────────────────────────────────────────────── */
 
