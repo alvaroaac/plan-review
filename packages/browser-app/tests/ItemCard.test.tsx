@@ -245,6 +245,26 @@ describe('ItemCard', () => {
       expect(card.classList.contains('is-focus')).toBe(true);
     });
 
+    it('saving moves focus to the next open item, and clears it once none are left', () => {
+      const { container, review } = renderCard(decision);
+      fireEvent.click(option(container, 'A').querySelector('input')!);
+      fireEvent.click(button('Save decision'));
+      expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'auth-latency' });
+
+      const done = renderCard(decision, { 'auth-latency': answer(assumptionItem, 'holds') });
+      fireEvent.click(option(done.container, 'A').querySelector('input')!);
+      fireEvent.click(done.container.querySelector<HTMLButtonElement>('.btn.primary')!);
+      expect(done.review.current.state.ui.focus).toBeNull();
+    });
+
+    it('deferring moves focus to the next open item', () => {
+      const { container, review } = renderCard(decision);
+      fireEvent.click(container.querySelector('.ic-q')!);
+      fireEvent.click(button('Defer'));
+      fireEvent.click(container.querySelector<HTMLButtonElement>('.defer-go')!);
+      expect(review.current.state.ui.focus).toEqual({ kind: 'item', id: 'auth-latency' });
+    });
+
     it('scrolls the focused card into view', () => {
       const { container, review } = renderCard(decision);
       review.current.dispatch({ type: 'focus', target: { kind: 'item', id: 'retry-backoff' } });

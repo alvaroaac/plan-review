@@ -1,9 +1,10 @@
-import type { ItemState, ReviewItem } from '@plan-review/core';
+import type { ReviewItem } from '@plan-review/core';
 import { itemState } from '@plan-review/core/review';
 import { useReview } from '../state/ReviewContext.js';
 import type { Tab } from '../state/reducer.js';
 import { sectionNumbers } from '../sections.js';
 import { isOpenThread } from '../threads.js';
+import { isPending } from '../items.js';
 import { CommentsList } from './CommentsList.js';
 import { ItemCard } from './ItemCard.js';
 
@@ -38,8 +39,6 @@ export function Rail() {
     </aside>
   );
 }
-
-const isPending = (s: ItemState) => s === 'open' || s === 'changed';
 
 function DecisionsList() {
   const { state } = useReview();

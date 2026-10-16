@@ -52,11 +52,14 @@ export function ItemCard({ item, loc }: { item: ReviewItem; loc: string }) {
     focus();
     scrollDocTo(`mk-${item.id}`, 180);
   };
-  const save = () => {
+  // Saving moves focus on to the next open item, so the click must not reach the card's own focus.
+  const save = (e: Event) => {
+    e.stopPropagation();
     dispatch({ type: 'answer', itemId: item.id, choice: draft.choice!, note: draft.note.trim() });
     setEditing(false);
   };
-  const defer = () => {
+  const defer = (e: Event) => {
+    e.stopPropagation();
     dispatch({ type: 'defer', itemId: item.id, note: draft.deferNote.trim() });
     setDraft({ choice: null, note: '', deferNote: draft.deferNote.trim() });
     setDeferring(false);

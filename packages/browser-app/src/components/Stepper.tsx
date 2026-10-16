@@ -1,4 +1,5 @@
 import { itemState } from '@plan-review/core/review';
+import { nextPendingItem } from '../items.js';
 import { useReview } from '../state/ReviewContext.js';
 import { scrollDocTo } from '../scroll.js';
 import { CheckIcon, RightIcon } from './icons.js';
@@ -11,10 +12,7 @@ export function Stepper() {
   const deferred = states.filter((s) => s === 'deferred').length;
   const focused = ui.focus?.kind === 'item' ? items.findIndex((i) => i.id === ui.focus!.id) : -1;
 
-  // The next open or changed item after the focused one, wrapping to the start.
-  const pending = (k: number) => states[k] === 'open' || states[k] === 'changed';
-  const next = items.findIndex((_, k) => k > focused && pending(k));
-  const nextId = items[next >= 0 ? next : states.findIndex((_, k) => pending(k))]?.id;
+  const nextId = nextPendingItem(items, review.answers, ui.focus?.kind === 'item' ? ui.focus.id : undefined)?.id;
 
   const jump = (id: string) => {
     dispatch({ type: 'focus', target: { kind: 'item', id } });

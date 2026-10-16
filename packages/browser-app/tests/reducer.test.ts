@@ -311,6 +311,24 @@ describe('reviewReducer — ui', () => {
   });
 });
 
+describe('answering moves focus on', () => {
+  it.each<[string, ReviewAction]>([
+    ['answer', { type: 'answer', itemId: 'retry-backoff', choice: 'A', note: '' }],
+    ['defer', { type: 'defer', itemId: 'retry-backoff' }],
+  ])('%s on the focused item focuses the next pending one', (_name, action) => {
+    const s = reviewReducer(stateWith(), { type: 'focus', target: { kind: 'item', id: 'retry-backoff' } });
+    expect(reviewReducer(s, action).ui.focus).toEqual({ kind: 'item', id: 'auth-latency' });
+  });
+
+  it('wraps to an earlier pending item and leaves focus alone when another item is focused', () => {
+    let s = reviewReducer(stateWith(), { type: 'focus', target: { kind: 'item', id: 'auth-latency' } });
+    s = reviewReducer(s, { type: 'answer', itemId: 'auth-latency', choice: 'holds', note: '' });
+    expect(s.ui.focus).toEqual({ kind: 'item', id: 'retry-backoff' });
+    s = reviewReducer(s, { type: 'answer', itemId: 'auth-latency', choice: 'no', note: 'x' });
+    expect(s.ui.focus).toEqual({ kind: 'item', id: 'retry-backoff' });
+  });
+});
+
 describe('isProgressAction', () => {
   it('is true exactly for actions that change answers or threads', () => {
     const progress: ReviewAction['type'][] = ['answer', 'defer', 'clearAnswer', 'addThread', 'reply', 'resolve', 'reopen'];

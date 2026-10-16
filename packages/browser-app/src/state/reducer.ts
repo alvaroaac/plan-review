@@ -13,6 +13,7 @@ import { newCommentId, newThreadId } from '@plan-review/core/review';
 import { findLineRun, renderToLineBlocks } from '@plan-review/core/items';
 import type { Theme } from '../theme.js';
 import { isListed } from '../threads.js';
+import { nextPendingItem } from '../items.js';
 
 export type Tab = 'decisions' | 'comments';
 export type ThreadFilter = 'open' | 'resolved' | 'all';
@@ -92,9 +93,9 @@ export function initReviewState(loaded: LoadedReview, theme: Theme): ReviewState
 export function reviewReducer(state: ReviewState, action: ReviewAction): ReviewState {
   switch (action.type) {
     case 'answer':
-      return setAnswer(state, action.itemId, action.choice, action.note, action.itemHash);
+      return focusNextPending(state, setAnswer(state, action.itemId, action.choice, action.note, action.itemHash), action.itemId);
     case 'defer':
-      return setAnswer(state, action.itemId, 'deferred', action.note ?? '', action.itemHash);
+      return focusNextPending(state, setAnswer(state, action.itemId, 'deferred', action.note ?? '', action.itemHash), action.itemId);
     case 'clearAnswer': {
       const { [action.itemId]: _removed, ...answers } = state.review.answers;
       return withReview(state, { answers });
@@ -229,6 +230,15 @@ function setAnswer(state: ReviewState, itemId: string, choice: string, note: str
     updatedAt: new Date().toISOString(),
   };
   return withReview(state, { answers: { ...state.review.answers, [itemId]: answer } });
+}
+
+// Answering the item in front of the reviewer moves them on to the next one still open,
+// instead of following the answered card down the list.
+function focusNextPending(previous: ReviewState, next: ReviewState, itemId: string): ReviewState {
+  const { focus: current } = previous.ui;
+  if (next === previous || (current && !(current.kind === 'item' && current.id === itemId))) return next;
+  const pending = nextPendingItem(next.items, next.review.answers, itemId);
+  return focus(next, pending ? { kind: 'item', id: pending.id } : null);
 }
 
 function reviewerComment(body: string): ThreadComment {
