@@ -67,8 +67,11 @@ describe('FileReviewStore', () => {
 
   it.skipIf(process.platform === 'win32')('creates the store dir as 0700 and review files as 0600', async () => {
     const nested = join(dir, 'private');
-    await new FileReviewStore({ dir: nested }).save(makeReview());
+    const store = new FileReviewStore({ dir: nested });
+    await store.save(makeReview());
     expect((await stat(nested)).mode & 0o777).toBe(0o700);
+    expect((await stat(join(nested, 'rv_abc12345.json'))).mode & 0o777).toBe(0o600);
+    await store.save(makeReview());
     expect((await stat(join(nested, 'rv_abc12345.json'))).mode & 0o777).toBe(0o600);
   });
 

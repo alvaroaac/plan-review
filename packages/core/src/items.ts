@@ -47,19 +47,18 @@ export function extractItems(doc: PlanDocument): ExtractResult {
       if (kind !== 'decision' && kind !== 'assumption' && kind !== 'reply') continue;
       lineNumber += section.body.slice(lineStart, start).split(/\r\n|\r|\n/).length - 1;
       lineStart = start;
-      const line = lineNumber;
       if (kind === 'reply') {
         body += section.body.slice(keptFrom, start);
         keptFrom = offsets[offset];
         const threadId = info.find((part) => part.startsWith('thread='))?.slice(7);
         const replyBody = token.text.trim();
-        if (!replyBody) warnings.push(`Reply at line ${line}: empty body`);
+        if (!replyBody) warnings.push(`Reply at line ${lineNumber}: empty body`);
         else if (threadId) replies.push({ threadId, body: replyBody, sectionId: section.id });
-        else warnings.push(`Reply at line ${line}: missing thread`);
+        else warnings.push(`Reply at line ${lineNumber}: missing thread`);
         continue;
       }
       const id = info.find((part) => part.startsWith('id='))?.slice(3) ?? '';
-      const location = id || `line ${line}`;
+      const location = id || `line ${lineNumber}`;
       const warn = (reason: string): void => { warnings.push(`${location}: ${reason}`); };
       if (!id) { warn('missing id'); continue; }
       if (!/^[a-z0-9-]+$/.test(id)) { warn('invalid id'); continue; }
