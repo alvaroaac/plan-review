@@ -141,6 +141,16 @@ describe('extractItems', () => {
       'line 3', /missing.*id/i);
   });
 
+  it('reports correct line numbers for many blocks in one section, including CRLF', () => {
+    const block = fence('decision', 'question: Which?\n- A: First\n- B: Second');
+    const body = ['Intro', block, 'Middle', block, block].join('\n\n').replace(/\n/g, '\r\n');
+    expect(extractItems(makeDoc(body)).warnings).toEqual([
+      'line 3: missing id',
+      'line 11: missing id',
+      'line 17: missing id',
+    ]);
+  });
+
   it('rejects bad id characters', () => {
     expectMalformed(decision('Bad_id'), 'Bad_id', /invalid.*id|id.*invalid/i);
   });

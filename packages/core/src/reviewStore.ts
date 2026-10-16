@@ -19,6 +19,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+function isAnswer(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    typeof value.choice === 'string' &&
+    typeof value.note === 'string' &&
+    typeof value.itemHash === 'string' &&
+    typeof value.round === 'number' &&
+    typeof value.updatedAt === 'string'
+  );
+}
+
 function isRound(value: unknown): boolean {
   return (
     isRecord(value) &&
@@ -75,6 +86,7 @@ export function isReview(value: unknown): value is Review {
     typeof value.updatedAt === 'string' &&
     (value.status === 'open' || value.status === 'approved') &&
     isRecord(value.answers) &&
+    Object.values(value.answers).every(isAnswer) &&
     Array.isArray(value.threads) &&
     value.threads.every(isThread) &&
     Array.isArray(value.rounds) &&
@@ -97,10 +109,10 @@ export class FileReviewStore implements ReviewStore {
 
   async save(review: Review): Promise<void> {
     if (!REVIEW_ID_PATTERN.test(review.id)) throw new Error('Invalid review id');
-    await mkdir(this.dir, { recursive: true });
+    await mkdir(this.dir, { recursive: true, mode: 0o700 });
     const path = join(this.dir, `${review.id}.json`);
     const tmpPath = `${path}.tmp-${randomBytes(4).toString('hex')}`;
-    await writeFile(tmpPath, JSON.stringify(review, null, 2), 'utf-8');
+    await writeFile(tmpPath, JSON.stringify(review, null, 2), { encoding: 'utf-8', mode: 0o600 });
     await rename(tmpPath, path);
   }
 

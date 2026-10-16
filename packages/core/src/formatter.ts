@@ -159,6 +159,6 @@ export function formatPausedNotice(review: Review, items: ReviewItem[]): string 
 
 function resumeCommand(review: Review): string {
   if (!review.planPath) return `plan-review --review ${review.id} (pipe the plan on stdin)`;
-  const path = /\s/.test(review.planPath) ? `'${review.planPath}'` : review.planPath;
+  const path = `'${review.planPath.replaceAll("'", "'\\''")}'`;
   return `plan-review ${path} --review ${review.id}`;
 }
