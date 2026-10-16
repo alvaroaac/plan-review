@@ -37,32 +37,35 @@ export function SectionView({ section, num }: { section: Section; num: string })
 
   // Block HTML with quote and thread highlights applied; items whose quote is
   // not found are shown as a chip where their fence was.
-  const html = blocks.map((b) => b.innerHtml);
-  const chips = new Map<number, ReviewItem>();
-  for (const item of sectionItems) {
-    const s = stateOf(item);
-    const mark = {
-      id: `mk-${item.id}`,
-      className: `q q-${item.kind} is-${s}${isFocused({ kind: 'item', id: item.id }) ? ' is-focus' : ''}`,
-      data: { item: item.id },
-      badge: BADGE[s](item),
-    };
-    const marker = blocks.findIndex((b) => b.itemId === item.id);
-    if (!quoteNearest(html, blocks, marker < 0 ? blocks.length : marker, item.quote, mark) && marker >= 0) {
-      chips.set(marker, item);
+  const { html, chips } = useMemo(() => {
+    const html = blocks.map((b) => b.innerHtml);
+    const chips = new Map<number, ReviewItem>();
+    for (const item of sectionItems) {
+      const s = stateOf(item);
+      const mark = {
+        id: `mk-${item.id}`,
+        className: `q q-${item.kind} is-${s}${isFocused({ kind: 'item', id: item.id }) ? ' is-focus' : ''}`,
+        data: { item: item.id },
+        badge: BADGE[s](item),
+      };
+      const marker = blocks.findIndex((b) => b.itemId === item.id);
+      if (!quoteNearest(html, blocks, marker < 0 ? blocks.length : marker, item.quote, mark) && marker >= 0) {
+        chips.set(marker, item);
+      }
     }
-  }
-  for (const t of review.threads) {
-    if (t.sectionId !== section.id || !t.anchor || !isOpenThread(t)) continue;
-    const range = findLineRun(blocks, t.anchor.lineTexts, t.anchor);
-    if (!range) continue;
-    const className = `hl${isFocused({ kind: 'thread', id: t.id }) ? ' is-focus' : ''}`;
-    for (let i = range.start; i <= range.end; i++) {
-      // Only the first block carries the id: it is the scroll target, and ids must be unique.
-      const id = i === range.start ? `hl-${t.id}` : undefined;
-      html[i] = markAll(html[i], { id, className, data: { thread: t.id } });
+    for (const t of review.threads) {
+      if (t.sectionId !== section.id || !t.anchor || !isOpenThread(t)) continue;
+      const range = findLineRun(blocks, t.anchor.lineTexts, t.anchor);
+      if (!range) continue;
+      const className = `hl${isFocused({ kind: 'thread', id: t.id }) ? ' is-focus' : ''}`;
+      for (let i = range.start; i <= range.end; i++) {
+        // Only the first block carries the id: it is the scroll target, and ids must be unique.
+        const id = i === range.start ? `hl-${t.id}` : undefined;
+        html[i] = markAll(html[i], { id, className, data: { thread: t.id } });
+      }
     }
-  }
+    return { html, chips };
+  }, [blocks, sectionItems, review.answers, review.threads, ui.focus, section.id]);
 
   const composing = !ui.composing?.detached && ui.composing?.sectionId === section.id ? ui.composing.anchor : null;
   const isPending = (i: number) => !!composing && i >= composing.startLine && i <= composing.endLine;

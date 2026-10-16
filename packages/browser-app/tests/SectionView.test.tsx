@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fireEvent } from '@testing-library/preact';
+import { act, fireEvent } from '@testing-library/preact';
 import type { LoadedReview, ReviewItem, Section, Thread } from '@plan-review/core';
 import { SectionView } from '../src/components/SectionView.js';
+import { CommentsList } from '../src/components/CommentsList.js';
+import * as highlight from '../src/highlight.js';
 import {
   answer, assumptionItem, decisionItem, lineAnchor, mockLoaded, mockPlanDoc, renderWithReview, thread,
 } from './test-utils.js';
@@ -45,6 +47,40 @@ function renderSection(items: ReviewItem[] = [decision, assumption], patch: Part
 
 describe('SectionView', () => {
   beforeEach(() => vi.restoreAllMocks());
+
+  it('caches highlights across composer typing and refreshes them for answers, focus and threads', () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    const quote = vi.spyOn(highlight, 'markQuote');
+    const all = vi.spyOn(highlight, 'markAll');
+    const anchored = thread('cached', section.id, lineAnchor(0, [PARA_1]));
+    const { container, review } = renderWithReview(
+      <><SectionView section={section} num="1.1" /><CommentsList /></>, loaded([decision, assumption], { threads: [anchored] }),
+    );
+    expect(quote).toHaveBeenCalled();
+    expect(all).toHaveBeenCalled();
+    const counts = () => [quote.mock.calls.length, all.mock.calls.length];
+    const initial = counts();
+    fireEvent.click(container.querySelector('.para-add')!);
+    expect(container.querySelector('.is-pending')).not.toBeNull();
+    const textarea = container.querySelector('.composer textarea')!;
+    for (const value of ['Draft', 'Draft with more text']) fireEvent.input(textarea, { target: { value } });
+    expect(review.current.state.ui.composing!.body).toBe('Draft with more text');
+    expect(counts()).toEqual(initial);
+
+    act(() => review.current.dispatch({ type: 'answer', itemId: decision.id, choice: 'A', note: '' }));
+    expect(quote.mock.calls.length).toBeGreaterThan(initial[0]);
+    expect(container.querySelector('#mk-retry-backoff')!.classList.contains('is-done')).toBe(true);
+    const answered = counts();
+    act(() => review.current.dispatch({ type: 'focus', target: { kind: 'thread', id: anchored.id } }));
+    expect(all.mock.calls.length).toBeGreaterThan(answered[1]);
+    expect(container.querySelector('#hl-cached')!.classList.contains('is-focus')).toBe(true);
+    const focused = counts();
+    act(() => review.current.dispatch({ type: 'reply', threadId: anchored.id, body: 'Another comment' }));
+    expect(quote.mock.calls.length).toBeGreaterThan(focused[0]);
+    expect(all.mock.calls.length).toBeGreaterThan(focused[1]);
+    act(() => review.current.dispatch({ type: 'resolve', threadId: anchored.id }));
+    expect(container.querySelector('#hl-cached')).toBeNull();
+  });
 
   it('renders the section heading with its number', () => {
     const { container } = renderSection();
