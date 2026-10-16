@@ -15,3 +15,4 @@ packages/vscode-extension/media/
 packages/vscode-extension/test/integration/out/
 packages/vscode-extension/.vscode-test/
 packages/vscode-extension/*.vsix
+.pr-review/
