@@ -64,7 +64,7 @@ export function SectionView({ section, num }: { section: Section; num: string })
     }
   }
 
-  const composing = ui.composing?.sectionId === section.id ? ui.composing.anchor : null;
+  const composing = !ui.composing?.detached && ui.composing?.sectionId === section.id ? ui.composing.anchor : null;
   const isPending = (i: number) => !!composing && i >= composing.startLine && i <= composing.endLine;
 
   const onAdd = (index: number, shiftKey: boolean) => {
