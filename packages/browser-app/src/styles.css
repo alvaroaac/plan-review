@@ -205,7 +205,7 @@ sup > a[data-footnote-ref]:hover, a[data-footnote-backref]:hover { text-decorati
 
 .para { position: relative; }
 .para-add { position: absolute; left: -44px; top: 4px; width: 26px; height: 26px; border-radius: 7px; border: 1px solid var(--rule-2); background: var(--surface); color: var(--ink-3); display: grid; place-items: center; opacity: 0; transition: opacity .12s; }
-.para:hover .para-add { opacity: 1; }
+.para:hover .para-add, .para-add:focus-visible { opacity: 1; }
 .para-add:hover { color: var(--ink); border-color: var(--ink-4); }
 .para.is-pending { background: color-mix(in srgb, var(--amber-soft) 50%, transparent); box-shadow: -10px 0 0 color-mix(in srgb, var(--amber-soft) 50%, transparent), 10px 0 0 color-mix(in srgb, var(--amber-soft) 50%, transparent); }
 .para.is-pending .para-add { opacity: 1; color: var(--amber-ink); border-color: var(--amber); }
