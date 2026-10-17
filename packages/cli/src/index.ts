@@ -16,10 +16,13 @@ import { createRequire } from 'node:module';
 import { promptOutputTarget } from './prompts.js';
 import { browserReview, createReviewStore } from './browser-review.js';
 import { terminalReview } from './terminal-review.js';
-import { installSkill } from './install-skill.js';
+import { installSkill, isSkillStale } from './install-skill.js';
 
 const require = createRequire(import.meta.url);
 const { version } = require('../package.json');
+
+const SKILL_SRC = join(dirname(fileURLToPath(import.meta.url)), 'skills', 'plan-review', 'SKILL.md');
+const CLAUDE_DIR = join(homedir(), '.claude');
 
 const program = new Command();
 interface ReviewOptions {
@@ -57,12 +60,11 @@ program
   .command('install-skill')
   .description('Install the Claude Code skill and its CLAUDE.md note into ~/.claude/')
   .action(() => {
-    const src = join(dirname(fileURLToPath(import.meta.url)), 'skills', 'plan-review', 'SKILL.md');
-    if (!existsSync(src)) {
-      console.error(chalk.red('Skill file not found in package. Expected at: ' + src));
+    if (!existsSync(SKILL_SRC)) {
+      console.error(chalk.red('Skill file not found in package. Expected at: ' + SKILL_SRC));
       process.exit(1);
     }
-    const { skillPath, claudeMdPath } = installSkill(src, join(homedir(), '.claude'));
+    const { skillPath, claudeMdPath } = installSkill(SKILL_SRC, CLAUDE_DIR);
     console.error(chalk.green(`Skill installed to ${skillPath}`));
     console.error(chalk.green(`Plan-review note added to ${claudeMdPath}`));
     console.error(chalk.dim('Claude Code will auto-discover it. Try: "I want to review this plan"'));
@@ -107,6 +109,9 @@ async function run(
   file: string | undefined,
   opts: ReviewOptions,
 ): Promise<void> {
+  if (isSkillStale(SKILL_SRC, CLAUDE_DIR)) {
+    console.error(chalk.yellow('Your plan-review Claude Code skill is out of date. Run: plan-review install-skill'));
+  }
   if (opts.review && opts.fresh) {
     process.stderr.write('--fresh cannot be combined with --review\n');
     process.exit(1);

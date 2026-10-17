@@ -28,6 +28,13 @@ export function installSkill(skillSrc: string, claudeDir: string): InstallResult
   return { skillPath, claudeMdPath };
 }
 
+/** True when a plan-review skill is installed under `claudeDir` and differs from `skillSrc`. */
+export function isSkillStale(skillSrc: string, claudeDir: string): boolean {
+  const skillPath = join(claudeDir, 'skills', 'plan-review', 'SKILL.md');
+  if (!existsSync(skillPath) || !existsSync(skillSrc)) return false;
+  return readFileSync(skillPath, 'utf-8') !== readFileSync(skillSrc, 'utf-8');
+}
+
 function withNote(content: string): string {
   const begin = content.indexOf(NOTE_BEGIN);
   const end = content.indexOf(NOTE_END, begin);
