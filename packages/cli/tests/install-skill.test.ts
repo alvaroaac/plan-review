@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CLAUDE_NOTE, installSkill } from '../src/install-skill.js';
+import { CLAUDE_NOTE, installSkill, isSkillStale } from '../src/install-skill.js';
 
 let dir: string;
 let skillSrc: string;
@@ -49,5 +49,28 @@ describe('installSkill', () => {
     writeFileSync(join(claudeDir, 'CLAUDE.md'), '# Before\n\n<!-- plan-review:begin -->\nold note\n<!-- plan-review:end -->\n\n# After\n');
     installSkill(skillSrc, claudeDir);
     expect(claudeMd()).toBe(`# Before\n\n${CLAUDE_NOTE}\n\n# After\n`);
+  });
+});
+
+describe('isSkillStale', () => {
+  it('is false when no skill is installed', () => {
+    expect(isSkillStale(skillSrc, claudeDir)).toBe(false);
+  });
+
+  it('is false when the installed skill matches the bundled one', () => {
+    installSkill(skillSrc, claudeDir);
+    expect(isSkillStale(skillSrc, claudeDir)).toBe(false);
+  });
+
+  it('is true when the installed skill differs from the bundled one', () => {
+    installSkill(skillSrc, claudeDir);
+    writeFileSync(skillSrc, '# skill v3\n');
+    expect(isSkillStale(skillSrc, claudeDir)).toBe(true);
+  });
+
+  it('is false when the bundled skill is missing', () => {
+    installSkill(skillSrc, claudeDir);
+    rmSync(skillSrc);
+    expect(isSkillStale(skillSrc, claudeDir)).toBe(false);
   });
 });
