@@ -195,7 +195,8 @@ function readInput(file: string | undefined): string {
 
   // Read from stdin (piped)
   if (!process.stdin.isTTY) {
-    return readFileSync('/dev/stdin', 'utf-8');
+    // fd 0, not /dev/stdin: Linux can't open /dev/stdin when stdin is a socket (ENXIO).
+    return readFileSync(0, 'utf-8');
   }
 
   // No file, no stdin pipe — show help
