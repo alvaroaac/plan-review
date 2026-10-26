@@ -232,6 +232,88 @@ describe('openReview rounds and loaded view', () => {
   });
 });
 
+describe('openReview seeding from approved', () => {
+  const SEED_PLAN = `# Test Plan\n\n${decision('retry')}\n\n${decision('cache', 'Which cache?')}`;
+  const seedItems = extract(SEED_PLAN).items;
+  const seedAnswers = (): Record<string, Answer> => ({
+    retry: makeAnswer({ choice: 'B', itemHash: seedItems[0].hash }),
+    cache: makeAnswer({ choice: 'A', note: 'n', itemHash: seedItems[1].hash }),
+  });
+  const approved = (overrides: Partial<Review> = {}) =>
+    makeReview({ id: 'rv_appr1234', status: 'approved', answers: seedAnswers(), ...overrides });
+  const open = (store: ReturnType<typeof makeStore>, input: Partial<OpenReviewInput> = {}) =>
+    openReview(store, { markdown: SEED_PLAN, planPath: PATH, now: NOW, ...input });
+
+  it('copies answers for unchanged items as done', async () => {
+    const { review, loaded } = await open(makeStore(approved()));
+    expect(review.answers).toEqual(seedAnswers());
+    const states = loaded.items.map((item) => itemState(item, loaded.review.answers[item.id]));
+    expect(states).toEqual(['done', 'done']);
+  });
+
+  it('shows items whose text changed as changed with the previous answer', async () => {
+    const markdown = `# Test Plan\n\n${decision('retry', 'Which retry now?')}\n\n${decision('cache', 'Which cache?')}`;
+    const { review, loaded } = await open(makeStore(approved()), { markdown });
+    expect(itemState(loaded.items[0], review.answers.retry)).toBe('changed');
+    expect(review.answers.retry).toEqual(seedAnswers().retry);
+  });
+
+  it('does not copy answers for ids absent from the new document', async () => {
+    const source = approved({ answers: { ...seedAnswers(), gone: makeAnswer() } });
+    const { review } = await open(makeStore(source));
+    expect(Object.keys(review.answers).sort()).toEqual(['cache', 'retry']);
+  });
+
+  it('seeds from the most recently updated approved review', async () => {
+    const older = approved({ id: 'rv_old12345', updatedAt: BEFORE, answers: { retry: makeAnswer({ choice: 'A', itemHash: seedItems[0].hash }) } });
+    const newer = approved({ id: 'rv_new12345', updatedAt: '2026-10-15T11:00:00.000Z' });
+    const { review } = await open(makeStore(older, newer));
+    expect(review.answers).toEqual(seedAnswers());
+  });
+
+  it('ignores approved reviews of a different planPath', async () => {
+    const { review, loaded } = await open(makeStore(approved({ planPath: '/tmp/else.md' })));
+    expect(review.answers).toEqual({});
+    expect(loaded.review).not.toHaveProperty('banner');
+  });
+
+  it('does not seed with fresh', async () => {
+    const { review } = await open(makeStore(approved()), { fresh: true });
+    expect(review.answers).toEqual({});
+  });
+
+  it('does not seed without a planPath', async () => {
+    const { review } = await open(makeStore(approved()), { planPath: undefined });
+    expect(review.answers).toEqual({});
+  });
+
+  it('resumes an open review without seeding into it', async () => {
+    const resumable = makeReview({ id: 'rv_open1234', rounds: [makeRound(SEED_PLAN)] });
+    const { review } = await open(makeStore(resumable, approved()));
+    expect(review.id).toBe(resumable.id);
+    expect(review.answers).toEqual({});
+  });
+
+  it('does not copy threads', async () => {
+    const { review } = await open(makeStore(approved({ threads: [makeThread()] })));
+    expect(review.threads).toEqual([]);
+  });
+
+  it('leaves the approved source review untouched', async () => {
+    const source = approved();
+    const store = makeStore(source);
+    await open(store);
+    expect(await store.get(source.id)).toEqual(source);
+  });
+
+  it('sets the seededFromApproved banner only when answers were copied', async () => {
+    const seeded = await open(makeStore(approved()));
+    expect(seeded.loaded.review.banner).toBe('seededFromApproved');
+    const empty = await open(makeStore(approved({ answers: {} })));
+    expect(empty.loaded.review).not.toHaveProperty('banner');
+  });
+});
+
 describe('carryForward', () => {
   it('preserves a stored anchor on the second repeated paragraph', () => {
     const plan = '# Plan\n\n## Tests\n\nSame.\n\nBetween.\n\nSame.';

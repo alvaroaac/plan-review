@@ -106,7 +106,7 @@ export interface Review {
 
 export type ItemState = 'open' | 'done' | 'deferred' | 'changed';
 
-export type Banner = 'planChangedWhilePaused' | 'planUnchanged';
+export type Banner = 'planChangedWhilePaused' | 'planUnchanged' | 'seededFromApproved';
 
 export type SubmitVerdict = 'changes_requested' | 'approved';
 

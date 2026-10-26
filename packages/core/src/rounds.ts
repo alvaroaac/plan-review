@@ -69,13 +69,26 @@ export async function openReview(store: ReviewStore, input: OpenReviewInput): Pr
   return openResolvedReview(store, input, null);
 }
 
+// Answers from the file's last approved review, for the ids still in the document.
+async function seedAnswers(
+  store: ReviewStore, input: OpenReviewInput, extract: ExtractResult,
+): Promise<Review['answers']> {
+  if (input.planPath === undefined || input.fresh) return {};
+  const [source] = (await store.list({ status: 'approved' })).filter((r) => r.planPath === input.planPath);
+  const currentIds = new Set(extract.items.map((item) => item.id));
+  return Object.fromEntries(Object.entries(source?.answers ?? {}).filter(([id]) => currentIds.has(id)));
+}
+
 async function openResolvedReview(
   store: ReviewStore, input: OpenReviewInput, review: Review | null,
 ): Promise<OpenedReview> {
   if (review?.status === 'approved') throw new ReviewApprovedError(review.id);
   const extract = extractItems(parse(input.markdown, input.splitBy));
   const timestamp = input.now.toISOString();
+  let seeded = false;
   if (!review) {
+    const answers = await seedAnswers(store, input, extract);
+    seeded = Object.keys(answers).length > 0;
     review = {
       version: 2,
       id: newReviewId(),
@@ -84,7 +97,7 @@ async function openResolvedReview(
       status: 'open',
       createdAt: timestamp,
       updatedAt: timestamp,
-      answers: {},
+      answers,
       threads: [],
       rounds: [],
     };
@@ -120,6 +133,7 @@ async function openResolvedReview(
       }],
     };
     if (lastRound?.contentHash === hash) banner = 'planUnchanged';
+    else if (seeded) banner = 'seededFromApproved';
   }
 
   review = { ...review, updatedAt: timestamp };
