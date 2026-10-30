@@ -56,6 +56,9 @@ function Banners() {
       {review.banner === 'planUnchanged' && (
         <Callout icon="i">The plan hasn’t changed since the last round.</Callout>
       )}
+      {review.banner === 'seededFromApproved' && (
+        <Callout icon="i">Answers carried over from the last approved review of this file.</Callout>
+      )}
       {changed > 0 && (
         <Callout icon="!">
           {changed === 1 ? '1 item changed since you answered it.' : `${changed} items changed since you answered them.`}

@@ -114,6 +114,6 @@ Reworded to "never exposed to the browser".
 
 - For a file, running without `--review` resumes the open review for that file, or starts one. Use `--fresh` to start a new review instead; the old review stays open, not closed. `--fresh` cannot be combined with `--review`.
 - For an inline plan, only `--review <id>` continues a review. Without it, every run starts a new one.
-- An approved review is closed. `--review` on it fails; start a new review without the flag. Deferred items in an approved review are still open, so track them during implementation.
+- An approved review is closed. `--review` on it fails; start a new review without the flag. The new review pre-fills answers from the file's last approved review; edited items reopen with the previous answer shown. `--fresh` starts empty. Deferred items in an approved review are still open, so track them during implementation.
 - `plan-review list` shows open reviews with their ids. `list --all` includes approved ones.
 - Pass `--cli` only for SSH, CI or headless environments. Terminal mode shows the blocks as text but cannot answer them.
