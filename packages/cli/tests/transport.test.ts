@@ -23,7 +23,7 @@ describe('HttpTransport', () => {
     const transport = new HttpTransport();
     transport.setLoaded(loaded);
     const { url } = await transport.start(0);
-    expect(url).toMatch(/^http:\/\/localhost:\d+$/);
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
     await transport.stop();
   });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { EventEmitter } from 'node:events';
-import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
+import { createServer, request as httpRequest, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { createRouteHandler, isProgressUpdate, isSubmitRequest } from '../../src/server/routes.js';
 import type { Answer, LoadedReview, ProgressUpdate, Thread } from '@plan-review/core';
 
@@ -344,6 +344,7 @@ it('completes a saved submit when the response closes before onSubmit resolves',
   const req = new EventEmitter() as IncomingMessage;
   req.method = 'POST';
   req.url = '/api/review';
+  req.headers = { host: '127.0.0.1:4000', 'content-type': 'application/json' };
   const res = Object.assign(new EventEmitter(), { writeHead: vi.fn(), end: vi.fn() }) as unknown as ServerResponse;
   let release!: (output: string) => void;
   const saved = new Promise<string>((resolve) => { release = resolve; });
@@ -361,4 +362,129 @@ it('completes a saved submit when the response closes before onSubmit resolves',
   res.emit('finish');
   expect(onSubmitFinished).toHaveBeenCalledOnce();
   expect(res.end).not.toHaveBeenCalled();
+});
+
+// fetch() won't let callers set Host, so these use node:http directly.
+function rawRequest(
+  port: number,
+  method: string,
+  path: string,
+  headers: Record<string, string>,
+  body?: string,
+): Promise<{ status: number }> {
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({ host: '127.0.0.1', port, method, path, headers }, (res) => {
+      res.resume();
+      res.on('end', () => resolve({ status: res.statusCode ?? 0 }));
+    });
+    req.on('error', reject);
+    req.end(body);
+  });
+}
+
+describe('request hardening', () => {
+  const submitBody = JSON.stringify({ verdict: 'approved', summary: 'forged' });
+
+  it.each(['127.0.0.1:1234', 'localhost:1234', '[::1]:1234', 'LOCALHOST'])('accepts loopback Host %s', async (host) => {
+    const { server, port } = await startTestServer(baseCtx());
+    try {
+      expect((await rawRequest(port, 'GET', '/api/doc', { Host: host })).status).toBe(200);
+    } finally {
+      await stopTestServer(server);
+    }
+  });
+
+  it.each(['evil.example:1234', 'evil.example', '192.168.1.5:1234', '127.0.0.1.evil.example'])(
+    'rejects non-loopback Host %s (DNS rebinding)',
+    async (host) => {
+      const ctx = baseCtx();
+      const { server, port } = await startTestServer(ctx);
+      try {
+        expect((await rawRequest(port, 'GET', '/api/doc', { Host: host })).status).toBe(403);
+        const res = await rawRequest(port, 'POST', '/api/review', { Host: host, 'Content-Type': 'application/json' }, submitBody);
+        expect(res.status).toBe(403);
+        expect(ctx.onSubmit).not.toHaveBeenCalled();
+      } finally {
+        await stopTestServer(server);
+      }
+    },
+  );
+
+  it('rejects a cross-origin submit', async () => {
+    const ctx = baseCtx();
+    const { server, port } = await startTestServer(ctx);
+    try {
+      const res = await rawRequest(port, 'POST', '/api/review', {
+        Host: `127.0.0.1:${port}`,
+        Origin: 'https://evil.example',
+        'Content-Type': 'application/json',
+      }, submitBody);
+      expect(res.status).toBe(403);
+      expect(ctx.onSubmit).not.toHaveBeenCalled();
+    } finally {
+      await stopTestServer(server);
+    }
+  });
+
+  it.each(['/api/cancel', '/api/pause', '/api/heartbeat'])('rejects a cross-origin POST %s', async (path) => {
+    const onCancel = vi.fn();
+    const onPause = vi.fn();
+    const onHeartbeat = vi.fn();
+    const { server, port } = await startTestServer(baseCtx({ onCancel, onPause, onHeartbeat }));
+    try {
+      const res = await rawRequest(port, 'POST', path, { Host: `127.0.0.1:${port}`, Origin: 'http://localhost:9999' });
+      expect(res.status).toBe(403);
+      expect(onCancel).not.toHaveBeenCalled();
+      expect(onPause).not.toHaveBeenCalled();
+      expect(onHeartbeat).not.toHaveBeenCalled();
+    } finally {
+      await stopTestServer(server);
+    }
+  });
+
+  it('accepts a same-origin submit', async () => {
+    const ctx = baseCtx();
+    const { server, port } = await startTestServer(ctx);
+    try {
+      const res = await rawRequest(port, 'POST', '/api/review', {
+        Host: `127.0.0.1:${port}`,
+        Origin: `http://127.0.0.1:${port}`,
+        'Content-Type': 'application/json',
+      }, submitBody);
+      expect(res.status).toBe(200);
+      expect(ctx.onSubmit).toHaveBeenCalledOnce();
+    } finally {
+      await stopTestServer(server);
+    }
+  });
+
+  it.each([
+    ['POST', '/api/review', submitBody],
+    ['PUT', '/api/session', JSON.stringify(progress)],
+  ])('rejects %s %s without a JSON Content-Type', async (method, path, body) => {
+    const ctx = baseCtx();
+    const { server, port } = await startTestServer(ctx);
+    try {
+      const res = await rawRequest(port, method, path, { Host: `127.0.0.1:${port}`, 'Content-Type': 'text/plain' }, body);
+      expect(res.status).toBe(415);
+      expect(ctx.onSubmit).not.toHaveBeenCalled();
+      expect(ctx.onProgress).not.toHaveBeenCalled();
+    } finally {
+      await stopTestServer(server);
+    }
+  });
+
+  it('accepts a JSON Content-Type with parameters', async () => {
+    const ctx = baseCtx();
+    const { server, port } = await startTestServer(ctx);
+    try {
+      const res = await rawRequest(port, 'POST', '/api/review', {
+        Host: `127.0.0.1:${port}`,
+        'Content-Type': 'application/json; charset=utf-8',
+      }, submitBody);
+      expect(res.status).toBe(200);
+    } finally {
+      await stopTestServer(server);
+    }
+  });
 });

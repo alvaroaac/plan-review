@@ -69,7 +69,9 @@ describe('server lifecycle', () => {
     });
 
     const { url } = await startServer(server, 0);
-    expect(url).toMatch(/^http:\/\/localhost:\d+$/);
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+    // Loopback only: not reachable from other machines on the network.
+    expect(server.address()).toMatchObject({ address: '127.0.0.1' });
 
     await stopServer(server);
   });

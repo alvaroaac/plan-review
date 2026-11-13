@@ -42,7 +42,7 @@ async function startCli(args: string[], input?: string) {
   child.stdout.on('data', (data) => { stdout += data.toString(); });
   child.stderr.on('data', (data) => {
     stderr += data.toString();
-    const match = stderr.match(/Review server running at (http:\/\/localhost:\d+)/);
+    const match = stderr.match(/Review server running at (http:\/\/127\.0\.0\.1:\d+)/);
     if (match) ready(match[1]);
   });
   const done = new Promise<{ status: number | null; stdout: string; stderr: string }>((resolve) => {

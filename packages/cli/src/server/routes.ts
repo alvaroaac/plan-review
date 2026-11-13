@@ -144,9 +144,56 @@ function readJsonBody(req: IncomingMessage, res: ServerResponse): Promise<unknow
   });
 }
 
+const LOOPBACK_HOSTNAMES = new Set(['127.0.0.1', 'localhost', '[::1]']);
+
+function hostnameOf(hostHeader: string): string {
+  // Strip the port, keeping bracketed IPv6 literals intact.
+  const match = /^(\[[^\]]*\]|[^:]*)(?::\d+)?$/.exec(hostHeader);
+  return (match ? match[1] : hostHeader).toLowerCase();
+}
+
+// Rejects requests addressed to a non-loopback hostname. A DNS-rebinding page
+// reaches this server under its own domain name, so the Host header gives it away.
+function isLoopbackHost(req: IncomingMessage): boolean {
+  const host = req.headers.host;
+  return typeof host === 'string' && LOOPBACK_HOSTNAMES.has(hostnameOf(host));
+}
+
+// Browsers send Origin on cross-site POST/PUT, including "simple" requests and
+// sendBeacon. Requests without an Origin (curl, tests) are not browser-driven
+// CSRF and are allowed through.
+function isSameOrigin(req: IncomingMessage): boolean {
+  const origin = req.headers.origin;
+  if (origin === undefined) return true;
+  return origin === `http://${req.headers.host}`;
+}
+
+// Requiring application/json forces a CORS preflight for cross-origin callers,
+// which this server never approves.
+function isJsonRequest(req: IncomingMessage): boolean {
+  const type = req.headers['content-type'];
+  return typeof type === 'string' && type.split(';')[0].trim().toLowerCase() === 'application/json';
+}
+
 export function createRouteHandler(ctx: RouteContext): (req: IncomingMessage, res: ServerResponse) => void {
   return (req, res) => {
     const { method, url } = req;
+
+    if (!isLoopbackHost(req)) {
+      sendJson(res, 403, { error: 'Forbidden host' });
+      return;
+    }
+
+    if (method !== 'GET' && method !== 'HEAD' && !isSameOrigin(req)) {
+      sendJson(res, 403, { error: 'Cross-origin request rejected' });
+      return;
+    }
+
+    const hasJsonBody = (method === 'POST' && url === '/api/review') || (method === 'PUT' && url === '/api/session');
+    if (hasJsonBody && !isJsonRequest(req)) {
+      sendJson(res, 415, { error: 'Content-Type must be application/json' });
+      return;
+    }
 
     if (method === 'GET' && url === '/') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
